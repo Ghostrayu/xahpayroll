@@ -1,0 +1,220 @@
+import React, { useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
+import Navbar from '../components/Navbar'
+import Footer from '../components/Footer'
+
+const WorkerDashboard: React.FC = () => {
+  const { userName } = useAuth()
+  const [isWorking, setIsWorking] = useState(false)
+  const [sessionTime, setSessionTime] = useState('0:00:00')
+  const workerData = {
+    hourlyRate: 15.00,
+    todayHours: 3.5,
+    todayEarnings: 52.50,
+    weekHours: 24.0,
+    weekEarnings: 360.00,
+    monthHours: 156.5,
+    monthEarnings: 2347.50,
+    employer: 'Good Money Collective'
+  }
+
+  const recentPayments = [
+    { id: 1, amount: 15.00, time: '1 hour ago', status: 'Completed', txHash: '0xABC...123' },
+    { id: 2, amount: 15.00, time: '2 hours ago', status: 'Completed', txHash: '0xDEF...456' },
+    { id: 3, amount: 15.00, time: '3 hours ago', status: 'Completed', txHash: '0xGHI...789' },
+    { id: 4, amount: 15.00, time: '4 hours ago', status: 'Completed', txHash: '0xJKL...012' },
+  ]
+
+  const handleClockInOut = () => {
+    setIsWorking(!isWorking)
+    if (!isWorking) {
+      // Start timer simulation
+      // In production, this would connect to backend
+    }
+  }
+
+  return (
+    <div className="min-h-screen x-pattern-bg-light">
+      <Navbar />
+      
+      {/* Dashboard Header */}
+      <div className="pt-28 pb-8 bg-gradient-to-br from-xah-light via-white to-primary-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl md:text-4xl font-extrabold text-gray-900 uppercase tracking-tight">
+                WORKER DASHBOARD
+              </h1>
+              <p className="text-sm text-gray-600 uppercase tracking-wide mt-2">
+                Welcome back, {userName}
+              </p>
+            </div>
+            <Link 
+              to="/worker" 
+              className="inline-flex items-center gap-2 text-xah-blue hover:text-primary-700 font-bold text-sm uppercase tracking-wide transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              BACK TO INFO
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* Dashboard Content */}
+      <section className="py-12 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          
+          {/* Clock In/Out Section */}
+          <div className="mb-12 bg-gradient-to-br from-xah-blue to-primary-700 rounded-2xl shadow-2xl p-8 text-white">
+            <div className="text-center">
+              <h2 className="text-2xl font-extrabold uppercase tracking-tight mb-4">
+                {isWorking ? 'CURRENTLY WORKING' : 'READY TO START'}
+              </h2>
+              <div className="text-6xl font-extrabold mb-6">
+                {sessionTime}
+              </div>
+              <button 
+                onClick={handleClockInOut}
+                className={`px-12 py-4 rounded-xl font-bold text-lg uppercase tracking-wide transition-all duration-300 ${
+                  isWorking 
+                    ? 'bg-red-500 hover:bg-red-600 shadow-[0_0_30px_rgba(239,68,68,0.6)]' 
+                    : 'bg-secondary-500 hover:bg-secondary-600 shadow-[0_0_30px_rgba(153,255,159,0.6)]'
+                }`}
+              >
+                {isWorking ? '⏹ CLOCK OUT' : '▶️ CLOCK IN'}
+              </button>
+              {isWorking && (
+                <p className="mt-4 text-sm uppercase tracking-wide">
+                  Earning {workerData.hourlyRate} XAH per hour
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Stats Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+            {/* Today */}
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl shadow-lg p-6 border-2 border-blue-200">
+              <div className="text-center">
+                <div className="text-4xl mb-3">📅</div>
+                <p className="text-xs text-gray-600 uppercase tracking-wide font-semibold mb-2">Today</p>
+                <p className="text-3xl font-extrabold text-gray-900 mb-1">{workerData.todayHours}h</p>
+                <p className="text-xl font-bold text-xah-blue">{workerData.todayEarnings} XAH</p>
+              </div>
+            </div>
+
+            {/* This Week */}
+            <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-2xl shadow-lg p-6 border-2 border-green-200">
+              <div className="text-center">
+                <div className="text-4xl mb-3">📊</div>
+                <p className="text-xs text-gray-600 uppercase tracking-wide font-semibold mb-2">This Week</p>
+                <p className="text-3xl font-extrabold text-gray-900 mb-1">{workerData.weekHours}h</p>
+                <p className="text-xl font-bold text-xah-blue">{workerData.weekEarnings} XAH</p>
+              </div>
+            </div>
+
+            {/* This Month */}
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-2xl shadow-lg p-6 border-2 border-purple-200">
+              <div className="text-center">
+                <div className="text-4xl mb-3">💰</div>
+                <p className="text-xs text-gray-600 uppercase tracking-wide font-semibold mb-2">This Month</p>
+                <p className="text-3xl font-extrabold text-gray-900 mb-1">{workerData.monthHours}h</p>
+                <p className="text-xl font-bold text-xah-blue">{workerData.monthEarnings} XAH</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Two Column Layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Employment Info */}
+            <div className="bg-white rounded-2xl shadow-xl p-6 border-2 border-xah-blue/30">
+              <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-6">Employment Info</h3>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+                  <span className="text-sm text-gray-600 uppercase tracking-wide font-semibold">Employer</span>
+                  <span className="font-bold text-gray-900 uppercase text-sm">{workerData.employer}</span>
+                </div>
+                <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+                  <span className="text-sm text-gray-600 uppercase tracking-wide font-semibold">Hourly Rate</span>
+                  <span className="font-bold text-xah-blue text-lg">{workerData.hourlyRate} XAH</span>
+                </div>
+                <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+                  <span className="text-sm text-gray-600 uppercase tracking-wide font-semibold">Status</span>
+                  <span className="px-3 py-1 bg-green-500 text-white rounded-full text-xs font-bold">ACTIVE</span>
+                </div>
+                <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+                  <span className="text-sm text-gray-600 uppercase tracking-wide font-semibold">Payment Frequency</span>
+                  <span className="font-bold text-gray-900 uppercase text-sm">HOURLY</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Recent Payments */}
+            <div className="bg-white rounded-2xl shadow-xl p-6 border-2 border-xah-blue/30">
+              <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-6">Recent Payments</h3>
+              <div className="space-y-4">
+                {recentPayments.map((payment) => (
+                  <div key={payment.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                        <span className="text-white font-bold text-lg">✓</span>
+                      </div>
+                      <div>
+                        <p className="font-bold text-gray-900 text-sm">{payment.amount} XAH</p>
+                        <p className="text-xs text-gray-600 uppercase tracking-wide">{payment.time}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-green-600 uppercase tracking-wide font-semibold">{payment.status}</p>
+                      <a 
+                        href={`https://testnet.xrpl.org/transactions/${payment.txHash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-xah-blue hover:underline"
+                      >
+                        {payment.txHash}
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button className="w-full mt-4 bg-gray-200 hover:bg-gray-300 text-gray-900 font-bold py-3 px-4 rounded-lg text-sm uppercase tracking-wide transition-colors">
+                VIEW ALL PAYMENTS
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Stats */}
+          <div className="mt-12 bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl shadow-lg p-8 border-2 border-gray-200">
+            <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-6 text-center">Quick Stats</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              <div className="text-center">
+                <p className="text-3xl font-extrabold text-xah-blue mb-2">{workerData.hourlyRate}</p>
+                <p className="text-xs text-gray-600 uppercase tracking-wide">XAH/Hour</p>
+              </div>
+              <div className="text-center">
+                <p className="text-3xl font-extrabold text-xah-blue mb-2">{recentPayments.length}</p>
+                <p className="text-xs text-gray-600 uppercase tracking-wide">Payments Today</p>
+              </div>
+              <div className="text-center">
+                <p className="text-3xl font-extrabold text-xah-blue mb-2">$0.001</p>
+                <p className="text-xs text-gray-600 uppercase tracking-wide">Avg Fee</p>
+              </div>
+              <div className="text-center">
+                <p className="text-3xl font-extrabold text-xah-blue mb-2">100%</p>
+                <p className="text-xs text-gray-600 uppercase tracking-wide">On-Time</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <Footer />
+    </div>
+  )
+}
+
+export default WorkerDashboard

@@ -1,0 +1,102 @@
+/* Import responsive styles FIRST */
+@import './styles/base.css';
+@import './styles/mobile.css';
+@import './styles/tablet.css';
+@import './styles/desktop.css';
+
+/* Import Tailwind */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply font-sans antialiased;
+  }
+
+  /* Sophisticated X Pattern Background */
+  .x-pattern-bg {
+    background-image: 
+      repeating-linear-gradient(45deg, transparent, transparent 35px, rgba(14, 1, 67, 0.05) 35px, rgba(14, 1, 67, 0.05) 37px),
+      repeating-linear-gradient(-45deg, transparent, transparent 35px, rgba(14, 1, 67, 0.05) 35px, rgba(14, 1, 67, 0.05) 37px);
+  }
+
+  .x-pattern-bg-light {
+    background-image: 
+      repeating-linear-gradient(45deg, transparent, transparent 40px, rgba(14, 1, 67, 0.04) 40px, rgba(14, 1, 67, 0.04) 42px),
+      repeating-linear-gradient(-45deg, transparent, transparent 40px, rgba(14, 1, 67, 0.04) 40px, rgba(14, 1, 67, 0.04) 42px);
+  }
+
+  .x-pattern-bg-dark {
+    background-image: 
+      repeating-linear-gradient(45deg, transparent, transparent 35px, rgba(255, 253, 87, 0.06) 35px, rgba(255, 253, 87, 0.06) 37px),
+      repeating-linear-gradient(-45deg, transparent, transparent 35px, rgba(255, 253, 87, 0.06) 35px, rgba(255, 253, 87, 0.06) 37px);
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-xah-blue hover:bg-primary-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5;
+  }
+  
+  .btn-secondary {
+    @apply bg-white hover:bg-gray-50 text-xah-blue font-semibold py-3 px-6 rounded-lg border-2 border-xah-blue transition-all duration-200;
+  }
+  
+  .card {
+    @apply bg-white rounded-xl shadow-lg p-6 transition-all duration-200 hover:shadow-xl;
+  }
+
+  /* Animated gradient background for hero heading */
+  .animated-gradient-bg {
+    background: linear-gradient(
+      -45deg,
+      rgba(14, 1, 67, 0.05),
+      rgba(255, 253, 87, 0.15),
+      rgba(153, 255, 159, 0.1),
+      rgba(14, 1, 67, 0.08)
+    );
+    background-size: 400% 400%;
+    animation: gradientShift 15s ease infinite;
+    border-radius: 1.5rem;
+    padding: 3rem 2rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .animated-gradient-bg::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(
+      circle,
+      rgba(255, 253, 87, 0.1) 0%,
+      transparent 70%
+    );
+    animation: rotate 20s linear infinite;
+  }
+
+  @keyframes gradientShift {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  @keyframes rotate {
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+}
