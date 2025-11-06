@@ -206,6 +206,44 @@ EMPLOYERS CAN MANUALLY END SESSIONS OR ADJUST TIMEOUT SETTINGS PER WORKER.
 - [ ] DAO GOVERNANCE FOR PLATFORM PARAMETERS
 - [ ] MULTI-CHAIN SUPPORT (ETHEREUM, POLYGON)
 
+## SECURITY
+
+### ⚠️ IMPORTANT SECURITY NOTES
+
+**NEVER COMMIT SENSITIVE DATA TO VERSION CONTROL:**
+- Database passwords
+- API keys
+- Private keys or wallet secrets
+- `.env` files with real credentials
+
+**BEFORE DEPLOYING:**
+
+1. **Change Default Passwords**
+   - The `setup_database.sql` file contains a placeholder password `CHANGE_THIS_PASSWORD`
+   - Generate a strong password: `openssl rand -base64 32`
+   - Update the password in the SQL script before running
+   - Store the password securely (password manager, environment variables)
+
+2. **Environment Variables**
+   - Copy `backend/.env.example` to `backend/.env`
+   - Fill in all required values with your actual credentials
+   - Never commit the `.env` file to git (already in `.gitignore`)
+
+3. **Database Security**
+   - Use different passwords for development, staging, and production
+   - Enable SSL connections for production databases
+   - Restrict database access by IP address
+   - Regularly update and rotate credentials
+
+4. **Wallet Security**
+   - Never store private keys in code or environment variables
+   - Use hardware wallets or secure key management services
+   - Test with testnet wallets before using real funds
+
+**REPORTING SECURITY ISSUES:**
+- Email: security@xahpayroll.io
+- Do NOT open public issues for security vulnerabilities
+
 ## CONTRIBUTING
 
 WE WELCOME CONTRIBUTIONS! PLEASE SEE [CONTRIBUTING.MD](CONTRIBUTING.MD) FOR GUIDELINES.

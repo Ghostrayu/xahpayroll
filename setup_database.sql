@@ -1,11 +1,23 @@
 -- XAH Payroll Database Setup Script
--- Run this as postgres superuser
+-- This script creates the complete database schema for the XAH Payroll system
+
+-- ⚠️  SECURITY WARNING ⚠️
+-- This file contains a placeholder password for demonstration purposes only.
+-- NEVER use this password in production or any real environment.
+-- 
+-- BEFORE RUNNING THIS SCRIPT:
+-- 1. Replace 'CHANGE_THIS_PASSWORD' with a strong, unique password
+-- 2. Store the password securely (password manager, environment variables)
+-- 3. Never commit the actual password to version control
+-- 4. Use different passwords for development, staging, and production
+--
+-- Generate a strong password: openssl rand -base64 32
 
 -- Create the database
 CREATE DATABASE xahpayroll_dev;
 
--- Create a dedicated user
-CREATE USER xahpayroll_user WITH ENCRYPTED PASSWORD 'xahpayroll_secure_2024';
+-- Create a dedicated user with a SECURE password (CHANGE THIS!)
+CREATE USER xahpayroll_user WITH ENCRYPTED PASSWORD 'CHANGE_THIS_PASSWORD';
 
 -- Grant privileges
 GRANT ALL PRIVILEGES ON DATABASE xahpayroll_dev TO xahpayroll_user;
