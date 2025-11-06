@@ -44,7 +44,7 @@ const Footer: React.FC = () => {
         <div className="border-t border-gray-600 mt-12 pt-10 text-center text-gray-400">
           <p className="uppercase text-sm tracking-wide">&copy; 2025 XAHPAYROLL. BUILT ON XRP LEDGER (XRPL).</p>
           <p className="uppercase text-sm tracking-wide mt-2">
-            ENGINEERED OPEN SOURCE BY <a href="https://landing.goodmoneycollective.com" target="_blank" rel="noopener noreferrer" className="text-secondary-500 hover:text-secondary-400 transition-colors font-semibold">GOOD MONEY COLLECTIVE</a>
+            ENGINEERED OPEN SOURCE & MAINTAINED BY <a href="https://landing.goodmoneycollective.com" target="_blank" rel="noopener noreferrer" className="text-secondary-500 hover:text-secondary-400 transition-colors font-semibold">GOOD MONEY COLLECTIVE</a>
           </p>
         </div>
       </div>
