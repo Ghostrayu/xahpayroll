@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import ProfileSetupModal, { ProfileData } from './ProfileSetupModal'
 import crossmarkLogo from '../assets/images/primary_128x128.png'
 import xamanLogo from '../assets/images/App icon 512px.png'
+import { isInstalled as gemWalletIsInstalled } from '@gemwallet/api'
 
 interface WalletSelectionModalProps {
   isOpen: boolean
@@ -32,7 +33,26 @@ const WalletSelectionModal: React.FC<WalletSelectionModalProps> = ({ isOpen, onC
 
   // Check if browser extensions are available
   const isCrossmarkAvailable = typeof window !== 'undefined' && !!(window as any).crossmark
-  const isGemWalletAvailable = typeof window !== 'undefined' && !!(window as any).gemWallet
+  
+  // GemWallet detection using @gemwallet/api
+  const [isGemWalletAvailable, setIsGemWalletAvailable] = React.useState(false)
+  
+  React.useEffect(() => {
+    const checkGemWallet = async () => {
+      try {
+        const result = await gemWalletIsInstalled()
+        console.log('GemWallet isInstalled result:', result)
+        const isInstalled = result?.result?.isInstalled === true
+        console.log('GemWallet available:', isInstalled)
+        setIsGemWalletAvailable(isInstalled)
+      } catch (error) {
+        console.log('GemWallet check error:', error)
+        // If the check fails, assume it's not installed
+        setIsGemWalletAvailable(false)
+      }
+    }
+    checkGemWallet()
+  }, [])
 
   const walletOptions: WalletOption[] = [
     {
@@ -266,6 +286,19 @@ const WalletSelectionModal: React.FC<WalletSelectionModalProps> = ({ isOpen, onC
               </p>
               <div className="space-y-2 text-xs">
                 <a
+                  href="https://xaman.app"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-xah-blue hover:text-primary-700 font-semibold uppercase transition-colors"
+                >
+                  <img 
+                    src={xamanLogo} 
+                    alt="Xaman logo"
+                    className="w-5 h-5 object-contain"
+                  />
+                  Download Xaman (Recommended) →
+                </a>
+                <a
                   href="https://crossmark.io"
                   target="_blank"
                   rel="noopener noreferrer"
@@ -276,7 +309,7 @@ const WalletSelectionModal: React.FC<WalletSelectionModalProps> = ({ isOpen, onC
                     alt="Crossmark logo"
                     className="w-5 h-5 object-contain"
                   />
-                  Install Crossmark (Recommended) →
+                  Install Crossmark →
                 </a>
                 <a
                   href="https://gemwallet.app"
@@ -285,19 +318,6 @@ const WalletSelectionModal: React.FC<WalletSelectionModalProps> = ({ isOpen, onC
                   className="block text-xah-blue hover:text-primary-700 font-semibold uppercase"
                 >
                   💎 Install GemWallet →
-                </a>
-                <a
-                  href="https://xaman.app"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-gray-400 hover:text-gray-600 font-semibold uppercase transition-colors"
-                >
-                  <img 
-                    src={xamanLogo} 
-                    alt="Xaman logo"
-                    className="w-5 h-5 object-contain"
-                  />
-                  Download Xaman →
                 </a>
               </div>
             </div>

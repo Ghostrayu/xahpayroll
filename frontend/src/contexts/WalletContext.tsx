@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { Client, Wallet, dropsToXrp, xrpToDrops } from 'xrpl'
+import { getAddress as gemWalletGetAddress, isInstalled as gemWalletIsInstalled } from '@gemwallet/api'
 
 // Types
 export type NetworkType = 'testnet' | 'mainnet'
@@ -150,12 +151,23 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
         error: null
       }))
     } catch (error: any) {
-      console.error('Failed to fetch balance:', error)
-      setWalletState(prev => ({
-        ...prev,
-        balance: '0',
-        error: error.message || 'Failed to fetch balance'
-      }))
+      console.log('Balance fetch info:', error.message)
+      
+      // "Account not found" is normal for unfunded testnet accounts - don't show as error
+      if (error.message && error.message.includes('Account not found')) {
+        setWalletState(prev => ({
+          ...prev,
+          balance: '0',
+          error: null // Don't show error for unfunded accounts
+        }))
+      } else {
+        console.error('Failed to fetch balance:', error)
+        setWalletState(prev => ({
+          ...prev,
+          balance: '0',
+          error: error.message || 'Failed to fetch balance'
+        }))
+      }
     }
   }
 
@@ -294,9 +306,11 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
           // Check if Crossmark extension is installed
           if (typeof window !== 'undefined' && (window as any).crossmark) {
             const crossmark = (window as any).crossmark
-            const result = await crossmark.signInAndWait()
             
-            if (result && result.response && result.response.data) {
+            // Request address from Crossmark
+            const result = await crossmark.methods.signInAndWait()
+            
+            if (result && result.response && result.response.data && result.response.data.address) {
               const walletAddress = result.response.data.address
               await initializeClient(network)
               await getBalanceForAddress(walletAddress, network)
@@ -311,21 +325,28 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
                 error: null
               }))
             } else {
-              throw new Error('Failed to connect with Crossmark')
+              throw new Error('Failed to connect with Crossmark. Please approve the connection request.')
             }
           } else {
-            throw new Error('Crossmark extension not found. Please install it from the Chrome Web Store.')
+            throw new Error('Crossmark extension not found. Please install it from https://crossmark.io')
           }
           break
 
         case 'gemwallet':
-          // Check if GemWallet extension is installed
-          if (typeof window !== 'undefined' && (window as any).gemWallet) {
-            const gemWallet = (window as any).gemWallet
-            const result = await gemWallet.getAddress()
+          // Connect to GemWallet using @gemwallet/api package
+          try {
+            // Check if GemWallet is installed
+            const installCheck = await gemWalletIsInstalled()
             
-            if (result && result.address) {
-              const walletAddress = result.address
+            if (!installCheck.result.isInstalled) {
+              throw new Error('GemWallet extension not found. Please install it from https://gemwallet.app and refresh the page.')
+            }
+            
+            // Get address from GemWallet
+            const response = await gemWalletGetAddress()
+            
+            if (response.type === 'response' && response.result?.address) {
+              const walletAddress = response.result.address
               await initializeClient(network)
               await getBalanceForAddress(walletAddress, network)
               
@@ -338,11 +359,14 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
                 isLoading: false,
                 error: null
               }))
+            } else if (response.type === 'reject') {
+              throw new Error('Connection rejected. Please approve the request in GemWallet.')
             } else {
-              throw new Error('Failed to connect with GemWallet')
+              throw new Error('Failed to get address from GemWallet.')
             }
-          } else {
-            throw new Error('GemWallet extension not found. Please install it from the Chrome Web Store.')
+          } catch (gemError: any) {
+            console.error('GemWallet connection error:', gemError)
+            throw new Error(gemError.message || 'Failed to connect with GemWallet. Please make sure the extension is installed.')
           }
           break
 

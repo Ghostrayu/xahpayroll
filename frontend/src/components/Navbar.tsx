@@ -1,13 +1,21 @@
 import React, { useState } from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useWallet } from '../contexts/WalletContext'
 import footerImage from '../assets/images/IMG_4027.png'
 
 const Navbar: React.FC = () => {
   const { isLoggedIn, userName, userType, logout } = useAuth()
+  const { disconnectWallet } = useWallet()
   const location = useLocation()
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false)
   const [showDropdown, setShowDropdown] = useState<boolean>(false)
+  
+  const handleLogout = () => {
+    setShowDropdown(false)
+    disconnectWallet() // Disconnect wallet first
+    logout() // Then logout from auth
+  }
 
   // Determine if we should show the login button
   // Hide it on /ngo and /worker pages since they have their own login buttons
@@ -74,10 +82,7 @@ const Navbar: React.FC = () => {
                       ⚙️ SETTINGS
                     </a>
                     <button
-                      onClick={() => {
-                        setShowDropdown(false)
-                        logout()
-                      }}
+                      onClick={handleLogout}
                       className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 uppercase tracking-wide font-bold"
                     >
                       🚪 LOGOUT
@@ -166,7 +171,7 @@ const Navbar: React.FC = () => {
                 <button
                   onClick={() => {
                     setIsMenuOpen(false)
-                    logout()
+                    handleLogout()
                   }}
                   className="block w-full text-left px-3 py-2 text-red-600 hover:bg-red-50 rounded-md uppercase text-sm font-bold"
                 >

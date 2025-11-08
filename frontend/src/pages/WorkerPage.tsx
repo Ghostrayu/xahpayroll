@@ -38,18 +38,18 @@ const WorkerPage: React.FC = () => {
             </Link>
             <div className="bg-white rounded-2xl shadow-2xl p-10 border-4 border-xah-blue/40 max-w-4xl mx-auto">
               <h1 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-gray-900 mb-6 leading-tight uppercase tracking-tight">
-                GET PAID
+                WORKER
                 <br />
-                <span className="text-xah-blue">EVERY HOUR</span>
+                <span className="text-xah-blue">DASHBOARD</span>
               </h1>
               <p className="text-sm text-gray-700 max-w-3xl mx-auto uppercase leading-relaxed tracking-wide font-semibold mb-8">
-                CLOCK IN, LOG HOURS, AND RECEIVE AUTOMATIC XAH PAYMENTS DIRECTLY TO YOUR WALLET
+                CLOCK IN, LOG HOURS, AND RECEIVE AUTOMATIC XAH PAYMENTS DIRECTLY TO YOUR WALLET EVERY HOUR
               </p>
               <button 
                 onClick={handleLogin}
                 className="btn-primary text-base px-12 py-4 uppercase tracking-wide border-4 border-[#99FF9F] shadow-[0_0_20px_rgba(153,255,159,0.6)] hover:shadow-[0_0_30px_rgba(153,255,159,0.8)] transition-all duration-300"
               >
-                {isLoggedIn ? 'VIEW DASHBOARD' : 'CONNECT WALLET TO VIEW DASHBOARD'}
+                {isLoggedIn ? 'VIEW WORKER DASHBOARD' : 'CONNECT WALLET TO VIEW DASHBOARD'}
               </button>
             </div>
           </div>

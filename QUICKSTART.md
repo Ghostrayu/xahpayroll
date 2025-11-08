@@ -10,8 +10,8 @@ npm run install:all
 
 This will install dependencies for:
 - Root project
-- Frontend (React + Vite)
-- Backend (Express + Xaman API)
+- Frontend (React + Vite + Multi-Wallet Support)
+- Backend (Express + PostgreSQL + Xaman API)
 
 ### Step 2: Configure Environment
 
