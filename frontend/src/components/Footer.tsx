@@ -1,4 +1,5 @@
 import React from 'react'
+import { Link } from 'react-router-dom'
 import footerImage from '../assets/images/IMG_4027.png'
 
 const Footer: React.FC = () => {
@@ -46,6 +47,15 @@ const Footer: React.FC = () => {
           <p className="uppercase text-sm tracking-wide mt-2">
             ENGINEERED OPEN SOURCE & MAINTAINED BY <a href="https://landing.goodmoneycollective.com" target="_blank" rel="noopener noreferrer" className="text-secondary-500 hover:text-secondary-400 transition-colors font-semibold">GOOD MONEY COLLECTIVE</a>
           </p>
+          <div className="mt-4 flex justify-center gap-6">
+            <Link to="/terms" className="text-gray-400 hover:text-white uppercase text-xs tracking-wide transition-colors">
+              Terms of Service
+            </Link>
+            <span className="text-gray-600">|</span>
+            <a href="mailto:legal@xahpayroll.xyz" className="text-gray-400 hover:text-white uppercase text-xs tracking-wide transition-colors">
+              Legal
+            </a>
+          </div>
         </div>
       </div>
     </footer>

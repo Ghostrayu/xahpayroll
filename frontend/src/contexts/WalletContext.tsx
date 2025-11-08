@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { Client, Wallet, dropsToXrp, xrpToDrops } from 'xrpl'
-import { XummSdk } from 'xumm-sdk'
 
 // Types
 export type NetworkType = 'testnet' | 'mainnet'
@@ -173,80 +172,121 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
 
       switch (provider) {
         case 'xaman':
-          // Xaman (formerly Xumm) integration
+          // Xaman integration via backend proxy
           try {
-            // Initialize Xumm SDK (you'll need to add your API key and secret)
-            const apiKey = process.env.REACT_APP_XAMAN_API_KEY
-            const apiSecret = process.env.REACT_APP_XAMAN_API_SECRET
+            const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
             
-            if (!apiKey || !apiSecret) {
-              throw new Error('Xaman API credentials not configured. Please set REACT_APP_XAMAN_API_KEY and REACT_APP_XAMAN_API_SECRET')
+            console.log('Initializing Xaman connection via backend...')
+            console.log('Network:', network)
+            console.log('Backend URL:', backendUrl)
+            
+            // Call backend to create sign-in payload
+            const response = await fetch(`${backendUrl}/api/xaman/create-signin`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                returnUrl: window.location.origin
+              })
+            })
+            
+            if (!response.ok) {
+              const errorData = await response.json()
+              throw new Error(errorData.error?.message || 'Failed to create Xaman sign-in request')
             }
             
-            const xumm = new XummSdk(apiKey, apiSecret)
+            const { data: request } = await response.json()
             
-            // Create a sign-in request
-            const request = await xumm.payload.create({
-              txjson: {
-                TransactionType: 'SignIn'
-              }
-            })
+            console.log('Xaman payload created:', request.uuid)
             
             if (!request || !request.uuid) {
               throw new Error('Failed to create Xaman sign-in request')
             }
 
             // Set QR code URL for display
-            const qrUrl = request.refs.qr_png
+            const qrUrl = request.qrUrl
             setWalletState(prev => ({
               ...prev,
               xamanQrUrl: qrUrl,
               isLoading: true
             }))
 
-            // Wait for user to sign in
-            const subscription: any = await xumm.payload.subscribe(
-              request.uuid,
-              (event: any) => {
-                if (event.signed !== null) {
-                  return event
+            // Poll for payload status instead of websocket subscription
+            const pollPayloadStatus = async () => {
+              const maxAttempts = 60 // Poll for up to 5 minutes (60 * 5 seconds)
+              let attempts = 0
+
+              while (attempts < maxAttempts) {
+                try {
+                  const statusResponse = await fetch(`${backendUrl}/api/xaman/payload/${request.uuid}`)
+                  
+                  if (!statusResponse.ok) {
+                    throw new Error('Failed to check payload status')
+                  }
+
+                  const { data: payloadStatus } = await statusResponse.json()
+
+                  if (payloadStatus.signed && payloadStatus.account) {
+                    // User signed in successfully
+                    const walletAddress = payloadStatus.account
+                    await initializeClient(network)
+                    await getBalanceForAddress(walletAddress, network)
+                    
+                    setWalletState(prev => ({
+                      ...prev,
+                      isConnected: true,
+                      walletAddress,
+                      network,
+                      provider: 'xaman',
+                      isLoading: false,
+                      error: null,
+                      xamanQrUrl: null
+                    }))
+                    return
+                  } else if (payloadStatus.resolved && !payloadStatus.signed) {
+                    // User rejected the sign-in
+                    throw new Error('Xaman sign-in was rejected or cancelled')
+                  } else if (payloadStatus.expired) {
+                    throw new Error('Xaman sign-in request expired')
+                  }
+
+                  // Wait 5 seconds before next poll
+                  await new Promise(resolve => setTimeout(resolve, 5000))
+                  attempts++
+                } catch (pollError) {
+                  console.error('Error polling payload status:', pollError)
+                  throw pollError
                 }
               }
-            )
 
-            if (subscription?.signed && subscription?.payload_uuidv4) {
-              // Get the payload details to extract the account
-              const payloadData: any = await xumm.payload.get(subscription.payload_uuidv4)
-              
-              if (payloadData && payloadData.response && payloadData.response.account) {
-                const walletAddress = payloadData.response.account
-                await initializeClient(network)
-                await getBalanceForAddress(walletAddress, network)
-                
-                setWalletState(prev => ({
-                  ...prev,
-                  isConnected: true,
-                  walletAddress,
-                  network,
-                  provider: 'xaman',
-                  isLoading: false,
-                  error: null,
-                  xamanQrUrl: null
-                }))
-              } else {
-                throw new Error('Failed to get user account from Xaman')
-              }
-            } else {
-              throw new Error('Xaman sign-in was rejected or cancelled')
+              throw new Error('Xaman sign-in request timed out')
             }
+
+            await pollPayloadStatus()
           } catch (xamanError: any) {
             console.error('Xaman connection error:', xamanError)
+            console.error('Error details:', {
+              message: xamanError.message,
+              response: xamanError.response,
+              data: xamanError.response?.data
+            })
+            
             setWalletState(prev => ({
               ...prev,
               xamanQrUrl: null,
               isLoading: false
             }))
-            throw new Error(xamanError.message || 'Failed to connect with Xaman')
+            
+            // Provide more helpful error message
+            let errorMessage = 'Failed to connect with Xaman'
+            if (xamanError.message?.includes('API')) {
+              errorMessage = 'Invalid Xaman API credentials. Please check your API key and secret.'
+            } else if (xamanError.response?.data?.error) {
+              errorMessage = `Xaman API Error: ${xamanError.response.data.error}`
+            }
+            
+            throw new Error(errorMessage)
           }
           break
 

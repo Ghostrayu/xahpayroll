@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import footerImage from '../assets/images/IMG_4027.png'
 
@@ -63,12 +63,13 @@ const Navbar: React.FC = () => {
                       <p className="font-bold text-gray-900 uppercase text-sm truncate">{userName}</p>
                       <p className="text-xs text-xah-blue uppercase tracking-wide">{userType}</p>
                     </div>
-                    <a 
-                      href={userType === 'ngo' || userType === 'employer' ? '/ngo/dashboard' : '/worker/dashboard'} 
+                    <Link 
+                      to={userType === 'ngo' || userType === 'employer' ? '/ngo/dashboard' : '/worker/dashboard'} 
                       className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 uppercase tracking-wide"
+                      onClick={() => setShowDropdown(false)}
                     >
                       📊 DASHBOARD
-                    </a>
+                    </Link>
                     <a href="/settings" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 uppercase tracking-wide">
                       ⚙️ SETTINGS
                     </a>
@@ -152,12 +153,13 @@ const Navbar: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                <a 
-                  href={userType === 'ngo' || userType === 'employer' ? '/ngo/dashboard' : '/worker/dashboard'} 
+                <Link 
+                  to={userType === 'ngo' || userType === 'employer' ? '/ngo/dashboard' : '/worker/dashboard'} 
                   className="block px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-md uppercase text-sm"
+                  onClick={() => setIsMenuOpen(false)}
                 >
                   📊 DASHBOARD
-                </a>
+                </Link>
                 <a href="/settings" className="block px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-md uppercase text-sm">
                   ⚙️ SETTINGS
                 </a>

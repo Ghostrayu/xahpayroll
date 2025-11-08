@@ -8,6 +8,7 @@ import WorkerPage from './pages/WorkerPage'
 import WorkerDashboard from './pages/WorkerDashboard'
 import NgoPage from './pages/NgoPage'
 import NgoDashboard from './pages/NgoDashboard'
+import TermsOfService from './pages/TermsOfService'
 import ScrollToTop from './components/ScrollToTop'
 
 const App: React.FC = () => {
@@ -19,6 +20,7 @@ const App: React.FC = () => {
           <div className="App">
             <Routes>
               <Route path="/" element={<HomePage />} />
+              <Route path="/terms" element={<TermsOfService />} />
               <Route path="/worker" element={<WorkerPage />} />
               <Route 
                 path="/worker/dashboard" 

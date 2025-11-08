@@ -3,14 +3,24 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 // Types
 export type UserType = 'employee' | 'ngo' | 'employer'
 
+export interface UserProfile {
+  displayName: string
+  organizationName?: string
+  email?: string
+  phoneNumber?: string
+}
+
 export interface AuthContextType {
   isLoggedIn: boolean
   userName: string
   userType: UserType | null
   walletAddress: string
+  profile: UserProfile | null
+  profileComplete: boolean
   login: (userName: string, userType: UserType, walletAddress?: string) => void
   logout: () => void
   updateUserInfo: (userName?: string, walletAddress?: string) => void
+  updateProfile: (profile: UserProfile) => void
 }
 
 interface AuthProviderProps {
@@ -22,6 +32,8 @@ interface AuthState {
   userName: string
   userType: UserType | null
   walletAddress: string
+  profile: UserProfile | null
+  profileComplete: boolean
 }
 
 // Create Context
@@ -36,7 +48,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     isLoggedIn: false,
     userName: '',
     userType: null,
-    walletAddress: ''
+    walletAddress: '',
+    profile: null,
+    profileComplete: false
   })
 
   // Load auth state from localStorage on mount
@@ -71,7 +85,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       isLoggedIn: true,
       userName,
       userType,
-      walletAddress
+      walletAddress,
+      profile: null,
+      profileComplete: false
     })
   }
 
@@ -81,7 +97,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       isLoggedIn: false,
       userName: '',
       userType: null,
-      walletAddress: ''
+      walletAddress: '',
+      profile: null,
+      profileComplete: false
     })
     localStorage.removeItem(AUTH_STORAGE_KEY)
   }
@@ -95,14 +113,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }))
   }
 
+  // Update profile
+  const updateProfile = (profile: UserProfile) => {
+    setAuthState(prev => ({
+      ...prev,
+      profile,
+      profileComplete: true,
+      userName: profile.displayName // Update userName to match profile
+    }))
+  }
+
   const value: AuthContextType = {
     isLoggedIn: authState.isLoggedIn,
     userName: authState.userName,
     userType: authState.userType,
     walletAddress: authState.walletAddress,
+    profile: authState.profile,
+    profileComplete: authState.profileComplete,
     login,
     logout,
-    updateUserInfo
+    updateUserInfo,
+    updateProfile
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -122,10 +122,10 @@ Three-phase plan to implement React Context for state management in XAH Payroll 
   - [x] Wrap app with `<WalletProvider>`
   - [x] Nest inside `<AuthProvider>`
 
-- [ ] **Login Pages**
-  - [ ] Add wallet connection UI
-  - [ ] Show wallet selection modal
-  - [ ] Display connection status
+- [x] **Login Pages**
+  - [x] Add wallet connection UI
+  - [x] Show wallet selection modal
+  - [x] Display connection status
 
 - [ ] **Dashboard Pages**
   - [ ] Show wallet address

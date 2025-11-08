@@ -4,11 +4,15 @@
   "description": "XAH Payroll - Decentralized hourly payroll system powered by XAH microtransactions",
   "private": true,
   "scripts": {
-    "dev": "cd frontend && npm run dev",
+    "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"bgBlue.bold,bgMagenta.bold\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
     "dev:host": "cd frontend && npm run dev -- --host",
     "build": "cd frontend && npm run build",
     "preview": "cd frontend && npm run preview",
+    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
     "install:frontend": "cd frontend && npm install",
+    "install:backend": "cd backend && npm install",
     "deploy": "cd frontend && npm run deploy",
     "deploy:preview": "cd frontend && npm run deploy:preview",
     "lint": "cd frontend && npm run lint"
@@ -22,5 +26,8 @@
     "decentralized"
   ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
 }

@@ -1,23 +1,23 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import Navbar from '../components/Navbar'
 import NgoWorkflow from '../components/NgoWorkflow'
 import Footer from '../components/Footer'
+import WalletSelectionModal from '../components/WalletSelectionModal'
 
 const NgoPage: React.FC = () => {
   const navigate = useNavigate()
-  const { login, isLoggedIn } = useAuth()
+  const { isLoggedIn } = useAuth()
+  const [showWalletModal, setShowWalletModal] = useState(false)
 
   const handleLogin = () => {
     if (isLoggedIn) {
       // Already logged in, just navigate to dashboard
       navigate('/ngo/dashboard')
     } else {
-      // In production, this would handle wallet connection
-      // For now, simulate login with mock data
-      login('Good Money Collective', 'ngo', 'rNGO1TestWallet123456789')
-      navigate('/ngo/dashboard')
+      // Show wallet selection modal
+      setShowWalletModal(true)
     }
   }
 
@@ -60,6 +60,13 @@ const NgoPage: React.FC = () => {
 
       <NgoWorkflow />
       <Footer />
+      
+      {/* Wallet Selection Modal */}
+      <WalletSelectionModal 
+        isOpen={showWalletModal}
+        onClose={() => setShowWalletModal(false)}
+        userType="ngo"
+      />
     </div>
   )
 }
