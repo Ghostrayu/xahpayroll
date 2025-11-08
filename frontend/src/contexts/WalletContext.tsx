@@ -10,6 +10,7 @@ export interface WalletContextType {
   isConnected: boolean
   walletAddress: string
   balance: string
+  reserve: string
   network: NetworkType
   provider: WalletProvider | null
   isLoading: boolean
@@ -30,6 +31,7 @@ interface WalletState {
   isConnected: boolean
   walletAddress: string
   balance: string
+  reserve: string
   network: NetworkType
   provider: WalletProvider | null
   isLoading: boolean
@@ -52,7 +54,8 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     isConnected: false,
     walletAddress: '',
     balance: '0',
-    network: 'testnet',
+    reserve: '0',
+    network: 'mainnet',
     provider: null,
     isLoading: false,
     error: null,
@@ -63,19 +66,20 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
   const [walletInstance, setWalletInstance] = useState<Wallet | null>(null)
 
   // Initialize XRPL Client
-  const initializeClient = async (network: NetworkType = 'testnet') => {
+  const initializeClient = async (network: NetworkType = 'mainnet') => {
     try {
       if (xrplClient && xrplClient.isConnected()) {
         return xrplClient
       }
 
+      // XAH Ledger (Xahau) WebSocket URLs
       const wsUrl = network === 'testnet' 
-        ? 'wss://s.altnet.rippletest.net:51233'
-        : 'wss://xrplcluster.com'
+        ? 'wss://xahau-test.net'
+        : 'wss://xahau.network'
 
       xrplClient = new Client(wsUrl)
       await xrplClient.connect()
-      console.log('XRPL Client connected to', network)
+      console.log('XAH Ledger Client connected to', network)
       return xrplClient
     } catch (error) {
       console.error('Failed to initialize XRPL client:', error)
@@ -91,17 +95,20 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
         const parsed = JSON.parse(savedWallet)
         // Only restore connection state, not sensitive data
         if (parsed.isConnected && parsed.walletAddress) {
+          // Force mainnet for all connections (migration from testnet)
+          const network: NetworkType = 'mainnet'
+          
           setWalletState(prev => ({
             ...prev,
             isConnected: parsed.isConnected,
             walletAddress: parsed.walletAddress,
-            network: parsed.network || 'testnet',
+            network: network,
             provider: parsed.provider || null
           }))
           
           // Reconnect and fetch balance
-          initializeClient(parsed.network).then(() => {
-            getBalanceForAddress(parsed.walletAddress, parsed.network)
+          initializeClient(network).then(() => {
+            getBalanceForAddress(parsed.walletAddress, network)
           })
         }
       } catch (error) {
@@ -135,7 +142,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
   }, [walletState.isConnected, walletState.walletAddress, walletState.network, walletState.provider])
 
   // Get balance for a specific address
-  const getBalanceForAddress = async (address: string, network: NetworkType = 'testnet') => {
+  const getBalanceForAddress = async (address: string, network: NetworkType = 'mainnet') => {
     try {
       const client = await initializeClient(network)
       const response = await client.request({
@@ -145,9 +152,20 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       })
       
       const balanceInXRP = dropsToXrp(response.result.account_data.Balance)
+      const ownerCount = response.result.account_data.OwnerCount || 0
+      
+      // Calculate reserve: Base reserve (1 XAH) + Owner reserve (0.2 XAH per object)
+      const baseReserve = 1
+      const ownerReserve = ownerCount * 0.2
+      const totalReserve = baseReserve + ownerReserve
+      
+      // Available balance = Total balance - Reserve
+      const availableBalance = String(Math.max(0, parseFloat(balanceInXRP) - totalReserve))
+      
       setWalletState(prev => ({
         ...prev,
-        balance: String(balanceInXRP),
+        balance: availableBalance,
+        reserve: String(totalReserve),
         error: null
       }))
     } catch (error: any) {
@@ -180,7 +198,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     setWalletState(prev => ({ ...prev, isLoading: true, error: null }))
 
     try {
-      const network: NetworkType = 'testnet' // Default to testnet for now
+      const network: NetworkType = 'mainnet' // Use mainnet for production
 
       switch (provider) {
         case 'xaman':
@@ -428,7 +446,8 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       isConnected: false,
       walletAddress: '',
       balance: '0',
-      network: 'testnet',
+      reserve: '0',
+      network: 'mainnet',
       provider: null,
       isLoading: false,
       error: null,
@@ -588,6 +607,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     isConnected: walletState.isConnected,
     walletAddress: walletState.walletAddress,
     balance: walletState.balance,
+    reserve: walletState.reserve,
     network: walletState.network,
     provider: walletState.provider,
     isLoading: walletState.isLoading,

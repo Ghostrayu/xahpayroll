@@ -1,11 +1,13 @@
 import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useWallet } from '../contexts/WalletContext'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 
 const WorkerDashboard: React.FC = () => {
   const { userName } = useAuth()
+  const { balance, reserve, isConnected, walletAddress } = useWallet()
   const [isWorking, setIsWorking] = useState(false)
   const [sessionTime, setSessionTime] = useState('0:00:00')
   const workerData = {
@@ -49,6 +51,29 @@ const WorkerDashboard: React.FC = () => {
               <p className="text-sm text-gray-600 uppercase tracking-wide mt-2">
                 Welcome back, {userName}
               </p>
+              {walletAddress && (
+                <div className="mt-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Wallet:</span>
+                    <code className="text-xs font-mono text-xah-blue bg-blue-50 px-3 py-1 rounded-lg border border-blue-200">
+                      {walletAddress}
+                    </code>
+                  </div>
+                  {isConnected && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Balance:</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-green-600 bg-green-50 px-3 py-1 rounded-lg border border-green-200">
+                          {parseFloat(balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} XAH
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          ({parseFloat(reserve).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} XAH reserved)
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <Link 
               to="/worker" 

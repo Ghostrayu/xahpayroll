@@ -127,10 +127,10 @@ Three-phase plan to implement React Context for state management in XAH Payroll 
   - [x] Show wallet selection modal
   - [x] Display connection status
 
-- [ ] **Dashboard Pages**
-  - [ ] Show wallet address
-  - [ ] Display balance
-  - [ ] Add disconnect button
+- [x] **Dashboard Pages**
+  - [x] Show wallet address
+  - [x] Display balance
+  - [x] Add disconnect button
 
 - [ ] **Payment Components**
   - [ ] Use `sendPayment()` for transactions

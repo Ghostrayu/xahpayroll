@@ -6,7 +6,7 @@ import footerImage from '../assets/images/IMG_4027.png'
 
 const Navbar: React.FC = () => {
   const { isLoggedIn, userName, userType, logout } = useAuth()
-  const { disconnectWallet } = useWallet()
+  const { disconnectWallet, balance, isConnected, walletAddress } = useWallet()
   const location = useLocation()
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false)
   const [showDropdown, setShowDropdown] = useState<boolean>(false)
@@ -65,11 +65,19 @@ const Navbar: React.FC = () => {
                 
                 {/* Dropdown Menu */}
                 {showDropdown && (
-                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border-2 border-xah-blue/20 py-2 z-50">
+                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border-2 border-xah-blue/20 py-2 z-50">
                     <div className="px-4 py-3 border-b border-gray-200">
                       <p className="text-xs text-gray-500 uppercase tracking-wide">Logged in as</p>
                       <p className="font-bold text-gray-900 uppercase text-sm truncate">{userName}</p>
                       <p className="text-xs text-xah-blue uppercase tracking-wide">{userType}</p>
+                      {isConnected && walletAddress && (
+                        <div className="mt-2 pt-2 border-t border-gray-100">
+                          <p className="text-xs text-gray-500 uppercase tracking-wide">Balance</p>
+                          <p className="text-sm font-bold text-green-600">
+                            {parseFloat(balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} XAH
+                          </p>
+                        </div>
+                      )}
                     </div>
                     <Link 
                       to={userType === 'ngo' || userType === 'employer' ? '/ngo/dashboard' : '/worker/dashboard'} 
@@ -155,6 +163,11 @@ const Navbar: React.FC = () => {
                     <div>
                       <p className="font-bold text-gray-900 uppercase text-sm">{userName}</p>
                       <p className="text-xs text-xah-blue uppercase tracking-wide">{userType}</p>
+                      {isConnected && walletAddress && (
+                        <p className="text-xs text-green-600 font-bold mt-1">
+                          {parseFloat(balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} XAH
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
