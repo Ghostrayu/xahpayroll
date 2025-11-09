@@ -1,96 +1,29 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useWallet } from '../contexts/WalletContext'
+import { useData } from '../contexts/DataContext'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import CreatePaymentChannelModal from '../components/CreatePaymentChannelModal'
 import AddWorkerModal from '../components/AddWorkerModal'
 
-interface OrgStats {
-  totalWorkers: number
-  activeWorkers: number
-  escrowBalance: number
-  totalPaid: number
-  avgHourlyRate: number
-  hoursThisMonth: number
-}
-
 const NgoDashboard: React.FC = () => {
   const { userName } = useAuth()
   const { balance, reserve, isConnected, walletAddress, network } = useWallet()
+  const { orgStats, workers, paymentChannels, recentActivity, refreshData } = useData()
   const [showEscrowModal, setShowEscrowModal] = useState(false)
   const [showAddWorkerModal, setShowAddWorkerModal] = useState(false)
-  const [stats, setStats] = useState<OrgStats>({
+
+  // Use data from context with fallback defaults
+  const stats = orgStats || {
     totalWorkers: 0,
     activeWorkers: 0,
     escrowBalance: 0,
     totalPaid: 0,
     avgHourlyRate: 0,
     hoursThisMonth: 0
-  })
-  const [recentActivity, setRecentActivity] = useState<any[]>([])
-  const [paymentChannels, setPaymentChannels] = useState<any[]>([])
-  const [workers, setWorkers] = useState<any[]>([])
-
-  // Fetch all dashboard data from backend
-  const fetchDashboardData = async () => {
-    if (!walletAddress) return
-
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
-
-    try {
-      // Fetch stats
-      console.log('Fetching stats for wallet:', walletAddress)
-      const statsResponse = await fetch(`${backendUrl}/api/organizations/stats/${walletAddress}`)
-      console.log('Stats response status:', statsResponse.status)
-      
-      if (statsResponse.ok) {
-        const statsData = await statsResponse.json()
-        console.log('Stats data received:', statsData)
-        setStats(statsData.data.stats)
-      } else {
-        const errorData = await statsResponse.json()
-        console.error('Stats fetch failed:', errorData)
-        console.error('Error message:', errorData.error?.message)
-      }
-
-      // Fetch recent activity
-      const activityResponse = await fetch(`${backendUrl}/api/organizations/activity/${walletAddress}`)
-      if (activityResponse.ok) {
-        const activityData = await activityResponse.json()
-        setRecentActivity(activityData.data.activity)
-      } else {
-        console.error('Activity fetch failed:', activityResponse.status)
-      }
-
-      // Fetch payment channels
-      const channelsResponse = await fetch(`${backendUrl}/api/organizations/payment-channels/${walletAddress}`)
-      if (channelsResponse.ok) {
-        const channelsData = await channelsResponse.json()
-        setPaymentChannels(channelsData.data.channels)
-      } else {
-        console.error('Channels fetch failed:', channelsResponse.status)
-      }
-
-      // Fetch workers
-      const workersResponse = await fetch(`${backendUrl}/api/organizations/workers/${walletAddress}`)
-      if (workersResponse.ok) {
-        const workersData = await workersResponse.json()
-        setWorkers(workersData.data.workers)
-      } else {
-        console.error('Workers fetch failed:', workersResponse.status)
-      }
-
-      console.log('Dashboard data loaded successfully')
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error)
-    }
   }
-
-  useEffect(() => {
-    fetchDashboardData()
-  }, [walletAddress])
 
   return (
     <div className="min-h-screen x-pattern-bg-light">
@@ -109,6 +42,12 @@ const NgoDashboard: React.FC = () => {
               </p>
               {walletAddress && (
                 <div className="mt-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Organization:</span>
+                    <span className="text-sm font-bold text-gray-900 uppercase tracking-wide">
+                      Good Money Collective
+                    </span>
+                  </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Wallet:</span>
                     <code className="text-xs font-mono text-xah-blue bg-blue-50 px-3 py-1 rounded-lg border border-blue-200">
@@ -142,7 +81,7 @@ const NgoDashboard: React.FC = () => {
                         {stats.totalWorkers}
                       </span>
                       <span className="text-xs font-semibold text-green-600">
-                        ({stats.activeWorkers} ACTIVE)
+                        ({stats.activeWorkers} CLOCKED IN)
                       </span>
                     </div>
                   </div>
@@ -414,19 +353,19 @@ const NgoDashboard: React.FC = () => {
       <Footer />
       
       {/* Payment Channel Modal */}
-      <CreatePaymentChannelModal 
-        isOpen={showEscrowModal} 
+      <CreatePaymentChannelModal
+        isOpen={showEscrowModal}
         onClose={() => setShowEscrowModal(false)}
-        onSuccess={fetchDashboardData}
+        onSuccess={refreshData}
       />
 
       {/* Add Worker Modal */}
-      <AddWorkerModal 
-        isOpen={showAddWorkerModal} 
+      <AddWorkerModal
+        isOpen={showAddWorkerModal}
         onClose={() => setShowAddWorkerModal(false)}
         onSuccess={() => {
           // Refresh dashboard data after worker is added
-          fetchDashboardData()
+          refreshData()
         }}
       />
     </div>

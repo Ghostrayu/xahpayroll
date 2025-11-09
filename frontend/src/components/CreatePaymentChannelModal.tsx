@@ -31,9 +31,18 @@ interface PaymentChannelConfig {
   autoRelease: boolean
 }
 
+interface Worker {
+  id: number
+  name: string
+  walletAddress: string
+  hourlyRate: number
+  status: string
+  createdAt: string
+}
+
 const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const { walletAddress, balance, provider, network } = useWallet()
-  
+
   const [config, setConfig] = useState<PaymentChannelConfig>({
     jobName: '',
     workerAddress: '',
@@ -55,6 +64,11 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
   const [priceLoading, setPriceLoading] = useState(false)
   const [usdConverterInput, setUsdConverterInput] = useState<string>('')
   const [priceTimestamp, setPriceTimestamp] = useState<Date | null>(null)
+
+  // Workers state
+  const [workers, setWorkers] = useState<Worker[]>([])
+  const [workersLoading, setWorkersLoading] = useState(false)
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string>('')
 
   // Fetch XAH/USD price on mount
   useEffect(() => {
@@ -89,6 +103,57 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
       fetchXahPrice()
     }
   }, [isOpen])
+
+  // Fetch workers for this organization
+  useEffect(() => {
+    const fetchWorkers = async () => {
+      if (!walletAddress || !isOpen) return
+
+      setWorkersLoading(true)
+      try {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
+        const response = await fetch(`${backendUrl}/api/workers/list/${walletAddress}`)
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch workers')
+        }
+
+        const data = await response.json()
+        if (data.success && data.data) {
+          setWorkers(data.data)
+        }
+      } catch (error) {
+        console.error('Error fetching workers:', error)
+        setWorkers([])
+      } finally {
+        setWorkersLoading(false)
+      }
+    }
+
+    fetchWorkers()
+  }, [walletAddress, isOpen])
+
+  // Handle worker selection
+  const handleWorkerSelect = (workerId: string) => {
+    setSelectedWorkerId(workerId)
+    if (workerId) {
+      const worker = workers.find(w => w.id === parseInt(workerId))
+      if (worker) {
+        setConfig(prev => ({
+          ...prev,
+          workerName: worker.name,
+          workerAddress: worker.walletAddress
+        }))
+      }
+    } else {
+      setConfig(prev => ({
+        ...prev,
+        workerName: '',
+        workerAddress: ''
+      }))
+    }
+    setError(null)
+  }
 
   const calculateJobTime = () => {
     const start = new Date(config.startDate)
@@ -159,11 +224,11 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
 
   const validateForm = (): boolean => {
     if (!config.workerAddress || !isValidXrplAddress(config.workerAddress)) {
-      setError('Please enter a valid XRPL address (starts with "r", 25-35 characters)')
+      setError('Please select a worker from the dropdown')
       return false
     }
     if (!config.workerName.trim()) {
-      setError('Please enter worker name')
+      setError('Please select a worker from the dropdown')
       return false
     }
     if (parseFloat(config.hourlyRate) <= 0) {
@@ -354,28 +419,53 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
 
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase mb-2">
-                Worker Name
+                Select Worker
               </label>
-              <input
-                type="text"
-                value={config.workerName}
-                onChange={(e) => handleInputChange('workerName', e.target.value)}
-                className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-xah-blue focus:outline-none"
-                placeholder="JOHN DOE"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase mb-2">
-                Worker Wallet Address
-              </label>
-              <input
-                type="text"
-                value={config.workerAddress}
-                onChange={(e) => handleInputChange('workerAddress', e.target.value)}
-                className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-xah-blue focus:outline-none font-mono text-sm"
-                placeholder="RXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-              />
+              {workersLoading ? (
+                <div className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg bg-gray-50 text-gray-500 text-sm uppercase">
+                  Loading workers...
+                </div>
+              ) : workers.length === 0 ? (
+                <div className="w-full px-4 py-2 border-2 border-orange-300 bg-orange-50 rounded-lg">
+                  <p className="text-sm text-orange-700 font-semibold uppercase">
+                    ⚠️ No workers found
+                  </p>
+                  <p className="text-xs text-orange-600 mt-1 uppercase">
+                    Please add workers first using the "Add Worker" button on the dashboard
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <select
+                    value={selectedWorkerId}
+                    onChange={(e) => handleWorkerSelect(e.target.value)}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-xah-blue focus:outline-none"
+                  >
+                    <option value="">-- SELECT A WORKER --</option>
+                    {workers.map(worker => (
+                      <option key={worker.id} value={worker.id}>
+                        {worker.name.toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedWorkerId && config.workerAddress && (
+                    <div className="mt-2 px-3 py-2 bg-gray-50 rounded border border-gray-200">
+                      <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Wallet Address:</p>
+                      <p className="text-xs font-mono text-gray-600 break-all">
+                        {config.workerAddress}
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+              <div className="mt-3 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <span className="text-lg">💡</span>
+                  <p className="text-xs font-bold text-blue-900 uppercase tracking-wide">
+                    Workers must be added to your organization before creating payment channels
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -652,9 +742,9 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
                 </p>
                 <ul className="text-xs text-red-700 space-y-1 ml-4 uppercase">
                   {(!config.workerAddress || !isValidXrplAddress(config.workerAddress)) && (
-                    <li>• Valid worker wallet address (starts with "r")</li>
+                    <li>• Select a worker from the dropdown</li>
                   )}
-                  {!config.workerName.trim() && <li>• Worker name</li>}
+                  {!config.workerName.trim() && <li>• Worker must be selected</li>}
                   {(!config.hourlyRate || parseFloat(config.hourlyRate) <= 0) && <li>• Hourly rate greater than 0</li>}
                   {(!config.maxHoursPerDay || parseFloat(config.maxHoursPerDay) <= 0 || parseFloat(config.maxHoursPerDay) > 24) && (
                     <li>• Max hours per day (between 0 and 24)</li>

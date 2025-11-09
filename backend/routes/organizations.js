@@ -100,16 +100,7 @@ router.get('/stats/:walletAddress', async (req, res) => {
 
     res.json({
       success: true,
-      data: {
-        stats,
-        organization: {
-          id: organization.id,
-          name: organization.organization_name,
-          type: organization.organization_type,
-          escrowWallet: organization.escrow_wallet_address,
-          status: organization.status
-        }
-      }
+      data: stats
     })
   } catch (error) {
     console.error('Error fetching organization stats:', error)
@@ -171,16 +162,16 @@ router.get('/workers/:walletAddress', async (req, res) => {
 
     const workers = workersResult.rows.map(w => ({
       id: w.id,
-      name: w.full_name,
-      walletAddress: w.employee_wallet_address,
-      rate: parseFloat(w.rate),
+      name: w.name,  // From SQL: full_name as name
+      employee_wallet_address: w.employee_wallet_address,
+      rate: w.rate ? parseFloat(w.rate) : 0,
       hoursToday: parseFloat(w.hours_today).toFixed(1),
       status: w.hours_today > 0 ? 'Working' : 'Idle'
     }))
 
     res.json({
       success: true,
-      data: { workers }
+      data: workers
     })
   } catch (error) {
     console.error('Error fetching workers:', error)
@@ -220,11 +211,11 @@ router.get('/activity/:walletAddress', async (req, res) => {
     // Get recent work sessions and payments
     const activityResult = await query(
       `(
-        SELECT 
+        SELECT
           'clock_in' as type,
           e.full_name as worker,
           ws.clock_in as timestamp,
-          NULL as amount
+          NULL::numeric as amount
         FROM work_sessions ws
         JOIN employees e ON ws.employee_id = e.id
         WHERE ws.organization_id = $1
@@ -233,11 +224,11 @@ router.get('/activity/:walletAddress', async (req, res) => {
       )
       UNION ALL
       (
-        SELECT 
+        SELECT
           'clock_out' as type,
           e.full_name as worker,
           ws.clock_out as timestamp,
-          NULL as amount
+          NULL::numeric as amount
         FROM work_sessions ws
         JOIN employees e ON ws.employee_id = e.id
         WHERE ws.organization_id = $1 AND ws.clock_out IS NOT NULL
@@ -246,7 +237,7 @@ router.get('/activity/:walletAddress', async (req, res) => {
       )
       UNION ALL
       (
-        SELECT 
+        SELECT
           'payment' as type,
           e.full_name as worker,
           p.created_at as timestamp,
@@ -285,7 +276,7 @@ router.get('/activity/:walletAddress', async (req, res) => {
 
     res.json({
       success: true,
-      data: { activity }
+      data: activity
     })
   } catch (error) {
     console.error('Error fetching activity:', error)
@@ -376,7 +367,7 @@ router.get('/payment-channels/:walletAddress', async (req, res) => {
 
     res.json({
       success: true,
-      data: { channels }
+      data: channels
     })
   } catch (error) {
     console.error('Error fetching payment channels:', error)

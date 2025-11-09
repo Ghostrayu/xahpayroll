@@ -1,4 +1,5 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { useWallet } from '../contexts/WalletContext'
 
 interface AddWorkerModalProps {
   isOpen: boolean
@@ -7,11 +8,18 @@ interface AddWorkerModalProps {
 }
 
 const AddWorkerModal: React.FC<AddWorkerModalProps> = ({ isOpen, onClose, onSuccess }) => {
+  const { walletAddress: ngoWalletAddress } = useWallet()
   const [workerName, setWorkerName] = useState('')
   const [ledgerAddress, setLedgerAddress] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+
+  // Xaman QR code scanning state
+  const [isScanning, setIsScanning] = useState(false)
+  const [xamanQrUrl, setXamanQrUrl] = useState<string | null>(null)
+  const [xamanPayloadUuid, setXamanPayloadUuid] = useState<string | null>(null)
+  const [scanError, setScanError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,8 +48,13 @@ const AddWorkerModal: React.FC<AddWorkerModalProps> = ({ isOpen, onClose, onSucc
 
     try {
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
-      
-      // TODO: Replace with actual API endpoint when backend is ready
+
+      if (!ngoWalletAddress) {
+        setError('Please connect your wallet first')
+        setIsSubmitting(false)
+        return
+      }
+
       const response = await fetch(`${backendUrl}/api/workers/add`, {
         method: 'POST',
         headers: {
@@ -50,6 +63,7 @@ const AddWorkerModal: React.FC<AddWorkerModalProps> = ({ isOpen, onClose, onSucc
         body: JSON.stringify({
           name: workerName.trim(),
           walletAddress: ledgerAddress.trim(),
+          ngoWalletAddress: ngoWalletAddress,
         }),
       })
 
@@ -73,14 +87,144 @@ const AddWorkerModal: React.FC<AddWorkerModalProps> = ({ isOpen, onClose, onSucc
   }
 
   const handleClose = () => {
-    if (!isSubmitting) {
+    if (!isSubmitting && !isScanning) {
       setWorkerName('')
       setLedgerAddress('')
       setError(null)
       setSuccess(false)
+      setScanError(null)
+      setIsScanning(false)
+      setXamanQrUrl(null)
+      setXamanPayloadUuid(null)
       onClose()
     }
   }
+
+  // Function to initiate Xaman QR scan
+  const handleScanWithXaman = async () => {
+    setScanError(null)
+    setIsScanning(true)
+
+    try {
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
+
+      // Create sign-in payload
+      const response = await fetch(`${backendUrl}/api/xaman/create-signin`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          returnUrl: window.location.origin
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error?.message || 'Failed to create Xaman sign-in request')
+      }
+
+      const { data } = await response.json()
+
+      if (!data || !data.uuid) {
+        throw new Error('Failed to create Xaman sign-in request')
+      }
+
+      // Set QR code URL and UUID for polling
+      setXamanQrUrl(data.qrUrl)
+      setXamanPayloadUuid(data.uuid)
+    } catch (err: any) {
+      console.error('Error creating Xaman scan request:', err)
+      setScanError(err.message || 'Failed to create scan request. Please try again.')
+      setIsScanning(false)
+    }
+  }
+
+  // Function to cancel Xaman scan
+  const handleCancelScan = async () => {
+    if (xamanPayloadUuid) {
+      try {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
+        await fetch(`${backendUrl}/api/xaman/cancel/${xamanPayloadUuid}`, {
+          method: 'POST'
+        })
+      } catch (err) {
+        console.error('Error cancelling Xaman payload:', err)
+      }
+    }
+
+    setIsScanning(false)
+    setXamanQrUrl(null)
+    setXamanPayloadUuid(null)
+    setScanError(null)
+  }
+
+  // Poll for Xaman sign-in result
+  useEffect(() => {
+    let pollInterval: NodeJS.Timeout | null = null
+
+    const pollPayloadStatus = async () => {
+      if (!xamanPayloadUuid) return
+
+      try {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
+        const response = await fetch(`${backendUrl}/api/xaman/payload/${xamanPayloadUuid}`)
+
+        if (!response.ok) {
+          throw new Error('Failed to check sign-in status')
+        }
+
+        const { data } = await response.json()
+
+        if (data.signed && data.account) {
+          // Success! Worker signed in
+          setLedgerAddress(data.account)
+          setIsScanning(false)
+          setXamanQrUrl(null)
+          setXamanPayloadUuid(null)
+          setScanError(null)
+
+          if (pollInterval) {
+            clearInterval(pollInterval)
+          }
+        } else if (data.expired || data.resolved) {
+          // Payload expired or was rejected
+          setScanError('Scan request expired or was rejected. Please try again.')
+          setIsScanning(false)
+          setXamanQrUrl(null)
+          setXamanPayloadUuid(null)
+
+          if (pollInterval) {
+            clearInterval(pollInterval)
+          }
+        }
+      } catch (err: any) {
+        console.error('Error polling payload status:', err)
+        setScanError(err.message || 'Failed to check scan status')
+        setIsScanning(false)
+        setXamanQrUrl(null)
+        setXamanPayloadUuid(null)
+
+        if (pollInterval) {
+          clearInterval(pollInterval)
+        }
+      }
+    }
+
+    if (xamanPayloadUuid && isScanning) {
+      // Start polling every 2 seconds
+      pollInterval = setInterval(pollPayloadStatus, 2000)
+
+      // Initial check
+      pollPayloadStatus()
+    }
+
+    return () => {
+      if (pollInterval) {
+        clearInterval(pollInterval)
+      }
+    }
+  }, [xamanPayloadUuid, isScanning])
 
   if (!isOpen) return null
 
@@ -98,7 +242,7 @@ const AddWorkerModal: React.FC<AddWorkerModalProps> = ({ isOpen, onClose, onSucc
                 Add a new worker to your organization
               </p>
             </div>
-            {!isSubmitting && (
+            {!isSubmitting && !isScanning && (
               <button
                 onClick={handleClose}
                 className="text-white hover:text-secondary-500 transition-colors"
@@ -155,20 +299,76 @@ const AddWorkerModal: React.FC<AddWorkerModalProps> = ({ isOpen, onClose, onSucc
 
               {/* Ledger Address Input */}
               <div>
-                <label className="block text-sm font-bold text-gray-700 uppercase tracking-wide mb-2">
-                  XRPL Ledger Address *
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-bold text-gray-700 uppercase tracking-wide">
+                    XRPL Ledger Address *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleScanWithXaman}
+                    disabled={isSubmitting || isScanning}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold rounded-lg text-xs uppercase tracking-wide transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                    </svg>
+                    {isScanning ? 'Scanning...' : 'Scan with Xaman'}
+                  </button>
+                </div>
+
+                {/* QR Code Display */}
+                {isScanning && xamanQrUrl && (
+                  <div className="mb-4 p-4 bg-gradient-to-br from-blue-50 to-purple-50 border-2 border-blue-300 rounded-lg">
+                    <div className="text-center">
+                      <p className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-3">
+                        Worker: Scan QR Code with Xaman
+                      </p>
+                      <div className="bg-white p-4 rounded-lg inline-block shadow-lg">
+                        <img
+                          src={xamanQrUrl}
+                          alt="Xaman QR Code"
+                          className="w-48 h-48 mx-auto"
+                        />
+                      </div>
+                      <p className="text-xs text-gray-600 uppercase tracking-wide mt-3">
+                        Waiting for worker to sign in...
+                      </p>
+                      <div className="flex justify-center mt-3">
+                        <div className="flex gap-1">
+                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCancelScan}
+                        className="mt-4 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-lg text-xs uppercase tracking-wide transition-colors"
+                      >
+                        Cancel Scan
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Scan Error */}
+                {scanError && (
+                  <div className="mb-4 bg-orange-50 border-2 border-orange-200 rounded-lg p-3">
+                    <p className="text-sm text-orange-600 font-semibold">⚠️ {scanError}</p>
+                  </div>
+                )}
+
                 <input
                   type="text"
                   value={ledgerAddress}
                   onChange={(e) => setLedgerAddress(e.target.value)}
                   placeholder="e.g., rN7n7otQDd6FczFgLdlqtyMVrn3HMfXpEm"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isScanning}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-xah-blue focus:ring-2 focus:ring-xah-blue/20 transition-colors font-mono text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
                   required
                 />
                 <p className="text-xs text-gray-500 mt-2 uppercase tracking-wide">
-                  Worker's XRPL wallet address (starts with 'r')
+                  {isScanning ? 'Address will auto-fill when worker scans QR code' : "Worker's XRPL wallet address (starts with 'r')"}
                 </p>
               </div>
 
@@ -182,6 +382,7 @@ const AddWorkerModal: React.FC<AddWorkerModalProps> = ({ isOpen, onClose, onSucc
                     </p>
                     <ul className="text-xs text-gray-700 space-y-1 uppercase tracking-wide">
                       <li>• Worker must have a valid XRPL wallet</li>
+                      <li>• Use "Scan with Xaman" for easy wallet address input</li>
                       <li>• Hourly rates will be set when creating payment channels</li>
                       <li>• Worker can sign in using their wallet address</li>
                     </ul>

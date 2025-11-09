@@ -2,37 +2,54 @@ import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useWallet } from '../contexts/WalletContext'
+import { useData } from '../contexts/DataContext'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 
 const WorkerDashboard: React.FC = () => {
   const { userName } = useAuth()
   const { balance, reserve, isConnected, walletAddress, network } = useWallet()
-  const [isWorking, setIsWorking] = useState(false)
+  const { earnings, workSessions, clockIn, clockOut, isLoading } = useData()
   const [sessionTime, setSessionTime] = useState('0:00:00')
+
+  // Check if currently working based on active work session
+  const activeSession = workSessions.find(session => !session.clock_out)
+  const isWorking = !!activeSession
+
+  // Use data from context with fallback defaults
   const workerData = {
-    hourlyRate: 15.00,
-    todayHours: 3.5,
-    todayEarnings: 52.50,
-    weekHours: 24.0,
-    weekEarnings: 360.00,
-    monthHours: 156.5,
-    monthEarnings: 2347.50,
+    hourlyRate: 15.00, // TODO: Get from payment channel or employee record
+    todayHours: earnings?.today ? (earnings.today / 15.00) : 0,
+    todayEarnings: earnings?.today || 0,
+    weekHours: earnings?.week ? (earnings.week / 15.00) : 0,
+    weekEarnings: earnings?.week || 0,
+    monthHours: earnings?.month ? (earnings.month / 15.00) : 0,
+    monthEarnings: earnings?.month || 0,
     employer: 'Good Money Collective'
   }
 
-  const recentPayments = [
-    { id: 1, amount: 15.00, time: '1 hour ago', status: 'Completed', txHash: '0xABC...123' },
-    { id: 2, amount: 15.00, time: '2 hours ago', status: 'Completed', txHash: '0xDEF...456' },
-    { id: 3, amount: 15.00, time: '3 hours ago', status: 'Completed', txHash: '0xGHI...789' },
-    { id: 4, amount: 15.00, time: '4 hours ago', status: 'Completed', txHash: '0xJKL...012' },
-  ]
+  // Recent payments from work sessions (completed)
+  const recentPayments = workSessions
+    .filter(session => session.clock_out && session.status === 'completed')
+    .slice(0, 4)
+    .map((session, index) => ({
+      id: session.id,
+      amount: session.hours ? (session.hours * workerData.hourlyRate) : 0,
+      time: new Date(session.clock_out!).toLocaleString(),
+      status: 'Completed',
+      txHash: `0x${session.id.toString().padStart(6, '0')}`
+    }))
 
-  const handleClockInOut = () => {
-    setIsWorking(!isWorking)
-    if (!isWorking) {
-      // Start timer simulation
-      // In production, this would connect to backend
+  const handleClockInOut = async () => {
+    try {
+      if (isWorking) {
+        await clockOut()
+      } else {
+        await clockIn()
+      }
+    } catch (error) {
+      console.error('Error clocking in/out:', error)
+      alert('Failed to clock in/out. Please try again.')
     }
   }
 
@@ -108,15 +125,16 @@ const WorkerDashboard: React.FC = () => {
               <div className="text-6xl font-extrabold mb-6">
                 {sessionTime}
               </div>
-              <button 
+              <button
                 onClick={handleClockInOut}
-                className={`px-12 py-4 rounded-xl font-bold text-lg uppercase tracking-wide transition-all duration-300 ${
-                  isWorking 
-                    ? 'bg-red-500 hover:bg-red-600 shadow-[0_0_30px_rgba(239,68,68,0.6)]' 
+                disabled={isLoading}
+                className={`px-12 py-4 rounded-xl font-bold text-lg uppercase tracking-wide transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  isWorking
+                    ? 'bg-red-500 hover:bg-red-600 shadow-[0_0_30px_rgba(239,68,68,0.6)]'
                     : 'bg-secondary-500 hover:bg-secondary-600 shadow-[0_0_30px_rgba(153,255,159,0.6)]'
                 }`}
               >
-                {isWorking ? '⏹ CLOCK OUT' : '▶️ CLOCK IN'}
+                {isLoading ? '⏳ PROCESSING...' : isWorking ? '⏹ CLOCK OUT' : '▶️ CLOCK IN'}
               </button>
               {isWorking && (
                 <p className="mt-4 text-sm uppercase tracking-wide">
@@ -188,30 +206,37 @@ const WorkerDashboard: React.FC = () => {
             <div className="bg-white rounded-2xl shadow-xl p-6 border-2 border-xah-blue/30">
               <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-6">Recent Payments</h3>
               <div className="space-y-4">
-                {recentPayments.map((payment) => (
-                  <div key={payment.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
-                        <span className="text-white font-bold text-lg">✓</span>
+                {recentPayments.length > 0 ? (
+                  recentPayments.map((payment) => (
+                    <div key={payment.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                          <span className="text-white font-bold text-lg">✓</span>
+                        </div>
+                        <div>
+                          <p className="font-bold text-gray-900 text-sm">{payment.amount.toFixed(2)} XAH</p>
+                          <p className="text-xs text-gray-600 uppercase tracking-wide">{payment.time}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-bold text-gray-900 text-sm">{payment.amount} XAH</p>
-                        <p className="text-xs text-gray-600 uppercase tracking-wide">{payment.time}</p>
+                      <div className="text-right">
+                        <p className="text-xs text-green-600 uppercase tracking-wide font-semibold">{payment.status}</p>
+                        <a
+                          href={`https://testnet.xrpl.org/transactions/${payment.txHash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-xah-blue hover:underline"
+                        >
+                          {payment.txHash}
+                        </a>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-xs text-green-600 uppercase tracking-wide font-semibold">{payment.status}</p>
-                      <a 
-                        href={`https://testnet.xrpl.org/transactions/${payment.txHash}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-xah-blue hover:underline"
-                      >
-                        {payment.txHash}
-                      </a>
-                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-sm text-gray-500 uppercase tracking-wide">No payments yet</p>
+                    <p className="text-xs text-gray-400 mt-2">Clock in to start earning!</p>
                   </div>
-                ))}
+                )}
               </div>
               <button className="w-full mt-4 bg-gray-200 hover:bg-gray-300 text-gray-900 font-bold py-3 px-4 rounded-lg text-sm uppercase tracking-wide transition-colors">
                 VIEW ALL PAYMENTS

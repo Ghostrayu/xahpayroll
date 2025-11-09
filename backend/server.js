@@ -10,6 +10,7 @@ const xamanRoutes = require('./routes/xaman')
 const usersRoutes = require('./routes/users')
 const organizationsRoutes = require('./routes/organizations')
 const paymentChannelsRoutes = require('./routes/paymentChannels')
+const workersRoutes = require('./routes/workers')
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -44,6 +45,7 @@ app.use('/api/xaman', xamanRoutes)
 app.use('/api/users', usersRoutes)
 app.use('/api/organizations', organizationsRoutes)
 app.use('/api/payment-channels', paymentChannelsRoutes)
+app.use('/api/workers', workersRoutes)
 
 // Error handling middleware
 app.use((err, req, res, next) => {
