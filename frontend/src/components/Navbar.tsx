@@ -23,6 +23,12 @@ const Navbar: React.FC = () => {
     return location.pathname === '/' || location.pathname === ''
   }
 
+  // Determine if we should show navigation links (features, how it works)
+  // Only show on homepage since they point to homepage sections
+  const shouldShowNavLinks = () => {
+    return location.pathname === '/' || location.pathname === ''
+  }
+
   return (
     <nav className="bg-white shadow-md fixed w-full top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -38,12 +44,16 @@ const Navbar: React.FC = () => {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8">
-            <a href="#features" className="text-gray-700 hover:text-xah-blue transition-colors uppercase">
-              FEATURES
-            </a>
-            <a href="#how-it-works" className="text-gray-700 hover:text-xah-blue transition-colors uppercase">
-              HOW IT WORKS
-            </a>
+            {shouldShowNavLinks() && (
+              <>
+                <a href="#features" className="text-gray-700 hover:text-xah-blue transition-colors uppercase">
+                  FEATURES
+                </a>
+                <a href="#how-it-works" className="text-gray-700 hover:text-xah-blue transition-colors uppercase">
+                  HOW IT WORKS
+                </a>
+              </>
+            )}
             
             {/* Login/User Button */}
             {isLoggedIn ? (
@@ -137,18 +147,22 @@ const Navbar: React.FC = () => {
       {isMenuOpen && (
         <div className="md:hidden bg-white border-t">
           <div className="px-2 pt-2 pb-3 space-y-1">
-            <a
-              href="#features"
-              className="block px-3 py-2 text-gray-700 hover:text-xah-blue hover:bg-gray-50 rounded-md uppercase"
-            >
-              FEATURES
-            </a>
-            <a
-              href="#how-it-works"
-              className="block px-3 py-2 text-gray-700 hover:text-xah-blue hover:bg-gray-50 rounded-md uppercase"
-            >
-              HOW IT WORKS
-            </a>
+            {shouldShowNavLinks() && (
+              <>
+                <a
+                  href="#features"
+                  className="block px-3 py-2 text-gray-700 hover:text-xah-blue hover:bg-gray-50 rounded-md uppercase"
+                >
+                  FEATURES
+                </a>
+                <a
+                  href="#how-it-works"
+                  className="block px-3 py-2 text-gray-700 hover:text-xah-blue hover:bg-gray-50 rounded-md uppercase"
+                >
+                  HOW IT WORKS
+                </a>
+              </>
+            )}
             
             {/* Mobile Login/User Section */}
             {isLoggedIn ? (
