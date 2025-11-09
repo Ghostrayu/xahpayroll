@@ -1,14 +1,23 @@
 import React, { useState, useEffect } from 'react'
 import { useWallet } from '../contexts/WalletContext'
+import { 
+  preparePaymentChannelTransaction, 
+  xahToDrops, 
+  toRippleTime,
+  generateChannelId
+} from '../utils/paymentChannels'
+import { submitTransactionWithWallet } from '../utils/walletTransactions'
 
 interface CreatePaymentChannelModalProps {
   isOpen: boolean
   onClose: () => void
+  onSuccess?: () => void
 }
 
 type PaymentFrequency = 'hourly' | 'every-30min' | 'every-15min' | 'continuous'
 
 interface PaymentChannelConfig {
+  jobName: string
   workerAddress: string
   workerName: string
   hourlyRate: string
@@ -22,10 +31,11 @@ interface PaymentChannelConfig {
   autoRelease: boolean
 }
 
-const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ isOpen, onClose }) => {
-  const { walletAddress, balance } = useWallet()
+const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ isOpen, onClose, onSuccess }) => {
+  const { walletAddress, balance, provider, network } = useWallet()
   
   const [config, setConfig] = useState<PaymentChannelConfig>({
+    jobName: '',
     workerAddress: '',
     workerName: '',
     hourlyRate: '15.00',
@@ -187,28 +197,88 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
     setError(null)
 
     try {
-      const rippleEpoch = 946684800
-      const expirationTime = Math.floor(new Date(config.endDate).getTime() / 1000) - rippleEpoch
+      const fundingAmountXah = config.totalFundingAmount || calculateEstimatedCost()
+      const fundingAmountDrops = xahToDrops(fundingAmountXah)
       const settleDelaySeconds = parseInt(config.settleDelay) * 3600
+      const expirationTime = toRippleTime(new Date(config.endDate))
       
       console.log('Creating Payment Channel with parameters:', {
+        jobName: config.jobName,
         destination: config.workerAddress,
         workerName: config.workerName,
-        amount: config.totalFundingAmount || calculateEstimatedCost(),
+        amount: fundingAmountXah,
+        amountDrops: fundingAmountDrops,
         expiration: expirationTime,
         settleDelay: settleDelaySeconds,
-        publicKey: walletAddress,
-        balanceUpdateFrequency: config.paymentFrequency,
-        implementation: 'Off-chain time tracking with accumulating on-chain claims',
-        claimStructure: 'Accumulating (Hour 1: 15 XAH, Hour 2: 30 XAH, Hour 3: 45 XAH...)',
-        note: 'Worker can claim anytime but encouraged to wait until end for efficiency'
+        balanceUpdateFrequency: config.paymentFrequency
       })
-      
-      // TODO: Implement PayChannelCreate transaction
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
+
+      // Step 1: Prepare the PayChannelCreate transaction
+      const paymentChannelTx = preparePaymentChannelTransaction({
+        sourceAddress: walletAddress,
+        destinationAddress: config.workerAddress,
+        amount: fundingAmountDrops,
+        settleDelay: settleDelaySeconds,
+        cancelAfter: expirationTime
+      })
+
+      console.log('Prepared transaction:', paymentChannelTx)
+
+      // Step 2: Submit transaction using the connected wallet (GemWallet, Crossmark, Xaman, or Manual)
+      const txResult = await submitTransactionWithWallet(paymentChannelTx, provider, network)
+
+      if (!txResult.success) {
+        throw new Error(txResult.error || 'Transaction failed')
+      }
+
+      console.log('Transaction result:', txResult)
+
+      // Step 3: Generate channel ID (in production, this would come from the ledger)
+      const channelId = generateChannelId(txResult.hash || '', walletAddress)
+
+      // Step 4: Save payment channel to database
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
+      const response = await fetch(`${backendUrl}/api/payment-channels/create`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          organizationWalletAddress: walletAddress,
+          workerWalletAddress: config.workerAddress,
+          workerName: config.workerName,
+          jobName: config.jobName,
+          hourlyRate: parseFloat(config.hourlyRate),
+          fundingAmount: parseFloat(fundingAmountXah),
+          channelId: channelId,
+          settleDelay: settleDelaySeconds,
+          expiration: expirationTime,
+          balanceUpdateFrequency: config.paymentFrequency === 'hourly' ? 'Hourly' :
+                                   config.paymentFrequency === 'every-30min' ? 'Every 30 Minutes' :
+                                   config.paymentFrequency === 'every-15min' ? 'Every 15 Minutes' : 'Continuous'
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error?.message || 'Failed to save payment channel')
+      }
+
+      const data = await response.json()
+      console.log('Payment channel created successfully:', data)
+
+      // Success! Close modal and refresh dashboard
+      alert(`✅ Payment Channel Created!\n\nChannel ID: ${channelId}\nFunding: ${fundingAmountXah} XAH\nWorker: ${config.workerName}`)
       onClose()
+      
+      // Call onSuccess callback if provided, otherwise reload page
+      if (onSuccess) {
+        onSuccess()
+      } else {
+        window.location.reload()
+      }
     } catch (err: any) {
+      console.error('Error creating payment channel:', err)
       setError(err.message || 'Failed to create payment channel')
     } finally {
       setIsCreating(false)
@@ -260,12 +330,28 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
             </div>
           </div>
 
-          {/* Worker Information */}
+          {/* Job Information */}
           <div className="space-y-4">
             <h3 className="text-lg font-bold text-gray-900 uppercase tracking-tight">
-              Worker Information
+              Job Information
             </h3>
             
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase mb-2">
+                Job Name
+              </label>
+              <input
+                type="text"
+                value={config.jobName}
+                onChange={(e) => handleInputChange('jobName', e.target.value)}
+                className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-xah-blue focus:outline-none"
+                placeholder="WEBSITE DEVELOPMENT"
+              />
+              <p className="text-xs text-gray-500 mt-1 uppercase">
+                Give this payment channel a descriptive name
+              </p>
+            </div>
+
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase mb-2">
                 Worker Name

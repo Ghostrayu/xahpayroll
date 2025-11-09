@@ -48,6 +48,12 @@ const WALLET_STORAGE_KEY = 'xahpayroll_wallet'
 // XRPL Client instance
 let xrplClient: Client | null = null
 
+// Get network from environment variable
+const getConfiguredNetwork = (): NetworkType => {
+  const envNetwork = import.meta.env.VITE_XRPL_NETWORK as string
+  return (envNetwork === 'testnet' || envNetwork === 'mainnet') ? envNetwork : 'mainnet'
+}
+
 // Provider Component
 export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
   const [walletState, setWalletState] = useState<WalletState>({
@@ -55,7 +61,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     walletAddress: '',
     balance: '0',
     reserve: '0',
-    network: 'mainnet',
+    network: getConfiguredNetwork(),
     provider: null,
     isLoading: false,
     error: null,
@@ -95,8 +101,8 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
         const parsed = JSON.parse(savedWallet)
         // Only restore connection state, not sensitive data
         if (parsed.isConnected && parsed.walletAddress) {
-          // Force mainnet for all connections (migration from testnet)
-          const network: NetworkType = 'mainnet'
+          // Use configured network from environment
+          const network: NetworkType = getConfiguredNetwork()
           
           setWalletState(prev => ({
             ...prev,
@@ -152,7 +158,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       })
       
       const balanceInXRP = dropsToXrp(response.result.account_data.Balance)
-      const ownerCount = response.result.account_data.OwnerCount || 0
+      const ownerCount = Number(response.result.account_data.OwnerCount || 0)
       
       // Calculate reserve: Base reserve (1 XAH) + Owner reserve (0.2 XAH per object)
       const baseReserve = 1
@@ -160,7 +166,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       const totalReserve = baseReserve + ownerReserve
       
       // Available balance = Total balance - Reserve
-      const availableBalance = String(Math.max(0, parseFloat(balanceInXRP) - totalReserve))
+      const availableBalance = String(Math.max(0, parseFloat(String(balanceInXRP)) - totalReserve))
       
       setWalletState(prev => ({
         ...prev,
@@ -198,7 +204,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     setWalletState(prev => ({ ...prev, isLoading: true, error: null }))
 
     try {
-      const network: NetworkType = 'mainnet' // Use mainnet for production
+      const network: NetworkType = getConfiguredNetwork()
 
       switch (provider) {
         case 'xaman':
@@ -447,7 +453,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       walletAddress: '',
       balance: '0',
       reserve: '0',
-      network: 'mainnet',
+      network: getConfiguredNetwork(),
       provider: null,
       isLoading: false,
       error: null,

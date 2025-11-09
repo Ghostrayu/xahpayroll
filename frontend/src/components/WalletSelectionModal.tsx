@@ -30,6 +30,8 @@ const WalletSelectionModal: React.FC<WalletSelectionModalProps> = ({ isOpen, onC
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [showProfileSetup, setShowProfileSetup] = useState(false)
   const [isCheckingProfile, setIsCheckingProfile] = useState(false)
+  const [foundProfile, setFoundProfile] = useState<any>(null)
+  const [showProfileFound, setShowProfileFound] = useState(false)
 
   // Check if browser extensions are available
   const isCrossmarkAvailable = typeof window !== 'undefined' && !!(window as any).crossmark
@@ -84,38 +86,38 @@ const WalletSelectionModal: React.FC<WalletSelectionModalProps> = ({ isOpen, onC
 
     try {
       await connectWallet(walletId)
+      // Note: walletAddress will be updated via useEffect below after connection completes
+    } catch (err: any) {
+      console.error('Wallet connection failed:', err)
+      setConnectionError(err.message || 'Failed to connect wallet')
+      setSelectedWallet(null)
+    }
+  }
+
+  // Check for profile after wallet address is set
+  React.useEffect(() => {
+    const checkProfile = async () => {
+      // Only check if we have a wallet address and we just connected (selectedWallet is set)
+      if (!walletAddress || !selectedWallet) return
       
-      // Check if user already has a profile
       setIsCheckingProfile(true)
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
+      
+      console.log('Checking profile for wallet address:', walletAddress)
       
       try {
         const profileResponse = await fetch(`${backendUrl}/api/users/profile/${walletAddress}`)
         
         if (profileResponse.ok) {
-          // User has existing profile - log them in directly
+          // User has existing profile - show confirmation dialog
           const profileData = await profileResponse.json()
           const profile = profileData.data.profile
           
           console.log('Existing profile found:', profile)
           
-          // Update profile in auth context
-          updateProfile({
-            displayName: profile.displayName,
-            organizationName: profile.organizationName,
-            email: profile.email,
-            phoneNumber: profile.phoneNumber
-          })
-          
-          // Log in the user
-          login(profile.displayName, profile.userType, walletAddress)
-          
-          // Close modal
-          onClose()
-          
-          // Navigate to appropriate dashboard
-          const dashboardPath = profile.userType === 'employee' ? '/worker/dashboard' : '/ngo/dashboard'
-          navigate(dashboardPath)
+          // Store profile and show confirmation dialog
+          setFoundProfile(profile)
+          setShowProfileFound(true)
         } else {
           // No existing profile - show profile setup modal
           console.log('No existing profile found, showing profile setup')
@@ -127,13 +129,34 @@ const WalletSelectionModal: React.FC<WalletSelectionModalProps> = ({ isOpen, onC
         setShowProfileSetup(true)
       } finally {
         setIsCheckingProfile(false)
+        setSelectedWallet(null) // Reset after check completes
       }
-    } catch (err: any) {
-      console.error('Wallet connection failed:', err)
-      setConnectionError(err.message || 'Failed to connect wallet')
-      setSelectedWallet(null)
-      setIsCheckingProfile(false)
     }
+    
+    checkProfile()
+  }, [walletAddress, selectedWallet, login, updateProfile, navigate, onClose])
+
+  const handleSignInWithFoundProfile = () => {
+    if (!foundProfile) return
+    
+    // Update profile in auth context
+    updateProfile({
+      displayName: foundProfile.displayName,
+      organizationName: foundProfile.organizationName,
+      email: foundProfile.email,
+      phoneNumber: foundProfile.phoneNumber
+    })
+    
+    // Log in the user
+    login(foundProfile.displayName, foundProfile.userType, walletAddress)
+    
+    // Close modals
+    setShowProfileFound(false)
+    onClose()
+    
+    // Navigate to appropriate dashboard
+    const dashboardPath = foundProfile.userType === 'employee' ? '/worker/dashboard' : '/ngo/dashboard'
+    navigate(dashboardPath)
   }
 
   const handleProfileComplete = (profileData: ProfileData) => {
@@ -333,6 +356,84 @@ const WalletSelectionModal: React.FC<WalletSelectionModalProps> = ({ isOpen, onC
           userType={userType}
           walletAddress={walletAddress}
         />
+      )}
+
+      {/* Profile Found Confirmation Dialog */}
+      {showProfileFound && foundProfile && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 border-4 border-green-500/40 animate-[fadeIn_0.3s_ease-in-out]">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-green-600 to-green-700 text-white p-6 rounded-t-xl">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-2xl font-extrabold uppercase tracking-tight">
+                    PROFILE FOUND!
+                  </h2>
+                  <p className="text-sm text-white/90 uppercase tracking-wide">
+                    WELCOME BACK
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <div className="bg-gradient-to-br from-green-50 to-primary-50 rounded-xl p-5 mb-6 border-2 border-green-200">
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-xs text-gray-600 uppercase tracking-wide font-semibold">DISPLAY NAME</p>
+                    <p className="text-lg font-bold text-gray-900 uppercase">{foundProfile.displayName}</p>
+                  </div>
+                  
+                  {foundProfile.organizationName && (
+                    <div>
+                      <p className="text-xs text-gray-600 uppercase tracking-wide font-semibold">ORGANIZATION</p>
+                      <p className="text-lg font-bold text-gray-900 uppercase">{foundProfile.organizationName}</p>
+                    </div>
+                  )}
+                  
+                  <div>
+                    <p className="text-xs text-gray-600 uppercase tracking-wide font-semibold">ACCOUNT TYPE</p>
+                    <p className="text-sm font-bold text-xah-blue uppercase">
+                      {foundProfile.userType === 'employee' ? '👷 WORKER' : '🏢 NGO/EMPLOYER'}
+                    </p>
+                  </div>
+
+                  {foundProfile.email && (
+                    <div>
+                      <p className="text-xs text-gray-600 uppercase tracking-wide font-semibold">EMAIL</p>
+                      <p className="text-sm text-gray-700">{foundProfile.email}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowProfileFound(false)
+                    setFoundProfile(null)
+                    onClose()
+                  }}
+                  className="flex-1 px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-lg transition-colors uppercase text-sm border-2 border-gray-300"
+                >
+                  CANCEL
+                </button>
+                <button
+                  onClick={handleSignInWithFoundProfile}
+                  className="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition-all uppercase text-sm shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                >
+                  ✓ SIGN IN
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

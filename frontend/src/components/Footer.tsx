@@ -1,5 +1,4 @@
 import React from 'react'
-import { Link } from 'react-router-dom'
 import footerImage from '../assets/images/IMG_4027.png'
 
 const Footer: React.FC = () => {
@@ -38,6 +37,14 @@ const Footer: React.FC = () => {
                   ADMIN@XAHPAYROLL.XYZ
                 </a>
               </li>
+              <li>
+                <a href="https://docs.fileverse.io/document/bQRHzmhagkrGY1oqeDjv2R" target="_blank" rel="noopener noreferrer" className="hover:text-white uppercase text-sm tracking-wide transition-colors flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                  </svg>
+                  TERMS OF SERVICE
+                </a>
+              </li>
             </ul>
           </div>
         </div>
@@ -47,15 +54,6 @@ const Footer: React.FC = () => {
           <p className="uppercase text-sm tracking-wide mt-2">
             ENGINEERED OPEN SOURCE & MAINTAINED BY <a href="https://landing.goodmoneycollective.com" target="_blank" rel="noopener noreferrer" className="text-secondary-500 hover:text-secondary-400 transition-colors font-semibold">GOOD MONEY COLLECTIVE</a>
           </p>
-          <div className="mt-4 flex justify-center gap-6">
-            <Link to="/terms" className="text-gray-400 hover:text-white uppercase text-xs tracking-wide transition-colors">
-              Terms of Service
-            </Link>
-            <span className="text-gray-600">|</span>
-            <a href="mailto:legal@xahpayroll.xyz" className="text-gray-400 hover:text-white uppercase text-xs tracking-wide transition-colors">
-              Legal
-            </a>
-          </div>
         </div>
       </div>
     </footer>

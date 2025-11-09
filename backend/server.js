@@ -8,6 +8,8 @@ const { initializeDatabase } = require('./database/db')
 // Import routes
 const xamanRoutes = require('./routes/xaman')
 const usersRoutes = require('./routes/users')
+const organizationsRoutes = require('./routes/organizations')
+const paymentChannelsRoutes = require('./routes/paymentChannels')
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -40,6 +42,8 @@ app.get('/health', (req, res) => {
 // API Routes
 app.use('/api/xaman', xamanRoutes)
 app.use('/api/users', usersRoutes)
+app.use('/api/organizations', organizationsRoutes)
+app.use('/api/payment-channels', paymentChannelsRoutes)
 
 // Error handling middleware
 app.use((err, req, res, next) => {

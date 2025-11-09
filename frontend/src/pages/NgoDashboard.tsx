@@ -1,39 +1,96 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useWallet } from '../contexts/WalletContext'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import CreatePaymentChannelModal from '../components/CreatePaymentChannelModal'
+import AddWorkerModal from '../components/AddWorkerModal'
+
+interface OrgStats {
+  totalWorkers: number
+  activeWorkers: number
+  escrowBalance: number
+  totalPaid: number
+  avgHourlyRate: number
+  hoursThisMonth: number
+}
 
 const NgoDashboard: React.FC = () => {
   const { userName } = useAuth()
-  const { balance, reserve, isConnected, walletAddress } = useWallet()
+  const { balance, reserve, isConnected, walletAddress, network } = useWallet()
   const [showEscrowModal, setShowEscrowModal] = useState(false)
+  const [showAddWorkerModal, setShowAddWorkerModal] = useState(false)
+  const [stats, setStats] = useState<OrgStats>({
+    totalWorkers: 0,
+    activeWorkers: 0,
+    escrowBalance: 0,
+    totalPaid: 0,
+    avgHourlyRate: 0,
+    hoursThisMonth: 0
+  })
+  const [recentActivity, setRecentActivity] = useState<any[]>([])
+  const [paymentChannels, setPaymentChannels] = useState<any[]>([])
+  const [workers, setWorkers] = useState<any[]>([])
 
-  // Mock data for demonstration
-  const stats = {
-    totalWorkers: 24,
-    activeWorkers: 8,
-    escrowBalance: 15750.50,
-    totalPaid: 42380.25,
-    avgHourlyRate: 15.00,
-    hoursThisMonth: 1840
+  // Fetch all dashboard data from backend
+  const fetchDashboardData = async () => {
+    if (!walletAddress) return
+
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
+
+    try {
+      // Fetch stats
+      console.log('Fetching stats for wallet:', walletAddress)
+      const statsResponse = await fetch(`${backendUrl}/api/organizations/stats/${walletAddress}`)
+      console.log('Stats response status:', statsResponse.status)
+      
+      if (statsResponse.ok) {
+        const statsData = await statsResponse.json()
+        console.log('Stats data received:', statsData)
+        setStats(statsData.data.stats)
+      } else {
+        const errorData = await statsResponse.json()
+        console.error('Stats fetch failed:', errorData)
+        console.error('Error message:', errorData.error?.message)
+      }
+
+      // Fetch recent activity
+      const activityResponse = await fetch(`${backendUrl}/api/organizations/activity/${walletAddress}`)
+      if (activityResponse.ok) {
+        const activityData = await activityResponse.json()
+        setRecentActivity(activityData.data.activity)
+      } else {
+        console.error('Activity fetch failed:', activityResponse.status)
+      }
+
+      // Fetch payment channels
+      const channelsResponse = await fetch(`${backendUrl}/api/organizations/payment-channels/${walletAddress}`)
+      if (channelsResponse.ok) {
+        const channelsData = await channelsResponse.json()
+        setPaymentChannels(channelsData.data.channels)
+      } else {
+        console.error('Channels fetch failed:', channelsResponse.status)
+      }
+
+      // Fetch workers
+      const workersResponse = await fetch(`${backendUrl}/api/organizations/workers/${walletAddress}`)
+      if (workersResponse.ok) {
+        const workersData = await workersResponse.json()
+        setWorkers(workersData.data.workers)
+      } else {
+        console.error('Workers fetch failed:', workersResponse.status)
+      }
+
+      console.log('Dashboard data loaded successfully')
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error)
+    }
   }
 
-  const recentActivity = [
-    { id: 1, worker: 'John Doe', action: 'Clocked In', time: '2 minutes ago', status: 'active' },
-    { id: 2, worker: 'Jane Smith', action: 'Payment Sent', amount: '15.00 XAH', time: '15 minutes ago', status: 'completed' },
-    { id: 3, worker: 'Mike Johnson', action: 'Clocked Out', time: '1 hour ago', status: 'completed' },
-    { id: 4, worker: 'Sarah Williams', action: 'Payment Sent', amount: '22.50 XAH', time: '2 hours ago', status: 'completed' },
-  ]
-
-  const activeWorkers = [
-    { id: 1, name: 'John Doe', rate: 15.00, hoursToday: 3.5, status: 'Working' },
-    { id: 2, name: 'Alice Brown', rate: 18.00, hoursToday: 2.0, status: 'Working' },
-    { id: 3, name: 'Bob Wilson', rate: 20.00, hoursToday: 4.5, status: 'Working' },
-    { id: 4, name: 'Carol Davis', rate: 16.50, hoursToday: 1.5, status: 'Working' },
-  ]
+  useEffect(() => {
+    fetchDashboardData()
+  }, [walletAddress])
 
   return (
     <div className="min-h-screen x-pattern-bg-light">
@@ -42,7 +99,7 @@ const NgoDashboard: React.FC = () => {
       {/* Dashboard Header */}
       <div className="pt-28 pb-8 bg-gradient-to-br from-xah-light via-white to-primary-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-3xl md:text-4xl font-extrabold text-gray-900 uppercase tracking-tight">
                 NGO DASHBOARD
@@ -57,20 +114,56 @@ const NgoDashboard: React.FC = () => {
                     <code className="text-xs font-mono text-xah-blue bg-blue-50 px-3 py-1 rounded-lg border border-blue-200">
                       {walletAddress}
                     </code>
+                    <span className={`text-xs font-bold uppercase tracking-wide px-2 py-1 rounded border ${
+                      network === 'mainnet' 
+                        ? 'text-green-700 bg-green-50 border-green-300' 
+                        : 'bg-orange-100 text-orange-700 border-orange-300'
+                    }`}>
+                      {network === 'mainnet' ? 'MAINNET XAHAU' : 'TESTNET XAHAU'}
+                    </span>
                   </div>
                   {isConnected && (
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Balance:</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-green-600 bg-green-50 px-3 py-1 rounded-lg border border-green-200">
+                        <span className="text-sm font-bold text-xah-blue bg-blue-50 px-3 py-1 rounded-lg border border-blue-200">
                           {parseFloat(balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} XAH
                         </span>
-                        <span className="text-xs text-gray-400">
-                          ({parseFloat(reserve).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} XAH reserved)
+                        <span className="text-xs text-gray-400 uppercase">
+                          ({parseFloat(reserve).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} XAH RESERVED)
                         </span>
                       </div>
                     </div>
                   )}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Workers:</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-xah-blue bg-blue-50 px-3 py-1 rounded-lg border border-blue-200">
+                        {stats.totalWorkers}
+                      </span>
+                      <span className="text-xs font-semibold text-green-600">
+                        ({stats.activeWorkers} ACTIVE)
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Escrow Balance:</span>
+                    <span className="text-sm font-bold text-xah-blue bg-blue-50 px-3 py-1 rounded-lg border border-blue-200">
+                      {stats.escrowBalance.toLocaleString()} XAH
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Paid:</span>
+                    <span className="text-sm font-bold text-xah-blue bg-blue-50 px-3 py-1 rounded-lg border border-blue-200">
+                      {stats.totalPaid.toLocaleString()} XAH
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Hours This Month:</span>
+                    <span className="text-sm font-bold text-xah-blue bg-blue-50 px-3 py-1 rounded-lg border border-blue-200">
+                      {stats.hoursThisMonth}
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
@@ -84,124 +177,13 @@ const NgoDashboard: React.FC = () => {
               BACK TO INFO
             </Link>
           </div>
-        </div>
-      </div>
-
-      {/* Dashboard Content */}
-      <section className="py-12 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
-            {/* Total Workers */}
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl shadow-lg p-6 border-2 border-blue-200">
-              <div className="flex items-center justify-between mb-4">
-                <div className="text-4xl">👥</div>
-                <div className="text-right">
-                  <p className="text-xs text-gray-600 uppercase tracking-wide font-semibold">Total Workers</p>
-                  <p className="text-3xl font-extrabold text-gray-900">{stats.totalWorkers}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 text-xs">
-                <span className="px-2 py-1 bg-green-500 text-white rounded-full font-bold">{stats.activeWorkers} ACTIVE</span>
-                <span className="text-gray-600 uppercase tracking-wide">Right Now</span>
-              </div>
-            </div>
-
-            {/* Escrow Balance */}
-            <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-2xl shadow-lg p-6 border-2 border-green-200">
-              <div className="flex items-center justify-between mb-4">
-                <div className="text-4xl">💰</div>
-                <div className="text-right">
-                  <p className="text-xs text-gray-600 uppercase tracking-wide font-semibold">Escrow Balance</p>
-                  <p className="text-3xl font-extrabold text-gray-900">{stats.escrowBalance.toLocaleString()}</p>
-                  <p className="text-xs text-gray-600 uppercase tracking-wide">XAH</p>
-                </div>
-              </div>
-              <button 
-                onClick={() => setShowEscrowModal(true)}
-                className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg text-xs uppercase tracking-wide transition-colors"
-              >
-                ⚡ OPEN CHANNEL
-              </button>
-            </div>
-
-            {/* Total Paid */}
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-2xl shadow-lg p-6 border-2 border-purple-200">
-              <div className="flex items-center justify-between mb-4">
-                <div className="text-4xl">📊</div>
-                <div className="text-right">
-                  <p className="text-xs text-gray-600 uppercase tracking-wide font-semibold">Total Paid</p>
-                  <p className="text-3xl font-extrabold text-gray-900">{stats.totalPaid.toLocaleString()}</p>
-                  <p className="text-xs text-gray-600 uppercase tracking-wide">XAH</p>
-                </div>
-              </div>
-              <p className="text-xs text-gray-600 uppercase tracking-wide">
-                {stats.hoursThisMonth} HOURS THIS MONTH
-              </p>
-            </div>
-          </div>
-
-          {/* Two Column Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Active Workers */}
-            <div className="bg-white rounded-2xl shadow-xl p-6 border-2 border-xah-blue/30">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight">Active Workers</h3>
-                <span className="px-3 py-1 bg-green-500 text-white rounded-full text-xs font-bold">{stats.activeWorkers} ONLINE</span>
-              </div>
-              <div className="space-y-4">
-                {activeWorkers.map((worker) => (
-                  <div key={worker.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-xah-blue rounded-full flex items-center justify-center">
-                        <span className="text-white font-bold text-sm">{worker.name.split(' ').map(n => n[0]).join('')}</span>
-                      </div>
-                      <div>
-                        <p className="font-bold text-gray-900 text-sm uppercase tracking-wide">{worker.name}</p>
-                        <p className="text-xs text-gray-600 uppercase tracking-wide">{worker.rate} XAH/HR</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold text-gray-900 text-sm">{worker.hoursToday}h</p>
-                      <p className="text-xs text-green-600 uppercase tracking-wide font-semibold">● {worker.status}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <button className="w-full mt-4 bg-xah-blue hover:bg-primary-700 text-white font-bold py-3 px-4 rounded-lg text-sm uppercase tracking-wide transition-colors">
-                VIEW ALL WORKERS
-              </button>
-            </div>
-
-            {/* Recent Activity */}
-            <div className="bg-white rounded-2xl shadow-xl p-6 border-2 border-xah-blue/30">
-              <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-6">Recent Activity</h3>
-              <div className="space-y-4">
-                {recentActivity.map((activity) => (
-                  <div key={activity.id} className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                    <div className={`w-2 h-2 rounded-full mt-2 ${
-                      activity.status === 'active' ? 'bg-green-500' : 'bg-gray-400'
-                    }`} />
-                    <div className="flex-1">
-                      <p className="font-bold text-gray-900 text-sm uppercase tracking-wide">{activity.worker}</p>
-                      <p className="text-xs text-gray-600 uppercase tracking-wide">{activity.action}</p>
-                      {activity.amount && (
-                        <p className="text-xs text-xah-blue font-bold uppercase tracking-wide mt-1">{activity.amount}</p>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-500 uppercase tracking-wide">{activity.time}</p>
-                  </div>
-                ))}
-              </div>
-              <button className="w-full mt-4 bg-gray-200 hover:bg-gray-300 text-gray-900 font-bold py-3 px-4 rounded-lg text-sm uppercase tracking-wide transition-colors">
-                VIEW FULL HISTORY
-              </button>
-            </div>
-          </div>
 
           {/* Quick Actions */}
-          <div className="mt-12 grid grid-cols-1 md:grid-cols-4 gap-4">
-            <button className="bg-xah-blue hover:bg-primary-700 text-white font-bold py-4 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-lg">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <button 
+              onClick={() => setShowAddWorkerModal(true)}
+              className="bg-xah-blue hover:bg-primary-700 text-white font-bold py-4 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-lg"
+            >
               ➕ ADD WORKER
             </button>
             <button 
@@ -210,12 +192,221 @@ const NgoDashboard: React.FC = () => {
             >
               ⚡ OPEN PAYMENT CHANNEL
             </button>
-            <button className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-4 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-lg">
-              📊 VIEW REPORTS
-            </button>
             <button className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-4 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-lg">
               ⚙️ SETTINGS
             </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Dashboard Content */}
+      <section className="py-12 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Active Payment Channels Section */}
+          <div className="mb-12">
+            <div className="bg-white rounded-2xl shadow-xl p-4 border-2 border-green-500/30">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-extrabold text-gray-900 uppercase tracking-tight">Active Payment Channels</h3>
+                <span className="px-3 py-1 bg-green-500 text-white rounded-full text-xs font-bold">
+                  {paymentChannels.length} ACTIVE
+                </span>
+              </div>
+
+              {paymentChannels.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-6xl mb-4">⚡</div>
+                  <h4 className="text-lg font-bold text-gray-900 uppercase mb-2">No Active Payment Channels</h4>
+                  <p className="text-sm text-gray-600 uppercase tracking-wide mb-6">
+                    Create a payment channel to start paying workers
+                  </p>
+                  <button 
+                    onClick={() => setShowEscrowModal(true)}
+                    className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg text-sm uppercase tracking-wide transition-colors"
+                  >
+                    ⚡ Open Payment Channel
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {paymentChannels.map((channel) => (
+                    <div 
+                      key={channel.id} 
+                      className="bg-gradient-to-br from-green-50 to-blue-50 rounded-lg p-3 border-2 border-green-200 hover:border-green-400 transition-all"
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                            <span className="text-white font-bold text-xs">
+                              {channel.worker.split(' ').map((n: string) => n[0]).join('')}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="font-bold text-gray-900 text-sm uppercase tracking-wide">
+                              {channel.jobName || channel.worker}
+                            </p>
+                            <p className="text-[10px] text-gray-600 uppercase tracking-wide">
+                              {channel.worker} • {channel.channelId}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="inline-flex items-center px-2 py-0.5 bg-green-500 text-white rounded-full text-[10px] font-bold">
+                            ● ACTIVE
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
+                        <div className="bg-white/60 rounded-lg p-2 border border-orange-200">
+                          <p className="text-[10px] text-gray-600 uppercase tracking-wide font-semibold mb-0.5">
+                            Escrow Balance
+                          </p>
+                          <p className="text-base font-extrabold text-orange-600">
+                            {channel.escrowBalance ? channel.escrowBalance.toLocaleString() : '0'} XAH
+                          </p>
+                        </div>
+                        <div className="bg-white/60 rounded-lg p-2 border border-green-200">
+                          <p className="text-[10px] text-gray-600 uppercase tracking-wide font-semibold mb-0.5">
+                            Accumulated Balance
+                          </p>
+                          <p className="text-base font-extrabold text-green-600">
+                            {channel.balance.toLocaleString()} XAH
+                          </p>
+                        </div>
+                        <div className="bg-white/60 rounded-lg p-2 border border-blue-200">
+                          <p className="text-[10px] text-gray-600 uppercase tracking-wide font-semibold mb-0.5">
+                            Hourly Rate
+                          </p>
+                          <p className="text-base font-extrabold text-xah-blue">
+                            {channel.hourlyRate.toFixed(2)} XAH
+                          </p>
+                        </div>
+                        <div className="bg-white/60 rounded-lg p-2 border border-purple-200">
+                          <p className="text-[10px] text-gray-600 uppercase tracking-wide font-semibold mb-0.5">
+                            Hours Tracked
+                          </p>
+                          <p className="text-base font-extrabold text-purple-600">
+                            {channel.hoursAccumulated.toFixed(1)}h
+                          </p>
+                        </div>
+                        <div className="bg-white/60 rounded-lg p-2 border border-gray-200">
+                          <p className="text-[10px] text-gray-600 uppercase tracking-wide font-semibold mb-0.5">
+                            Update Frequency
+                          </p>
+                          <p className="text-sm font-bold text-gray-900 uppercase">
+                            {channel.balanceUpdateFrequency}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-green-200">
+                        <div className="flex items-center gap-1 text-[10px] text-gray-600 uppercase tracking-wide">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Last updated: {channel.lastUpdate}
+                        </div>
+                        <div className="flex gap-2">
+                          <button className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded text-[10px] uppercase tracking-wide transition-colors">
+                            View Details
+                          </button>
+                          <button className="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded text-[10px] uppercase tracking-wide transition-colors">
+                            Close Channel
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-6 bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+                <div className="flex gap-3">
+                  <div className="text-2xl">ℹ️</div>
+                  <div>
+                    <p className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-2">
+                      How Payment Channels Work
+                    </p>
+                    <ul className="text-xs text-gray-700 space-y-1 uppercase tracking-wide">
+                      <li>• <strong>Off-chain tracking:</strong> Hours tracked in database, balance updates in real-time</li>
+                      <li>• <strong>Signed claims:</strong> Generated based on update frequency (hourly/30min/15min)</li>
+                      <li>• <strong>Accumulating balance:</strong> Worker sees total accumulated amount grow over time</li>
+                      <li>• <strong>Efficient:</strong> Only 2 on-chain transactions (open channel + close/claim at end)</li>
+                      <li>• <strong>Worker claims:</strong> Workers can claim anytime, but claiming closes the channel</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Recent Activity and Workers Grid */}
+          <div className="mt-12 grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Recent Activity */}
+            <div className="bg-white rounded-2xl shadow-xl p-6 border-2 border-xah-blue/30">
+              <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-6">Recent Activity</h3>
+              <div className="space-y-4">
+                {recentActivity.length > 0 ? (
+                  recentActivity.slice(0, 5).map((activity, index) => (
+                    <div key={index} className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                      <div className={`w-2 h-2 rounded-full mt-2 ${
+                        activity.status === 'active' ? 'bg-green-500' : 'bg-gray-400'
+                      }`} />
+                      <div className="flex-1">
+                        <p className="font-bold text-gray-900 text-sm uppercase tracking-wide">{activity.worker}</p>
+                        <p className="text-xs text-gray-600 uppercase tracking-wide">{activity.action}</p>
+                        {activity.amount && (
+                          <p className="text-xs text-xah-blue font-bold uppercase tracking-wide mt-1">{activity.amount}</p>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide">{activity.time}</p>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-sm text-gray-500 uppercase tracking-wide">No recent activity</p>
+                  </div>
+                )}
+              </div>
+              <button className="w-full mt-4 bg-gray-200 hover:bg-gray-300 text-gray-900 font-bold py-3 px-4 rounded-lg text-sm uppercase tracking-wide transition-colors">
+                VIEW FULL HISTORY
+              </button>
+            </div>
+
+            {/* Workers */}
+            <div className="bg-white rounded-2xl shadow-xl p-6 border-2 border-green-500/30">
+              <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-6">Workers</h3>
+              <div className="space-y-4">
+                {workers.length > 0 ? (
+                  workers.map((worker, index) => (
+                    <div key={index} className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                      <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
+                        <span className="text-white font-bold text-sm">
+                          {worker.name.split(' ').map((n: string) => n[0]).join('')}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-gray-900 text-sm uppercase tracking-wide">{worker.name}</p>
+                        <code className="text-xs font-mono text-gray-600 break-all">{worker.employee_wallet_address}</code>
+                        {worker.rate && (
+                          <p className="text-xs text-green-600 font-bold uppercase tracking-wide mt-1">{worker.rate} XAH/hr</p>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-sm text-gray-500 uppercase tracking-wide">No workers added yet</p>
+                  </div>
+                )}
+              </div>
+              <button 
+                onClick={() => setShowAddWorkerModal(true)}
+                className="w-full mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-sm uppercase tracking-wide transition-colors"
+              >
+                + ADD WORKER
+              </button>
+            </div>
           </div>
         </div>
       </section>
@@ -225,7 +416,18 @@ const NgoDashboard: React.FC = () => {
       {/* Payment Channel Modal */}
       <CreatePaymentChannelModal 
         isOpen={showEscrowModal} 
-        onClose={() => setShowEscrowModal(false)} 
+        onClose={() => setShowEscrowModal(false)}
+        onSuccess={fetchDashboardData}
+      />
+
+      {/* Add Worker Modal */}
+      <AddWorkerModal 
+        isOpen={showAddWorkerModal} 
+        onClose={() => setShowAddWorkerModal(false)}
+        onSuccess={() => {
+          // Refresh dashboard data after worker is added
+          fetchDashboardData()
+        }}
       />
     </div>
   )

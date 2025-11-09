@@ -7,7 +7,7 @@ import Footer from '../components/Footer'
 
 const WorkerDashboard: React.FC = () => {
   const { userName } = useAuth()
-  const { balance, reserve, isConnected, walletAddress } = useWallet()
+  const { balance, reserve, isConnected, walletAddress, network } = useWallet()
   const [isWorking, setIsWorking] = useState(false)
   const [sessionTime, setSessionTime] = useState('0:00:00')
   const workerData = {
@@ -58,16 +58,23 @@ const WorkerDashboard: React.FC = () => {
                     <code className="text-xs font-mono text-xah-blue bg-blue-50 px-3 py-1 rounded-lg border border-blue-200">
                       {walletAddress}
                     </code>
+                    <span className={`text-xs font-bold uppercase tracking-wide px-2 py-1 rounded border ${
+                      network === 'mainnet' 
+                        ? 'text-green-700 bg-green-50 border-green-300' 
+                        : 'bg-orange-100 text-orange-700 border-orange-300'
+                    }`}>
+                      {network === 'mainnet' ? 'MAINNET XAHAU' : 'TESTNET XAHAU'}
+                    </span>
                   </div>
                   {isConnected && (
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Balance:</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-green-600 bg-green-50 px-3 py-1 rounded-lg border border-green-200">
+                        <span className="text-sm font-bold text-xah-blue bg-blue-50 px-3 py-1 rounded-lg border border-blue-200">
                           {parseFloat(balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} XAH
                         </span>
-                        <span className="text-xs text-gray-400">
-                          ({parseFloat(reserve).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} XAH reserved)
+                        <span className="text-xs text-gray-400 uppercase">
+                          ({parseFloat(reserve).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} XAH RESERVED)
                         </span>
                       </div>
                     </div>
