@@ -138,13 +138,83 @@ router.post('/create', async (req, res) => {
 })
 
 /**
+ * Validate Xahau wallet address format
+ * Xahau addresses follow the same format as XRPL: start with 'r' followed by 25-34 base58 characters
+ * @param {string} address - Wallet address to validate
+ * @returns {boolean} - True if valid Xahau address
+ */
+const isValidXahauAddress = (address) => {
+  // Xahau addresses: 'r' + 25-34 base58 characters (no 0, O, I, l)
+  const xahauAddressPattern = /^r[1-9A-HJ-NP-Za-km-z]{25,34}$/
+  return xahauAddressPattern.test(address)
+}
+
+/**
+ * Validate Xahau payment channel ID format
+ * Channel IDs are 64-character hexadecimal strings
+ * @param {string} channelId - Channel ID to validate
+ * @returns {boolean} - True if valid 64-character hex string
+ */
+const isValidChannelId = (channelId) => {
+  // Xahau channel IDs are 64-character hexadecimal strings
+  const channelIdPattern = /^[0-9A-Fa-f]{64}$/
+  return channelIdPattern.test(channelId)
+}
+
+/**
  * POST /api/payment-channels/:channelId/close
  * Close a payment channel
+ *
+ * Security: Validates input formats and authorization before processing
  */
 router.post('/:channelId/close', async (req, res) => {
   try {
     const { channelId } = req.params
     const { organizationWalletAddress } = req.body
+
+    // ============================================
+    // STEP 1: INPUT VALIDATION
+    // ============================================
+
+    // Validate organizationWalletAddress is provided
+    if (!organizationWalletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Organization wallet address is required' }
+      })
+    }
+
+    // Validate channelId parameter exists
+    if (!channelId) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Channel ID is required' }
+      })
+    }
+
+    // Validate Xahau wallet address format
+    if (!isValidXahauAddress(organizationWalletAddress)) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Invalid Xahau wallet address format. Must be a valid address starting with "r"'
+        }
+      })
+    }
+
+    // Validate channel ID format (64-character hex string)
+    if (!isValidChannelId(channelId)) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Invalid channel ID format. Must be a 64-character hexadecimal string'
+        }
+      })
+    }
+
+    // ============================================
+    // STEP 2: FETCH AND VERIFY ORGANIZATION
+    // ============================================
 
     // Get organization
     const orgResult = await query(
@@ -161,9 +231,13 @@ router.post('/:channelId/close', async (req, res) => {
 
     const organization = orgResult.rows[0]
 
+    // ============================================
+    // STEP 3: UPDATE CHANNEL STATUS
+    // ============================================
+
     // Update channel status
     const updateResult = await query(
-      `UPDATE payment_channels 
+      `UPDATE payment_channels
        SET status = 'closed', updated_at = NOW()
        WHERE channel_id = $1 AND organization_id = $2
        RETURNING *`,
