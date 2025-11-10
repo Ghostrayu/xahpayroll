@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useWallet } from '../contexts/WalletContext'
@@ -10,10 +10,9 @@ const WorkerDashboard: React.FC = () => {
   const { userName } = useAuth()
   const { balance, reserve, isConnected, walletAddress, network } = useWallet()
   const { earnings, workSessions, clockIn, clockOut, isLoading } = useData()
-  const [sessionTime, setSessionTime] = useState('0:00:00')
 
   // Check if currently working based on active work session
-  const activeSession = workSessions.find(session => !session.clock_out)
+  const activeSession = workSessions.find(session => !session.clockOut)
   const isWorking = !!activeSession
 
   // Use data from context with fallback defaults
@@ -30,12 +29,12 @@ const WorkerDashboard: React.FC = () => {
 
   // Recent payments from work sessions (completed)
   const recentPayments = workSessions
-    .filter(session => session.clock_out && session.status === 'completed')
+    .filter(session => session.clockOut && session.status === 'completed')
     .slice(0, 4)
-    .map((session, index) => ({
+    .map((session) => ({
       id: session.id,
       amount: session.hours ? (session.hours * workerData.hourlyRate) : 0,
-      time: new Date(session.clock_out!).toLocaleString(),
+      time: new Date(session.clockOut!).toLocaleString(),
       status: 'Completed',
       txHash: `0x${session.id.toString().padStart(6, '0')}`
     }))
@@ -123,7 +122,7 @@ const WorkerDashboard: React.FC = () => {
                 {isWorking ? 'CURRENTLY WORKING' : 'READY TO START'}
               </h2>
               <div className="text-6xl font-extrabold mb-6">
-                {sessionTime}
+                --
               </div>
               <button
                 onClick={handleClockInOut}

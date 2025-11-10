@@ -154,9 +154,8 @@ const WalletSelectionModal: React.FC<WalletSelectionModalProps> = ({ isOpen, onC
     setShowProfileFound(false)
     onClose()
     
-    // Navigate to appropriate dashboard
-    const dashboardPath = foundProfile.userType === 'employee' ? '/worker/dashboard' : '/ngo/dashboard'
-    navigate(dashboardPath)
+    // Navigate to unified dashboard route
+    navigate('/dashboard')
   }
 
   const handleProfileComplete = (profileData: ProfileData) => {
@@ -175,9 +174,8 @@ const WalletSelectionModal: React.FC<WalletSelectionModalProps> = ({ isOpen, onC
     setShowProfileSetup(false)
     onClose()
     
-    // Navigate to appropriate dashboard
-    const dashboardPath = userType === 'employee' ? '/worker/dashboard' : '/ngo/dashboard'
-    navigate(dashboardPath)
+    // Navigate to unified dashboard route
+    navigate('/dashboard')
   }
 
   const handleClose = () => {

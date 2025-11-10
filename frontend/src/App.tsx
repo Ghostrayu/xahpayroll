@@ -4,6 +4,7 @@ import { AuthProvider } from './contexts/AuthContext'
 import { WalletProvider } from './contexts/WalletContext'
 import { DataProvider } from './contexts/DataContext'
 import ProtectedRoute from './components/ProtectedRoute'
+import DashboardRedirect from './components/DashboardRedirect'
 import HomePage from './pages/HomePage'
 import WorkerPage from './pages/WorkerPage'
 import WorkerDashboard from './pages/WorkerDashboard'
@@ -23,6 +24,7 @@ const App: React.FC = () => {
               <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/terms" element={<TermsOfService />} />
+                <Route path="/dashboard" element={<DashboardRedirect />} />
                 <Route path="/worker" element={<WorkerPage />} />
                 <Route
                   path="/worker/dashboard"
