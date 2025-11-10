@@ -7,13 +7,18 @@ import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import CreatePaymentChannelModal from '../components/CreatePaymentChannelModal'
 import AddWorkerModal from '../components/AddWorkerModal'
+import { paymentChannelApi } from '../services/api'
+import { closePaymentChannel } from '../utils/paymentChannels'
 
 const NgoDashboard: React.FC = () => {
   const { userName } = useAuth()
-  const { balance, reserve, isConnected, walletAddress, network } = useWallet()
+  const { balance, reserve, isConnected, walletAddress, network, provider } = useWallet()
   const { orgStats, workers, paymentChannels, recentActivity, refreshData } = useData()
   const [showEscrowModal, setShowEscrowModal] = useState(false)
   const [showAddWorkerModal, setShowAddWorkerModal] = useState(false)
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  const [selectedChannel, setSelectedChannel] = useState<any>(null)
+  const [cancelingChannel, setCancelingChannel] = useState<string | null>(null)
 
   // Use data from context with fallback defaults
   const stats = orgStats || {
@@ -23,6 +28,95 @@ const NgoDashboard: React.FC = () => {
     totalPaid: 0,
     avgHourlyRate: 0,
     hoursThisMonth: 0
+  }
+
+  /**
+   * Handle cancel channel button click - opens confirmation modal
+   */
+  const handleCancelClick = (channel: any) => {
+    setSelectedChannel(channel)
+    setShowCancelConfirm(true)
+  }
+
+  /**
+   * Handle cancel confirmation - executes the 3-step cancellation flow
+   * 1. Call API to get XRPL transaction details
+   * 2. Execute XRPL PaymentChannelClaim transaction
+   * 3. Confirm closure in database
+   */
+  const handleCancelConfirm = async () => {
+    if (!selectedChannel || !walletAddress) {
+      alert('Missing wallet address or channel selection')
+      return
+    }
+
+    setCancelingChannel(selectedChannel.channelId)
+
+    try {
+      // Step 1: Get XRPL transaction details from backend
+      console.log('[CANCEL_FLOW] Step 1: Getting transaction details from backend')
+      const response = await paymentChannelApi.cancelPaymentChannel(
+        selectedChannel.channelId,
+        walletAddress
+      )
+
+      if (!response.success || !response.data) {
+        throw new Error('Failed to prepare cancellation')
+      }
+
+      const { channel, xrplTransaction } = response.data
+
+      console.log('[CANCEL_FLOW] Step 1 complete. Escrow return:', channel.escrowReturn, 'XAH')
+
+      // Step 2: Execute XRPL transaction
+      console.log('[CANCEL_FLOW] Step 2: Executing XRPL PaymentChannelClaim transaction')
+      const txResult = await closePaymentChannel(
+        {
+          channelId: channel.channelId,
+          balance: xrplTransaction.Balance,
+          escrowReturn: xrplTransaction.Amount,
+          account: walletAddress,
+          publicKey: xrplTransaction.Public
+        },
+        provider,
+        network
+      )
+
+      if (!txResult.success || !txResult.hash) {
+        throw new Error(txResult.error || 'XRPL transaction failed')
+      }
+
+      console.log('[CANCEL_FLOW] Step 2 complete. Transaction hash:', txResult.hash)
+
+      // Step 3: Confirm closure in database
+      console.log('[CANCEL_FLOW] Step 3: Confirming closure in database')
+      await paymentChannelApi.confirmChannelClosure(
+        selectedChannel.channelId,
+        txResult.hash,
+        walletAddress
+      )
+
+      console.log('[CANCEL_FLOW] Step 3 complete. Channel closed successfully')
+
+      // Success feedback
+      alert(
+        `✅ Payment channel canceled successfully!\n\n` +
+        `Escrow returned: ${channel.escrowReturn} XAH\n` +
+        `Worker payment: ${channel.accumulatedBalance} XAH\n` +
+        `Transaction: ${txResult.hash}`
+      )
+
+      // Refresh data
+      await refreshData()
+
+    } catch (error: any) {
+      console.error('[CANCEL_FLOW_ERROR]', error)
+      alert(`❌ Failed to cancel channel:\n\n${error.message}`)
+    } finally {
+      setCancelingChannel(null)
+      setShowCancelConfirm(false)
+      setSelectedChannel(null)
+    }
   }
 
   return (
@@ -249,8 +343,12 @@ const NgoDashboard: React.FC = () => {
                           <button className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded text-[10px] uppercase tracking-wide transition-colors">
                             View Details
                           </button>
-                          <button className="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded text-[10px] uppercase tracking-wide transition-colors">
-                            Close Channel
+                          <button
+                            onClick={() => handleCancelClick(channel)}
+                            disabled={cancelingChannel === channel.channelId}
+                            className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white font-bold rounded text-[10px] uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {cancelingChannel === channel.channelId ? 'Canceling...' : 'Cancel Channel'}
                           </button>
                         </div>
                       </div>
@@ -326,7 +424,7 @@ const NgoDashboard: React.FC = () => {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-gray-900 text-sm uppercase tracking-wide">{worker.name}</p>
-                        <code className="text-xs font-mono text-gray-600 break-all">{worker.employee_wallet_address}</code>
+                        <code className="text-xs font-mono text-gray-600 break-all">{worker.employeeWalletAddress}</code>
                         {worker.rate && (
                           <p className="text-xs text-green-600 font-bold uppercase tracking-wide mt-1">{worker.rate} XAH/hr</p>
                         )}
@@ -368,6 +466,79 @@ const NgoDashboard: React.FC = () => {
           refreshData()
         }}
       />
+
+      {/* Cancel Payment Channel Confirmation Modal */}
+      {showCancelConfirm && selectedChannel && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-2xl">
+            <div className="mb-4">
+              <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-2">
+                Cancel Payment Channel
+              </h3>
+              <p className="text-sm text-gray-700">
+                Are you sure you want to cancel the payment channel for{' '}
+                <strong className="text-gray-900">{selectedChannel.worker}</strong>?
+              </p>
+            </div>
+
+            {/* Channel Details */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600 uppercase tracking-wide font-semibold">Job:</span>
+                  <span className="text-gray-900 font-bold">{selectedChannel.jobName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 uppercase tracking-wide font-semibold">Escrow Balance:</span>
+                  <span className="text-orange-600 font-bold">{selectedChannel.escrowBalance?.toLocaleString() || '0'} XAH</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 uppercase tracking-wide font-semibold">Accumulated:</span>
+                  <span className="text-green-600 font-bold">{selectedChannel.balance?.toLocaleString() || '0'} XAH</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 uppercase tracking-wide font-semibold">Hours Worked:</span>
+                  <span className="text-purple-600 font-bold">{selectedChannel.hoursAccumulated?.toFixed(1) || '0'}h</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Important Info */}
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+              <div className="flex gap-2">
+                <div className="text-yellow-600 text-xl flex-shrink-0">⚠️</div>
+                <div className="space-y-2 text-xs text-yellow-800">
+                  <p className="font-bold uppercase tracking-wide">Important:</p>
+                  <p>• Unused escrow will be returned to your wallet</p>
+                  <p>• Worker will receive accumulated balance: <strong>{selectedChannel.balance?.toLocaleString() || '0'} XAH</strong></p>
+                  <p>• This action cannot be undone</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowCancelConfirm(false)
+                  setSelectedChannel(null)
+                }}
+                disabled={cancelingChannel === selectedChannel.channelId}
+                className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold rounded uppercase tracking-wide text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Keep Channel
+              </button>
+              <button
+                onClick={handleCancelConfirm}
+                disabled={cancelingChannel === selectedChannel.channelId}
+                className="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded uppercase tracking-wide text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {cancelingChannel === selectedChannel.channelId ? 'Canceling...' : 'Cancel Channel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

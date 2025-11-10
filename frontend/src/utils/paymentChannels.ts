@@ -1,4 +1,6 @@
-import { Client, Wallet, Payment, PaymentChannelCreate } from 'xrpl'
+import { Client, Wallet, Payment, PaymentChannelCreate, PaymentChannelClaim } from 'xrpl'
+import type { WalletProvider } from '../contexts/WalletContext'
+import { submitTransactionWithWallet } from './walletTransactions'
 
 export interface PaymentChannelParams {
   sourceAddress: string
@@ -112,22 +114,125 @@ export const getPaymentChannelDetails = async (
   network: string
 ): Promise<any> => {
   const client = new Client(getNetworkUrl(network))
-  
+
   try {
     await client.connect()
-    
+
     // Query the ledger for payment channel details
     const response = await client.request({
       command: 'ledger_entry',
       payment_channel: channelId
     })
-    
+
     await client.disconnect()
-    
+
     return response.result
   } catch (error) {
     console.error('Error fetching payment channel details:', error)
     await client.disconnect()
     throw error
+  }
+}
+
+/**
+ * Parameters for closing a payment channel
+ */
+export interface CloseChannelParams {
+  channelId: string
+  balance: string // Amount owed to worker (in drops)
+  escrowReturn: string // Amount to return to NGO (in drops)
+  account: string // NGO wallet address (channel owner)
+  publicKey?: string
+}
+
+/**
+ * Result from closing a payment channel
+ */
+export interface CloseChannelResult {
+  success: boolean
+  hash?: string
+  error?: string
+}
+
+/**
+ * Close payment channel on XRPL
+ * This settles the channel and returns unused escrow to NGO
+ *
+ * @param params - Channel closure parameters
+ * @param provider - Connected wallet provider
+ * @param network - Network ('testnet' or 'mainnet')
+ * @returns Result with transaction hash or error
+ */
+export const closePaymentChannel = async (
+  params: CloseChannelParams,
+  provider: WalletProvider | null,
+  network: string
+): Promise<CloseChannelResult> => {
+  if (!provider) {
+    return { success: false, error: 'No wallet connected' }
+  }
+
+  try {
+    // Build PaymentChannelClaim transaction with close flag
+    const transaction: PaymentChannelClaim = {
+      TransactionType: 'PaymentChannelClaim',
+      Account: params.account, // NGO wallet address (channel owner)
+      Channel: params.channelId,
+      Balance: params.balance, // Final balance for worker
+      Amount: params.escrowReturn, // Return to sender (NGO)
+      Flags: 0x00010000, // tfClose flag (closes channel)
+    }
+
+    // Add public key if available
+    if (params.publicKey) {
+      transaction.PublicKey = params.publicKey
+    }
+
+    console.log('[CLOSE_CHANNEL] Submitting PaymentChannelClaim transaction', {
+      channelId: params.channelId,
+      balance: params.balance,
+      escrowReturn: params.escrowReturn,
+      provider,
+      network
+    })
+
+    // Sign and submit via multi-wallet abstraction
+    const result = await submitTransactionWithWallet(
+      transaction,
+      provider,
+      network
+    )
+
+    if (result.success && result.hash) {
+      console.log('[CLOSE_CHANNEL_SUCCESS]', {
+        hash: result.hash,
+        channelId: params.channelId
+      })
+
+      return {
+        success: true,
+        hash: result.hash
+      }
+    }
+
+    console.error('[CLOSE_CHANNEL_FAILED]', {
+      error: result.error,
+      channelId: params.channelId
+    })
+
+    return {
+      success: false,
+      error: result.error || 'Transaction failed'
+    }
+  } catch (error: any) {
+    console.error('[CLOSE_CHANNEL_ERROR]', {
+      error: error.message,
+      channelId: params.channelId
+    })
+
+    return {
+      success: false,
+      error: error.message || 'Failed to close payment channel'
+    }
   }
 }

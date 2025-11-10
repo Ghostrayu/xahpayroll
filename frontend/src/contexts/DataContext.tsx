@@ -1,17 +1,15 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { useAuth } from './AuthContext'
 import { useWallet } from './WalletContext'
-import {
-  organizationApi,
-  workerApi,
+import { organizationApi, workerApi, ApiError } from '../services/api'
+import type {
   OrgStats,
   Worker,
   PaymentChannel,
   Activity,
   WorkSession,
   WorkerEarnings,
-  ApiError,
-} from '../services/api'
+} from '../types/api'
 
 // Types
 export interface DataContextType {

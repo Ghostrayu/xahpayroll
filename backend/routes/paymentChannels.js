@@ -163,9 +163,12 @@ const isValidChannelId = (channelId) => {
 
 /**
  * POST /api/payment-channels/:channelId/close
- * Close a payment channel
+ * Initiate payment channel closure - returns XRPL transaction details
  *
- * Security: Validates input formats and authorization before processing
+ * This endpoint prepares the channel for closure but does NOT update the database.
+ * The database is updated only after the XRPL transaction succeeds (via /close/confirm).
+ *
+ * Security: Validates input formats, authorization, and channel state before processing
  */
 router.post('/:channelId/close', async (req, res) => {
   try {
@@ -213,53 +216,254 @@ router.post('/:channelId/close', async (req, res) => {
     }
 
     // ============================================
-    // STEP 2: FETCH AND VERIFY ORGANIZATION
+    // STEP 2: FETCH CHANNEL WITH AUTHORIZATION CHECK
     // ============================================
 
-    // Get organization
-    const orgResult = await query(
-      'SELECT * FROM organizations WHERE escrow_wallet_address = $1',
-      [organizationWalletAddress]
+    // Fetch channel with organization and employee details
+    const channelResult = await query(
+      `SELECT
+        pc.*,
+        o.escrow_wallet_address,
+        o.organization_name,
+        e.employee_wallet_address,
+        e.full_name as employee_name
+      FROM payment_channels pc
+      JOIN organizations o ON pc.organization_id = o.id
+      JOIN employees e ON pc.employee_id = e.id
+      WHERE pc.channel_id = $1`,
+      [channelId]
     )
 
-    if (orgResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: { message: 'Organization not found' }
-      })
-    }
-
-    const organization = orgResult.rows[0]
-
-    // ============================================
-    // STEP 3: UPDATE CHANNEL STATUS
-    // ============================================
-
-    // Update channel status
-    const updateResult = await query(
-      `UPDATE payment_channels
-       SET status = 'closed', updated_at = NOW()
-       WHERE channel_id = $1 AND organization_id = $2
-       RETURNING *`,
-      [channelId, organization.id]
-    )
-
-    if (updateResult.rows.length === 0) {
+    if (channelResult.rows.length === 0) {
       return res.status(404).json({
         success: false,
         error: { message: 'Payment channel not found' }
       })
     }
 
+    const channel = channelResult.rows[0]
+
+    // ============================================
+    // STEP 3: AUTHORIZATION CHECK
+    // ============================================
+
+    // Verify organization owns this channel
+    if (channel.escrow_wallet_address !== organizationWalletAddress) {
+      return res.status(403).json({
+        success: false,
+        error: { message: 'Unauthorized: You do not own this payment channel' }
+      })
+    }
+
+    // ============================================
+    // STEP 4: VALIDATE CHANNEL STATE
+    // ============================================
+
+    // Check channel is not already closed
+    if (channel.status === 'closed') {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Payment channel is already closed' }
+      })
+    }
+
+    // ============================================
+    // STEP 5: CALCULATE ESCROW RETURN
+    // ============================================
+
+    const escrowFunded = parseFloat(channel.escrow_funded_amount) || 0
+    const accumulatedBalance = parseFloat(channel.accumulated_balance) || 0
+    let escrowReturn = escrowFunded - accumulatedBalance
+
+    // Validate calculation - prevent negative escrow return
+    if (escrowReturn < 0) {
+      console.warn('[CHANNEL_CLOSE] Negative escrow return detected', {
+        channelId,
+        escrowFunded,
+        accumulatedBalance,
+        organizationWallet: organizationWalletAddress
+      })
+      escrowReturn = 0 // No refund if worker is owed more than escrow
+    }
+
+    // ============================================
+    // STEP 6: RETURN XRPL TRANSACTION DETAILS
+    // ============================================
+
+    // Convert XAH to drops (1 XAH = 1,000,000 drops)
+    const balanceDrops = Math.floor(accumulatedBalance * 1000000).toString()
+    const amountDrops = Math.floor(escrowReturn * 1000000).toString()
+
+    console.log('[CHANNEL_CLOSE_INIT]', {
+      channelId,
+      organizationWallet: organizationWalletAddress,
+      workerWallet: channel.employee_wallet_address,
+      escrowFunded,
+      accumulatedBalance,
+      escrowReturn,
+      timestamp: new Date().toISOString()
+    })
+
+    res.json({
+      success: true,
+      data: {
+        channel: {
+          id: channel.id,
+          channelId: channel.channel_id,
+          status: channel.status,
+          jobName: channel.job_name,
+          workerAddress: channel.employee_wallet_address,
+          workerName: channel.employee_name,
+          escrowFunded: escrowFunded,
+          accumulatedBalance: accumulatedBalance,
+          escrowReturn: escrowReturn,
+          hoursAccumulated: parseFloat(channel.hours_accumulated) || 0,
+          hourlyRate: parseFloat(channel.hourly_rate) || 0
+        },
+        // XRPL transaction details for PaymentChannelClaim
+        xrplTransaction: {
+          TransactionType: 'PaymentChannelClaim',
+          Channel: channel.channel_id,
+          Balance: balanceDrops, // Amount to pay worker (in drops)
+          Amount: amountDrops,   // Escrow return to NGO (in drops)
+          Flags: 0x00010000      // tfClose flag (closes channel)
+        }
+      }
+    })
+  } catch (error) {
+    console.error('[CHANNEL_CLOSE_ERROR]', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    })
+    res.status(500).json({
+      success: false,
+      error: { message: 'Failed to prepare channel closure', details: error.message }
+    })
+  }
+})
+
+/**
+ * POST /api/payment-channels/:channelId/close/confirm
+ * Confirm payment channel closure after XRPL transaction succeeds
+ *
+ * This endpoint updates the database AFTER the XRPL PaymentChannelClaim transaction
+ * has been successfully submitted and confirmed on-chain.
+ *
+ * Security: Re-validates authorization before updating database
+ */
+router.post('/:channelId/close/confirm', async (req, res) => {
+  try {
+    const { channelId } = req.params
+    const { txHash, organizationWalletAddress } = req.body
+
+    // ============================================
+    // STEP 1: INPUT VALIDATION
+    // ============================================
+
+    if (!txHash) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Transaction hash is required' }
+      })
+    }
+
+    if (!organizationWalletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Organization wallet address is required' }
+      })
+    }
+
+    if (!channelId) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Channel ID is required' }
+      })
+    }
+
+    // Validate formats
+    if (!isValidXahauAddress(organizationWalletAddress)) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Invalid wallet address format' }
+      })
+    }
+
+    if (!isValidChannelId(channelId)) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Invalid channel ID format' }
+      })
+    }
+
+    // ============================================
+    // STEP 2: RE-VERIFY AUTHORIZATION
+    // ============================================
+
+    // Fetch channel with organization details
+    const channelResult = await query(
+      `SELECT pc.*, o.escrow_wallet_address
+      FROM payment_channels pc
+      JOIN organizations o ON pc.organization_id = o.id
+      WHERE pc.channel_id = $1`,
+      [channelId]
+    )
+
+    if (channelResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: { message: 'Payment channel not found' }
+      })
+    }
+
+    const channel = channelResult.rows[0]
+
+    // Verify authorization again (security: never trust client)
+    if (channel.escrow_wallet_address !== organizationWalletAddress) {
+      return res.status(403).json({
+        success: false,
+        error: { message: 'Unauthorized: You do not own this payment channel' }
+      })
+    }
+
+    // ============================================
+    // STEP 3: UPDATE DATABASE
+    // ============================================
+
+    // Update channel status with transaction hash
+    const updateResult = await query(
+      `UPDATE payment_channels
+      SET
+        status = 'closed',
+        closure_tx_hash = $1,
+        closed_at = NOW(),
+        updated_at = NOW()
+      WHERE channel_id = $2
+      RETURNING *`,
+      [txHash, channelId]
+    )
+
+    console.log('[CHANNEL_CLOSE_SUCCESS]', {
+      channelId,
+      txHash,
+      organizationWallet: organizationWalletAddress,
+      timestamp: new Date().toISOString()
+    })
+
     res.json({
       success: true,
       data: { channel: updateResult.rows[0] }
     })
   } catch (error) {
-    console.error('Error closing payment channel:', error)
+    console.error('[CHANNEL_CLOSE_CONFIRM_ERROR]', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    })
     res.status(500).json({
       success: false,
-      error: { message: 'Failed to close payment channel', details: error.message }
+      error: { message: 'Failed to confirm channel closure', details: error.message }
     })
   }
 })

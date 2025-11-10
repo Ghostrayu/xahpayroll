@@ -3,73 +3,35 @@
  * Centralized API calls for XAH Payroll backend
  */
 
+import type {
+  ApiResponse,
+  OrgStats,
+  Worker,
+  PaymentChannel,
+  Activity,
+  WorkSession,
+  WorkerEarnings,
+  WorkerForChannel,
+  CancelChannelData,
+  ConfirmChannelData,
+} from '../types/api'
+
+// Re-export types for backward compatibility
+export type {
+  ApiResponse,
+  OrgStats,
+  Worker,
+  PaymentChannel,
+  Activity,
+  WorkSession,
+  WorkerEarnings,
+  WorkerForChannel,
+  CancelChannelData,
+  ConfirmChannelData,
+}
+
 const getBackendUrl = () => {
   return import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
-}
-
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: {
-    message: string
-  }
-}
-
-// Type definitions for API responses
-export interface OrgStats {
-  totalWorkers: number
-  activeWorkers: number
-  escrowBalance: number
-  totalPaid: number
-  avgHourlyRate: number
-  hoursThisMonth: number
-}
-
-export interface Worker {
-  id: number
-  wallet_address: string
-  display_name: string
-  email?: string
-  hourly_rate?: number
-  employment_status?: string
-  created_at: string
-}
-
-export interface PaymentChannel {
-  id: number
-  job_name: string
-  worker_wallet_address: string
-  channel_id?: string
-  amount: string
-  destination: string
-  settle_delay: number
-  public_key?: string
-  hourly_rate: number
-  status: string
-  created_at: string
-}
-
-export interface Activity {
-  id: number
-  type: string
-  description: string
-  timestamp: string
-  amount?: number
-}
-
-export interface WorkSession {
-  id: number
-  clock_in: string
-  clock_out?: string
-  hours?: number
-  status: string
-}
-
-export interface WorkerEarnings {
-  today: number
-  week: number
-  month: number
-  total: number
 }
 
 /**
@@ -300,6 +262,67 @@ export const userApi = {
     }
 
     return response.data
+  },
+}
+
+/**
+ * Payment Channel API calls
+ */
+export const paymentChannelApi = {
+  /**
+   * Initiate payment channel cancellation
+   * Returns XRPL transaction details needed for closure
+   */
+  async cancelPaymentChannel(
+    channelId: string,
+    organizationWalletAddress: string
+  ): Promise<ApiResponse<{
+    channel: any
+    xrplTransaction: any
+  }>> {
+    const response = await apiFetch<ApiResponse<{
+      channel: any
+      xrplTransaction: any
+    }>>(
+      `/api/payment-channels/${channelId}/close`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ organizationWalletAddress }),
+      }
+    )
+
+    if (!response.success || !response.data) {
+      throw new ApiError(
+        response.error?.message || 'Failed to cancel payment channel'
+      )
+    }
+
+    return response
+  },
+
+  /**
+   * Confirm payment channel closure after XRPL transaction succeeds
+   */
+  async confirmChannelClosure(
+    channelId: string,
+    txHash: string,
+    organizationWalletAddress: string
+  ): Promise<ApiResponse<{ channel: any }>> {
+    const response = await apiFetch<ApiResponse<{ channel: any }>>(
+      `/api/payment-channels/${channelId}/close/confirm`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ txHash, organizationWalletAddress }),
+      }
+    )
+
+    if (!response.success || !response.data) {
+      throw new ApiError(
+        response.error?.message || 'Failed to confirm channel closure'
+      )
+    }
+
+    return response
   },
 }
 

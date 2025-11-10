@@ -195,17 +195,29 @@ openssl rand -base64 32
 Payment channels use native XRPL `PaymentChannelCreate` transactions.
 
 **Key Files**:
-- `frontend/src/utils/paymentChannels.ts` - Channel utilities
+- `frontend/src/utils/paymentChannels.ts` - Channel utilities (create, close)
 - `frontend/src/utils/walletTransactions.ts` - Multi-wallet transaction handler
-- `backend/routes/paymentChannels.js` - API endpoints
+- `frontend/src/services/api.ts` - API client with `paymentChannelApi` (cancel, confirm)
+- `backend/routes/paymentChannels.js` - API endpoints (create, close, confirm)
 - `backend/routes/workers.js` - Worker management API
+- `backend/database/migrations/001_create_payment_channels.sql` - Database schema
 
-**Process**:
+**Creation Process**:
 1. NGO adds workers via "Add Worker" button (optional: scan Xaman QR code)
 2. NGO creates channel via `CreatePaymentChannelModal` (selects worker from dropdown)
 3. Transaction signed by connected wallet (Xaman/Crossmark/GemWallet)
 4. Channel details stored in database with job name, worker, hourly rate
 5. Dashboard displays active channels and escrow balances
+
+**Cancellation Process**:
+1. NGO clicks "Cancel Channel" button on active channel
+2. Confirmation modal displays channel details and escrow return amount
+3. NGO confirms cancellation
+4. Backend API returns XRPL transaction details (`POST /close`)
+5. Frontend executes `PaymentChannelClaim` transaction with wallet
+6. Worker receives accumulated balance, unused escrow returns to NGO
+7. Frontend confirms closure in database (`POST /close/confirm`)
+8. Channel status updated to 'closed' with transaction hash stored
 
 See `PAYMENT_CHANNEL_TESTING.md` for detailed testing guide.
 
@@ -226,6 +238,7 @@ See `PAYMENT_CHANNEL_TESTING.md` for detailed testing guide.
 
 ### Core Application Files
 - `frontend/src/App.tsx` - Route definitions and provider nesting
+- `frontend/src/types/api.ts` - Centralized TypeScript type definitions (single source of truth)
 - `frontend/src/contexts/WalletContext.tsx` - XRPL wallet integration (600+ lines)
 - `frontend/src/contexts/AuthContext.tsx` - User authentication
 - `frontend/src/contexts/DataContext.tsx` - NGO/worker data management
@@ -235,7 +248,7 @@ See `PAYMENT_CHANNEL_TESTING.md` for detailed testing guide.
 - `backend/server.js` - Express server setup and middleware
 - `backend/database/db.js` - PostgreSQL connection pool
 - `backend/routes/workers.js` - Worker management endpoints
-- `backend/routes/organizations.js` - Organization data endpoints
+- `backend/routes/organizations.js` - Organization data endpoints (transforms to camelCase)
 - `backend/routes/xaman.js` - Xaman wallet integration endpoints
 
 ## Recent Updates & Features
@@ -252,6 +265,100 @@ See `PAYMENT_CHANNEL_TESTING.md` for detailed testing guide.
   - Worker's wallet address shown below selection in greyed box
   - Prevents manual entry errors
   - Workers must be added before creating payment channels
+
+### Payment Channel Cancellation (Added)
+- **Complete Cancel Flow**: NGOs can cancel active payment channels with automatic escrow return
+  - **Backend Endpoints**:
+    - `POST /api/payment-channels/:channelId/close` - Initiates cancellation, returns XRPL transaction details
+    - `POST /api/payment-channels/:channelId/close/confirm` - Confirms closure after XRPL transaction succeeds
+  - **Authorization**: Only channel owner (NGO) can cancel
+  - **State Validation**: Cannot cancel already-closed channels
+  - **Escrow Return**: Calculates and returns unused escrow to NGO wallet
+  - **Worker Payment**: Worker receives accumulated unpaid balance
+  - **2-Phase Commit**: Database updates only after successful XRPL transaction
+
+- **XRPL Integration**:
+  - `frontend/src/utils/paymentChannels.ts` - `closePaymentChannel()` function
+  - Builds `PaymentChannelClaim` transaction with tfClose flag
+  - Multi-wallet support: Xaman, Crossmark, GemWallet
+  - Converts XAH to drops (1 XAH = 1,000,000 drops)
+
+- **Frontend UI** (`frontend/src/pages/NgoDashboard.tsx`):
+  - Red "Cancel Channel" button on active channels
+  - Confirmation modal with channel details
+  - Shows escrow return amount before cancellation
+  - 3-step flow: API → XRPL → Confirm
+  - Loading states: "Canceling..." during processing
+  - Success/error alerts with detailed feedback
+  - Auto-refresh dashboard after completion
+
+- **Database Schema** (`backend/database/migrations/001_create_payment_channels.sql`):
+  - Complete `payment_channels` table with closure tracking
+  - `closure_tx_hash` - Transaction hash of PaymentChannelClaim
+  - `closed_at` - Timestamp when channel was closed
+  - `closure_reason` - Reason for closure (manual, timeout, claim, expired)
+
+**Security Features**:
+- Authorization check: Only channel owner can cancel
+- State validation: Cannot cancel already-closed channels
+- Input validation: Wallet address and channel ID format checks
+- Re-validation on confirm: Never trust client, verify again
+- Atomic operations: DB update only after XRPL tx succeeds
+- Escrow safety: Prevents negative returns, handles edge cases
+
+**Testing Checklist**:
+- [ ] Create payment channel with testnet XAH
+- [ ] Click "Cancel Channel" button
+- [ ] Review confirmation modal
+- [ ] Sign PaymentChannelClaim transaction
+- [ ] Verify escrow returned to NGO wallet
+- [ ] Verify worker receives accumulated balance
+- [ ] Check database: status='closed', closure_tx_hash populated
+- [ ] Test unauthorized cancel (different wallet)
+- [ ] Test already-closed channel
+- [ ] Test all 3 wallet providers
+
+### TypeScript Interface Standardization (Added - 2025-01)
+- **Centralized Type Definitions**: Created `frontend/src/types/api.ts` as single source of truth
+  - All API response interfaces now use consistent camelCase naming
+  - Comprehensive documentation for each interface
+  - Backend endpoint mappings and component usage locations documented
+  - Field-by-field descriptions with data types and constraints
+
+- **Naming Convention Standard**:
+  - **Frontend**: All TypeScript interfaces use camelCase (JavaScript/TypeScript convention)
+  - **Backend**: Database columns remain snake_case, transformed to camelCase in route handlers
+  - **Transformation Point**: Backend routes (`backend/routes/*.js`) map database results to camelCase
+  - **Examples**:
+    - Database: `employee_wallet_address` → API Response: `employeeWalletAddress`
+    - Database: `balance_update_frequency` → API Response: `balanceUpdateFrequency`
+    - Database: `job_name` → API Response: `jobName`
+
+- **Updated Files**:
+  - `frontend/src/types/api.ts` - Centralized type definitions (NEW)
+  - `frontend/src/services/api.ts` - Imports from centralized types
+  - `frontend/src/contexts/DataContext.tsx` - Uses centralized types
+  - `frontend/src/pages/NgoDashboard.tsx` - Updated property access to camelCase
+  - `frontend/src/components/CreatePaymentChannelModal.tsx` - Uses WorkerForChannel type
+  - `backend/routes/organizations.js` - Transforms worker data to camelCase
+
+- **Type Definitions Available**:
+  - `OrgStats` - Organization statistics for NGO dashboard
+  - `Worker` - Worker information for dashboard workers list
+  - `WorkerForChannel` - Worker details for payment channel creation dropdown
+  - `PaymentChannel` - Active payment channel information
+  - `Activity` - Recent activity feed entries
+  - `WorkSession` - Individual work session tracking
+  - `WorkerEarnings` - Aggregated earnings data
+  - `CancelChannelData` - Payment channel cancellation response
+  - `ConfirmChannelData` - Payment channel confirmation response
+
+- **Benefits**:
+  - Eliminates snake_case vs camelCase confusion between backend and frontend
+  - Single source of truth prevents type drift and inconsistencies
+  - Self-documenting code with inline comments showing backend endpoints
+  - Better IDE autocomplete and type checking
+  - Easier onboarding for new developers
 
 ### API Response Structure (Fixed)
 - All organization endpoints now return data directly in `response.data`

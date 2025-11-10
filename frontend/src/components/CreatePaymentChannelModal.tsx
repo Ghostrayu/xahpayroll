@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react'
 import { useWallet } from '../contexts/WalletContext'
-import { 
-  preparePaymentChannelTransaction, 
-  xahToDrops, 
+import {
+  preparePaymentChannelTransaction,
+  xahToDrops,
   toRippleTime,
   generateChannelId
 } from '../utils/paymentChannels'
 import { submitTransactionWithWallet } from '../utils/walletTransactions'
+import type { WorkerForChannel } from '../types/api'
 
 interface CreatePaymentChannelModalProps {
   isOpen: boolean
@@ -29,15 +30,6 @@ interface PaymentChannelConfig {
   settleDelay: string
   paymentStructure: 'accumulating' | 'fixed'
   autoRelease: boolean
-}
-
-interface Worker {
-  id: number
-  name: string
-  walletAddress: string
-  hourlyRate: number
-  status: string
-  createdAt: string
 }
 
 const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ isOpen, onClose, onSuccess }) => {
@@ -66,7 +58,7 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
   const [priceTimestamp, setPriceTimestamp] = useState<Date | null>(null)
 
   // Workers state
-  const [workers, setWorkers] = useState<Worker[]>([])
+  const [workers, setWorkers] = useState<WorkerForChannel[]>([])
   const [workersLoading, setWorkersLoading] = useState(false)
   const [selectedWorkerId, setSelectedWorkerId] = useState<string>('')
 

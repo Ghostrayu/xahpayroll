@@ -141,29 +141,30 @@ router.get('/workers/:walletAddress', async (req, res) => {
 
     // Get active workers with their current work session info
     const workersResult = await query(
-      `SELECT 
+      `SELECT
         e.id,
         e.full_name as name,
         e.employee_wallet_address,
         e.hourly_rate as rate,
         e.employment_status as status,
         COALESCE(
-          EXTRACT(EPOCH FROM (NOW() - ws.clock_in)) / 3600, 
+          EXTRACT(EPOCH FROM (NOW() - ws.clock_in)) / 3600,
           0
         ) as hours_today
        FROM employees e
        LEFT JOIN work_sessions ws ON e.id = ws.employee_id AND ws.clock_out IS NULL AND ws.session_status = 'active'
-       WHERE e.organization_id = $1 
+       WHERE e.organization_id = $1
        AND e.employment_status = 'active'
        ORDER BY ws.clock_in DESC NULLS LAST
        LIMIT 10`,
       [organization.id]
     )
 
+    // Transform to camelCase for frontend consistency
     const workers = workersResult.rows.map(w => ({
       id: w.id,
-      name: w.name,  // From SQL: full_name as name
-      employee_wallet_address: w.employee_wallet_address,
+      name: w.name,
+      employeeWalletAddress: w.employee_wallet_address,
       rate: w.rate ? parseFloat(w.rate) : 0,
       hoursToday: parseFloat(w.hours_today).toFixed(1),
       status: w.hours_today > 0 ? 'Working' : 'Idle'
