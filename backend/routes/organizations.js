@@ -164,7 +164,7 @@ router.get('/workers/:walletAddress', async (req, res) => {
     const workers = workersResult.rows.map(w => ({
       id: w.id,
       name: w.name,
-      employeeWalletAddress: w.employee_wallet_address,
+      employeeWalletAddress: String(w.employee_wallet_address || '').trim(),
       rate: w.rate ? parseFloat(w.rate) : 0,
       hoursToday: parseFloat(w.hours_today).toFixed(1),
       status: w.hours_today > 0 ? 'Working' : 'Idle'

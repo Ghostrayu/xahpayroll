@@ -417,19 +417,19 @@ const NgoDashboard: React.FC = () => {
                 {workers.length > 0 ? (
                   workers.map((worker, index) => (
                     <div key={index} className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                      <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
-                        <span className="text-white font-bold text-sm">
-                          {worker.name.split(' ').map((n: string) => n[0]).join('')}
-                        </span>
+                        <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-white font-bold text-sm">
+                            {worker.name.split(' ').map((n: string) => n[0]).join('')}
+                          </span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-gray-900 text-sm uppercase tracking-wide">{worker.name}</p>
+                          <code className="text-xs font-mono text-gray-600 break-all">{worker.employeeWalletAddress}</code>
+                          {(worker.rate ?? 0) > 0 && (
+                            <p className="text-xs text-green-600 font-bold uppercase tracking-wide mt-1">{worker.rate} XAH/hr</p>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-gray-900 text-sm uppercase tracking-wide">{worker.name}</p>
-                        <code className="text-xs font-mono text-gray-600 break-all">{worker.employeeWalletAddress}</code>
-                        {worker.rate && (
-                          <p className="text-xs text-green-600 font-bold uppercase tracking-wide mt-1">{worker.rate} XAH/hr</p>
-                        )}
-                      </div>
-                    </div>
                   ))
                 ) : (
                   <div className="text-center py-8">

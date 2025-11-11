@@ -28,20 +28,20 @@ const AddWorkerModal: React.FC<AddWorkerModalProps> = ({ isOpen, onClose, onSucc
 
     // Validate inputs
     if (!workerName.trim()) {
-      setError('Worker name is required')
+      setError('WORKER NAME IS REQUIRED')
       setIsSubmitting(false)
       return
     }
 
     if (!ledgerAddress.trim()) {
-      setError('Ledger address is required')
+      setError('LEDGER ADDRESS IS REQUIRED')
       setIsSubmitting(false)
       return
     }
 
     // Basic XRPL address validation (starts with 'r' and is 25-35 characters)
     if (!ledgerAddress.match(/^r[1-9A-HJ-NP-Za-km-z]{24,34}$/)) {
-      setError('Invalid XRPL ledger address format')
+      setError('INVALID XRPL LEDGER ADDRESS FORMAT')
       setIsSubmitting(false)
       return
     }
@@ -50,7 +50,7 @@ const AddWorkerModal: React.FC<AddWorkerModalProps> = ({ isOpen, onClose, onSucc
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
 
       if (!ngoWalletAddress) {
-        setError('Please connect your wallet first')
+        setError('PLEASE CONNECT YOUR WALLET FIRST')
         setIsSubmitting(false)
         return
       }
@@ -135,7 +135,7 @@ const AddWorkerModal: React.FC<AddWorkerModalProps> = ({ isOpen, onClose, onSucc
       setXamanPayloadUuid(data.uuid)
     } catch (err: any) {
       console.error('Error creating Xaman scan request:', err)
-      setScanError(err.message || 'Failed to create scan request. Please try again.')
+      setScanError(err.message || 'FAILED TO CREATE SCAN REQUEST. PLEASE TRY AGAIN.')
       setIsScanning(false)
     }
   }
@@ -189,7 +189,7 @@ const AddWorkerModal: React.FC<AddWorkerModalProps> = ({ isOpen, onClose, onSucc
           }
         } else if (data.expired || data.resolved) {
           // Payload expired or was rejected
-          setScanError('Scan request expired or was rejected. Please try again.')
+          setScanError('SCAN REQUEST EXPIRED OR WAS REJECTED. PLEASE TRY AGAIN.')
           setIsScanning(false)
           setXamanQrUrl(null)
           setXamanPayloadUuid(null)
@@ -200,7 +200,7 @@ const AddWorkerModal: React.FC<AddWorkerModalProps> = ({ isOpen, onClose, onSucc
         }
       } catch (err: any) {
         console.error('Error polling payload status:', err)
-        setScanError(err.message || 'Failed to check scan status')
+        setScanError(err.message || 'FAILED TO CHECK SCAN STATUS')
         setIsScanning(false)
         setXamanQrUrl(null)
         setXamanPayloadUuid(null)
@@ -312,44 +312,9 @@ const AddWorkerModal: React.FC<AddWorkerModalProps> = ({ isOpen, onClose, onSucc
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
                     </svg>
-                    {isScanning ? 'Scanning...' : 'Scan with Xaman'}
+                    Scan with Xaman
                   </button>
                 </div>
-
-                {/* QR Code Display */}
-                {isScanning && xamanQrUrl && (
-                  <div className="mb-4 p-4 bg-gradient-to-br from-blue-50 to-purple-50 border-2 border-blue-300 rounded-lg">
-                    <div className="text-center">
-                      <p className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-3">
-                        Worker: Scan QR Code with Xaman
-                      </p>
-                      <div className="bg-white p-4 rounded-lg inline-block shadow-lg">
-                        <img
-                          src={xamanQrUrl}
-                          alt="Xaman QR Code"
-                          className="w-48 h-48 mx-auto"
-                        />
-                      </div>
-                      <p className="text-xs text-gray-600 uppercase tracking-wide mt-3">
-                        Waiting for worker to sign in...
-                      </p>
-                      <div className="flex justify-center mt-3">
-                        <div className="flex gap-1">
-                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
-                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleCancelScan}
-                        className="mt-4 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-lg text-xs uppercase tracking-wide transition-colors"
-                      >
-                        Cancel Scan
-                      </button>
-                    </div>
-                  </div>
-                )}
 
                 {/* Scan Error */}
                 {scanError && (
@@ -422,6 +387,96 @@ const AddWorkerModal: React.FC<AddWorkerModalProps> = ({ isOpen, onClose, onSucc
           )}
         </div>
       </div>
+
+      {/* Separate QR Code Modal Overlay */}
+      {isScanning && xamanQrUrl && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 border-4 border-purple-500/60">
+            {/* QR Modal Header */}
+            <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-5 rounded-t-xl">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-xl font-extrabold uppercase tracking-tight">
+                    📱 Scan with Xaman
+                  </h3>
+                  <p className="text-xs mt-1 text-white/90 uppercase tracking-wide">
+                    Worker: Scan this QR code
+                  </p>
+                </div>
+                <button
+                  onClick={handleCancelScan}
+                  className="text-white hover:text-red-200 transition-colors"
+                  title="Close QR Scanner"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* QR Code Content */}
+            <div className="p-6">
+              <div className="text-center">
+                {/* QR Code Image */}
+                <div className="bg-gradient-to-br from-blue-50 to-purple-50 p-6 rounded-xl inline-block shadow-lg border-2 border-blue-200">
+                  <img
+                    src={xamanQrUrl}
+                    alt="Xaman QR Code"
+                    className="w-64 h-64 mx-auto"
+                  />
+                </div>
+
+                {/* Instructions */}
+                <div className="mt-6 space-y-3">
+                  <p className="text-sm font-bold text-gray-900 uppercase tracking-wide">
+                    Instructions:
+                  </p>
+                  <ol className="text-xs text-gray-700 space-y-2 text-left max-w-xs mx-auto">
+                    <li className="flex items-start gap-2">
+                      <span className="font-bold text-blue-600">1.</span>
+                      <span>OPEN XAMAN WALLET APP ON YOUR PHONE</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="font-bold text-blue-600">2.</span>
+                      <span>TAP THE SCAN ICON TO OPEN QR SCANNER</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="font-bold text-blue-600">3.</span>
+                      <span>SCAN THIS QR CODE TO SIGN IN</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="font-bold text-blue-600">4.</span>
+                      <span>APPROVE THE SIGN-IN REQUEST IN XAMAN</span>
+                    </li>
+                  </ol>
+                </div>
+
+                {/* Loading Animation */}
+                <div className="flex justify-center mt-6">
+                  <div className="flex gap-2">
+                    <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                    <div className="w-3 h-3 bg-purple-500 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                    <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">
+                  Waiting for worker to scan...
+                </p>
+
+                {/* Cancel Button */}
+                <button
+                  type="button"
+                  onClick={handleCancelScan}
+                  className="mt-6 px-6 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-lg text-sm uppercase tracking-wide transition-colors shadow-md"
+                >
+                  Cancel Scan
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
