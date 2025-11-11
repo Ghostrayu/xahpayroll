@@ -126,6 +126,85 @@ router.post('/cancel/:uuid', async (req, res) => {
 })
 
 /**
+ * POST /api/xaman/create-payload
+ * Create a generic Xaman payload for any transaction type
+ * This endpoint accepts any XRPL transaction (PaymentChannelCreate, Payment, etc.)
+ */
+router.post('/create-payload', async (req, res) => {
+  try {
+    const { txjson, options } = req.body
+
+    // Validate required fields
+    if (!txjson || !txjson.TransactionType) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Missing required field: txjson.TransactionType'
+        }
+      })
+    }
+
+    console.log('Creating Xaman payload for transaction:', txjson.TransactionType)
+
+    // Determine the correct Xahau network based on environment
+    // Xaman force_network values: MAINNET (XRPL), TESTNET (XRPL), XAHAU (Xahau Mainnet), XAHAUTESTNET (Xahau Testnet)
+    const network = process.env.XRPL_NETWORK || 'testnet'
+    const forceNetwork = network === 'mainnet' ? 'XAHAU' : 'XAHAUTESTNET'
+
+    console.log(`Enforcing Xahau network: ${forceNetwork} (based on XRPL_NETWORK=${network})`)
+
+    // Merge user-provided options with network enforcement
+    const defaultOptions = {
+      submit: true,
+      force_network: forceNetwork, // Force Xaman to switch to Xahau network
+      return_url: {
+        web: process.env.FRONTEND_URL || 'http://localhost:3000'
+      }
+    }
+
+    // Create payload with provided transaction
+    const payload = await xumm.payload.create({
+      txjson,
+      options: options ? { ...defaultOptions, ...options } : defaultOptions,
+      custom_meta: {
+        instruction: 'Please ensure you are connected to Xahau network in Xaman. You may be prompted to switch networks.'
+      }
+    })
+
+    // Check if payload creation was successful
+    if (!payload || !payload.uuid) {
+      console.error('Xumm SDK returned null or invalid payload:', payload)
+      return res.status(500).json({
+        success: false,
+        error: {
+          message: 'Xaman API failed to create payload. Please check API credentials and network configuration.',
+          details: payload
+        }
+      })
+    }
+
+    console.log('Xaman payload created:', payload.uuid)
+
+    res.json({
+      success: true,
+      uuid: payload.uuid,
+      next: payload.next,
+      refs: payload.refs,
+      pushed: payload.pushed
+    })
+  } catch (error) {
+    console.error('Error creating Xaman payload:', error)
+    res.status(500).json({
+      success: false,
+      error: {
+        message: error.message || 'Failed to create Xaman payload',
+        details: error.response?.data || null
+      }
+    })
+  }
+})
+
+/**
  * POST /api/xaman/create-payment
  * Create a payment transaction payload
  */

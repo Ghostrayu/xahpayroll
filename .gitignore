@@ -105,6 +105,9 @@ $RECYCLE.BIN/
 .vscode/
 *.code-workspace
 
+# Serena AI Assistant (development context)
+.serena/
+
 # IntelliJ IDEA
 .idea/
 *.iml

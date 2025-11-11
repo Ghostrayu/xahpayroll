@@ -1,4 +1,4 @@
-import { Client, Wallet, Payment, PaymentChannelCreate, PaymentChannelClaim } from 'xrpl'
+import { Client, PaymentChannelCreate, PaymentChannelClaim } from 'xrpl'
 import type { WalletProvider } from '../contexts/WalletContext'
 import { submitTransactionWithWallet } from './walletTransactions'
 
@@ -51,14 +51,19 @@ export const dropsToXah = (drops: number | string): number => {
  */
 export const preparePaymentChannelTransaction = (
   params: PaymentChannelParams
-): PaymentChannelCreate => {
-  const tx: PaymentChannelCreate = {
+): Omit<PaymentChannelCreate, 'PublicKey'> & { PublicKey?: string } => {
+  const tx: any = {
     TransactionType: 'PaymentChannelCreate',
     Account: params.sourceAddress,
     Destination: params.destinationAddress,
     Amount: params.amount, // Should be in drops
     SettleDelay: params.settleDelay,
-    PublicKey: params.publicKey || '', // Will be filled by wallet
+  }
+
+  // PublicKey is required by XRPL but will be auto-filled by the wallet during signing
+  // Wallets like Xaman, Crossmark, and GemWallet automatically add the user's public key
+  if (params.publicKey) {
+    tx.PublicKey = params.publicKey
   }
 
   if (params.cancelAfter) {
@@ -69,15 +74,69 @@ export const preparePaymentChannelTransaction = (
 }
 
 /**
- * Generate a unique channel ID from transaction hash and account
- * This is a simplified version - the actual channel ID comes from the ledger
+ * Get the actual Payment Channel ID from a validated transaction
+ * The channel ID is found in the transaction metadata under CreatedNode > LedgerIndex
+ *
+ * @param txHash - Transaction hash from the PaymentChannelCreate transaction
+ * @param account - Source account address
+ * @param network - Network (testnet or mainnet)
+ * @returns The actual 64-character hex channel ID from the ledger
  */
-export const generateChannelId = (txHash: string, account: string): string => {
-  // In production, you'd query the ledger for the actual channel ID
-  // For now, we'll use a combination of timestamp and hash
+export const getChannelIdFromTransaction = async (
+  txHash: string,
+  account: string,
+  network: string
+): Promise<string> => {
+  const client = new Client(getNetworkUrl(network))
+
+  try {
+    await client.connect()
+
+    // Query the validated transaction by hash
+    const txResponse = await client.request({
+      command: 'tx',
+      transaction: txHash,
+      binary: false
+    })
+
+    await client.disconnect()
+
+    // Look for the CreatedNode with LedgerEntryType: "PayChannel" in the metadata
+    if (txResponse.result.meta && typeof txResponse.result.meta === 'object') {
+      const meta = txResponse.result.meta as any
+
+      if (meta.AffectedNodes) {
+        for (const node of meta.AffectedNodes) {
+          if (node.CreatedNode?.LedgerEntryType === 'PayChannel') {
+            // The LedgerIndex is the actual Channel ID
+            const channelId = node.CreatedNode.LedgerIndex
+            console.log('✅ Found actual channel ID from ledger:', channelId)
+            return channelId
+          }
+        }
+      }
+    }
+
+    // Fallback: Generate temporary ID if we can't find it (shouldn't happen)
+    console.warn('⚠️ Could not find channel ID in transaction metadata, using fallback')
+    return generateFallbackChannelId(txHash, account)
+  } catch (error) {
+    console.error('Error querying channel ID from ledger:', error)
+    await client.disconnect().catch(() => {})
+    // Fallback to generated ID
+    return generateFallbackChannelId(txHash, account)
+  }
+}
+
+/**
+ * Fallback: Generate a temporary channel ID
+ * Only used if ledger query fails (should not happen in normal operation)
+ */
+const generateFallbackChannelId = (txHash: string, account: string): string => {
   const timestamp = Date.now()
   const shortHash = txHash.substring(0, 8)
-  return `CH-${timestamp}-${shortHash}`
+  const shortAccount = account.substring(0, 6)
+  return `TEMP-${shortAccount}-${timestamp}-${shortHash}`
 }
 
 /**

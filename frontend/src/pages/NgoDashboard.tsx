@@ -475,7 +475,7 @@ const NgoDashboard: React.FC = () => {
               <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-2">
                 Cancel Payment Channel
               </h3>
-              <p className="text-sm text-gray-700">
+              <p className="text-sm text-gray-700 uppercase">
                 Are you sure you want to cancel the payment channel for{' '}
                 <strong className="text-gray-900">{selectedChannel.worker}</strong>?
               </p>
@@ -483,7 +483,7 @@ const NgoDashboard: React.FC = () => {
 
             {/* Channel Details */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-              <div className="space-y-2 text-sm">
+              <div className="space-y-2 text-sm uppercase">
                 <div className="flex justify-between">
                   <span className="text-gray-600 uppercase tracking-wide font-semibold">Job:</span>
                   <span className="text-gray-900 font-bold">{selectedChannel.jobName}</span>
@@ -507,11 +507,11 @@ const NgoDashboard: React.FC = () => {
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
               <div className="flex gap-2">
                 <div className="text-yellow-600 text-xl flex-shrink-0">⚠️</div>
-                <div className="space-y-2 text-xs text-yellow-800">
+                <div className="space-y-2 text-xs text-yellow-800 uppercase">
                   <p className="font-bold uppercase tracking-wide">Important:</p>
-                  <p>• Unused escrow will be returned to your wallet</p>
-                  <p>• Worker will receive accumulated balance: <strong>{selectedChannel.balance?.toLocaleString() || '0'} XAH</strong></p>
-                  <p>• This action cannot be undone</p>
+                  <p>• UNUSED ESCROW WILL BE RETURNED TO YOUR WALLET</p>
+                  <p>• WORKER WILL RECEIVE ACCUMULATED BALANCE: <strong>{selectedChannel.balance?.toLocaleString() || '0'} XAH</strong></p>
+                  <p>• THIS ACTION CANNOT BE UNDONE</p>
                 </div>
               </div>
             </div>

@@ -4,7 +4,7 @@ import {
   preparePaymentChannelTransaction,
   xahToDrops,
   toRippleTime,
-  generateChannelId
+  getChannelIdFromTransaction
 } from '../utils/paymentChannels'
 import { submitTransactionWithWallet } from '../utils/walletTransactions'
 import type { WorkerForChannel } from '../types/api'
@@ -42,7 +42,7 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
     hourlyRate: '15.00',
     maxHoursPerDay: '8',
     startDate: new Date().toISOString().split('T')[0],
-    endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    endDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 2 days default
     totalFundingAmount: '',
     paymentFrequency: 'hourly',
     settleDelay: '24',
@@ -290,8 +290,14 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
 
       console.log('Transaction result:', txResult)
 
-      // Step 3: Generate channel ID (in production, this would come from the ledger)
-      const channelId = generateChannelId(txResult.hash || '', walletAddress)
+      // Step 3: Get the actual channel ID from the ledger transaction
+      console.log('Querying ledger for actual channel ID...')
+      const channelId = await getChannelIdFromTransaction(
+        txResult.hash || '',
+        walletAddress,
+        network
+      )
+      console.log('Channel ID retrieved:', channelId)
 
       // Step 4: Save payment channel to database
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
@@ -577,7 +583,7 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
             <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-200 rounded-lg p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-bold text-gray-700 uppercase mb-1">Job Time</p>
+                  <p className="text-xs font-bold text-gray-700 uppercase mb-1">Job Duration</p>
                   <p className="text-2xl font-extrabold text-purple-700 uppercase">
                     {calculateJobTime().text}
                   </p>
