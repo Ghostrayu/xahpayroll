@@ -281,8 +281,14 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
 
       console.log('Prepared transaction:', paymentChannelTx)
 
+      // Build custom description for Xaman sign request
+      const jobTime = calculateJobTime()
+      const xamanDescription = `CREATE PAYMENT CHANNEL "${config.jobName.toUpperCase() || 'UNNAMED JOB'}" FOR "${config.workerName.toUpperCase()}"; ${fundingAmountXah} XAH PAID OVER ${jobTime.text.toUpperCase()}`
+
+      console.log('Xaman description:', xamanDescription)
+
       // Step 2: Submit transaction using the connected wallet (GemWallet, Crossmark, Xaman, or Manual)
-      const txResult = await submitTransactionWithWallet(paymentChannelTx, provider, network)
+      const txResult = await submitTransactionWithWallet(paymentChannelTx, provider, network, xamanDescription)
 
       if (!txResult.success) {
         throw new Error(txResult.error || 'Transaction failed')
@@ -590,6 +596,9 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
                   <p className="text-xs text-gray-600 mt-1 uppercase">
                     {calculateJobTime().days} total working days
                   </p>
+                  <p className="text-xs text-purple-600 mt-2 uppercase">
+                    ℹ️ Includes both start and end dates
+                  </p>
                 </div>
                 <div className="text-5xl">⏱️</div>
               </div>
@@ -651,7 +660,7 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
                 <div className="flex-1">
                   <p className="text-xs font-bold text-purple-900 uppercase mb-1">Auto-Expiration</p>
                   <p className="text-xs text-purple-700 uppercase">
-                    Channel expires on <span className="font-bold">{new Date(config.endDate).toLocaleDateString()}</span>
+                    Channel expires at end of day on <span className="font-bold">{new Date(config.endDate).toLocaleDateString()}</span>
                   </p>
                   <p className="text-xs text-purple-600 mt-1 uppercase">
                     ✓ Unclaimed funds automatically return to your wallet

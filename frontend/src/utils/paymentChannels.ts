@@ -93,10 +93,10 @@ export const getChannelIdFromTransaction = async (
     await client.connect()
 
     // Query the validated transaction by hash
+    // Note: Xahau does not support 'binary: false' parameter, so we omit it
     const txResponse = await client.request({
       command: 'tx',
-      transaction: txHash,
-      binary: false
+      transaction: txHash
     })
 
     await client.disconnect()

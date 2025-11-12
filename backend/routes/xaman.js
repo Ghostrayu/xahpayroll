@@ -132,7 +132,7 @@ router.post('/cancel/:uuid', async (req, res) => {
  */
 router.post('/create-payload', async (req, res) => {
   try {
-    const { txjson, options } = req.body
+    const { txjson, options, custom_meta } = req.body
 
     // Validate required fields
     if (!txjson || !txjson.TransactionType) {
@@ -162,13 +162,18 @@ router.post('/create-payload', async (req, res) => {
       }
     }
 
+    // Use custom_meta from request if provided, otherwise use default instruction
+    const customMeta = custom_meta || {
+      instruction: 'Please ensure you are connected to Xahau network in Xaman. You may be prompted to switch networks.'
+    }
+
+    console.log('Custom instruction:', customMeta.instruction)
+
     // Create payload with provided transaction
     const payload = await xumm.payload.create({
       txjson,
       options: options ? { ...defaultOptions, ...options } : defaultOptions,
-      custom_meta: {
-        instruction: 'Please ensure you are connected to Xahau network in Xaman. You may be prompted to switch networks.'
-      }
+      custom_meta: customMeta
     })
 
     // Check if payload creation was successful

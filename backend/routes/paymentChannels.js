@@ -30,20 +30,54 @@ router.post('/create', async (req, res) => {
       })
     }
 
-    // Get organization
-    const orgResult = await query(
+    // Get or create organization
+    let orgResult = await query(
       'SELECT * FROM organizations WHERE escrow_wallet_address = $1',
       [organizationWalletAddress]
     )
 
+    let organization
     if (orgResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: { message: 'Organization not found' }
-      })
-    }
+      // Organization doesn't exist - create it automatically from user profile
+      console.log('[AUTO_CREATE_ORG] Organization not found, checking user profile...')
 
-    const organization = orgResult.rows[0]
+      const userResult = await query(
+        'SELECT * FROM users WHERE wallet_address = $1',
+        [organizationWalletAddress]
+      )
+
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: { message: 'User profile not found. Please complete profile setup first.' }
+        })
+      }
+
+      const user = userResult.rows[0]
+
+      // Create organization from user profile
+      const newOrgResult = await query(
+        `INSERT INTO organizations (
+          organization_name,
+          escrow_wallet_address,
+          contact_email,
+          contact_phone,
+          created_at
+        ) VALUES ($1, $2, $3, $4, NOW())
+        RETURNING *`,
+        [
+          user.organization_name || user.display_name,
+          user.wallet_address,
+          user.email,
+          user.phone_number
+        ]
+      )
+
+      organization = newOrgResult.rows[0]
+      console.log('[AUTO_CREATE_ORG_SUCCESS] Created organization:', organization.id)
+    } else {
+      organization = orgResult.rows[0]
+    }
 
     // Check if employee exists, if not create them
     let employeeResult = await query(

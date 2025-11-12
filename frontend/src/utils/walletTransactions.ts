@@ -14,7 +14,8 @@ export interface TransactionResult {
 export const submitTransactionWithWallet = async (
   transaction: any,
   provider: WalletProvider | null,
-  network: string
+  network: string,
+  customDescription?: string
 ): Promise<TransactionResult> => {
   if (!provider) {
     return { success: false, error: 'No wallet provider connected' }
@@ -24,24 +25,24 @@ export const submitTransactionWithWallet = async (
     switch (provider) {
       case 'gemwallet':
         return await submitWithGemWallet(transaction)
-      
+
       case 'crossmark':
         return await submitWithCrossmark(transaction)
-      
+
       case 'xaman':
-        return await submitWithXaman(transaction, network)
-      
+        return await submitWithXaman(transaction, network, customDescription)
+
       case 'manual':
         return await submitWithManual(transaction, network)
-      
+
       default:
         return { success: false, error: `Unsupported wallet provider: ${provider}` }
     }
   } catch (error: any) {
     console.error('Transaction submission error:', error)
-    return { 
-      success: false, 
-      error: error.message || 'Failed to submit transaction' 
+    return {
+      success: false,
+      error: error.message || 'Failed to submit transaction'
     }
   }
 }
@@ -98,24 +99,34 @@ async function submitWithCrossmark(transaction: any): Promise<TransactionResult>
 /**
  * Submit transaction using Xaman (formerly Xumm)
  */
-async function submitWithXaman(transaction: any, _network: string): Promise<TransactionResult> {
+async function submitWithXaman(transaction: any, _network: string, customDescription?: string): Promise<TransactionResult> {
   try {
     // Xaman uses a different flow - create a payload and wait for signing
     const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
-    
+
+    // Build request body with optional custom description
+    const requestBody: any = {
+      txjson: transaction,
+      options: {
+        submit: true,
+        return_url: {
+          web: window.location.href
+        }
+      }
+    }
+
+    // Add custom_meta if description is provided
+    if (customDescription) {
+      requestBody.custom_meta = {
+        instruction: customDescription
+      }
+    }
+
     // Send transaction to backend to create Xaman payload
     const response = await fetch(`${backendUrl}/api/xaman/create-payload`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        txjson: transaction,
-        options: {
-          submit: true,
-          return_url: {
-            web: window.location.href
-          }
-        }
-      })
+      body: JSON.stringify(requestBody)
     })
 
     if (!response.ok) {
