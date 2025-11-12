@@ -15,7 +15,7 @@ router.post('/profile', async (req, res) => {
       return res.status(400).json({
         success: false,
         error: {
-          message: 'Missing required fields: walletAddress, displayName, userType'
+          message: 'MISSING REQUIRED FIELDS: WALLET ADDRESS, DISPLAY NAME, USER TYPE'
         }
       })
     }
@@ -25,7 +25,7 @@ router.post('/profile', async (req, res) => {
       return res.status(400).json({
         success: false,
         error: {
-          message: 'Invalid userType. Must be: employee, ngo, or employer'
+          message: 'INVALID USER TYPE. MUST BE: EMPLOYEE, NGO, OR EMPLOYER'
         }
       })
     }
@@ -35,7 +35,7 @@ router.post('/profile', async (req, res) => {
       return res.status(400).json({
         success: false,
         error: {
-          message: 'Organization name is required for NGO/Employer accounts'
+          message: 'ORGANIZATION NAME IS REQUIRED FOR NGO/EMPLOYER ACCOUNTS'
         }
       })
     }
@@ -45,7 +45,7 @@ router.post('/profile', async (req, res) => {
       return res.status(400).json({
         success: false,
         error: {
-          message: 'Invalid email format'
+          message: 'INVALID EMAIL FORMAT'
         }
       })
     }
@@ -113,10 +113,36 @@ router.post('/profile', async (req, res) => {
          RETURNING *`,
         [walletAddress, displayName, organizationName || null, email || null, phoneNumber || null, userType]
       )
-      
+
       const userProfile = insertResult.rows[0]
       console.log('Profile created for wallet:', walletAddress)
-      
+
+      // CRITICAL: Auto-create organization for NGO/Employer users
+      // This establishes the 1:1 mapping: users.wallet_address ↔ organizations.escrow_wallet_address
+      if (userType === 'ngo' || userType === 'employer') {
+        try {
+          await query(
+            `INSERT INTO organizations (
+              organization_name,
+              escrow_wallet_address,
+              created_at
+            ) VALUES ($1, $2, NOW())`,
+            [organizationName, walletAddress]
+          )
+          console.log('[ORG_AUTO_CREATE]', {
+            message: 'Organization created during user signup',
+            walletAddress,
+            mapping: 'escrow_wallet_address = wallet_address (1:1 mapping established)'
+          })
+        } catch (orgError) {
+          // If organization already exists, that's okay (might be duplicate signup attempt)
+          if (orgError.code !== '23505') { // 23505 = unique violation
+            throw orgError
+          }
+          console.log('[ORG_EXISTS]', { walletAddress, status: 'Organization already exists' })
+        }
+      }
+
       res.json({
         success: true,
         data: {
@@ -139,7 +165,7 @@ router.post('/profile', async (req, res) => {
     res.status(500).json({
       success: false,
       error: {
-        message: error.message || 'Failed to save user profile'
+        message: error.message || 'FAILED TO SAVE USER PROFILE'
       }
     })
   }
@@ -157,7 +183,7 @@ router.get('/profile/:walletAddress', async (req, res) => {
       return res.status(400).json({
         success: false,
         error: {
-          message: 'Wallet address is required'
+          message: 'WALLET ADDRESS IS REQUIRED'
         }
       })
     }
@@ -171,7 +197,7 @@ router.get('/profile/:walletAddress', async (req, res) => {
       return res.status(404).json({
         success: false,
         error: {
-          message: 'User profile not found'
+          message: 'USER PROFILE NOT FOUND'
         }
       })
     }
@@ -198,7 +224,7 @@ router.get('/profile/:walletAddress', async (req, res) => {
     res.status(500).json({
       success: false,
       error: {
-        message: error.message || 'Failed to fetch user profile'
+        message: error.message || 'FAILED TO FETCH USER PROFILE'
       }
     })
   }
@@ -235,7 +261,7 @@ router.get('/list', async (req, res) => {
     res.status(500).json({
       success: false,
       error: {
-        message: error.message || 'Failed to list users'
+        message: error.message || 'FAILED TO LIST USERS'
       }
     })
   }

@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useWallet, WalletProvider } from '../contexts/WalletContext'
 import { useAuth, UserType } from '../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
-import ProfileSetupModal, { ProfileData } from './ProfileSetupModal'
+import MultiStepSignupModal from './MultiStepSignupModal'
 import crossmarkLogo from '../assets/images/primary_128x128.png'
 import xamanLogo from '../assets/images/App icon 512px.png'
 import { isInstalled as gemWalletIsInstalled } from '@gemwallet/api'
@@ -158,24 +158,47 @@ const WalletSelectionModal: React.FC<WalletSelectionModalProps> = ({ isOpen, onC
     navigate('/dashboard')
   }
 
-  const handleProfileComplete = (profileData: ProfileData) => {
-    // Update profile in auth context
-    updateProfile({
-      displayName: profileData.displayName,
-      organizationName: profileData.organizationName,
-      email: profileData.email,
-      phoneNumber: profileData.phoneNumber
-    })
-    
-    // Log in the user with their display name
-    login(profileData.displayName, userType, walletAddress)
-    
-    // Close modals
+  const handleProfileComplete = async () => {
+    // After signup completes, fetch the profile from database
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
+
+    try {
+      const profileResponse = await fetch(`${backendUrl}/api/users/profile/${walletAddress}`)
+
+      if (profileResponse.ok) {
+        const profileData = await profileResponse.json()
+        const profile = profileData.data.profile
+
+        // Update profile in auth context
+        updateProfile({
+          displayName: profile.displayName,
+          organizationName: profile.organizationName,
+          email: profile.email,
+          phoneNumber: profile.phoneNumber
+        })
+
+        // Log in the user
+        login(profile.displayName, profile.userType, walletAddress)
+
+        // Close modals
+        setShowProfileSetup(false)
+        onClose()
+
+        // Navigate to unified dashboard route
+        navigate('/dashboard')
+      } else {
+        throw new Error('FAILED TO FETCH PROFILE AFTER SIGNUP')
+      }
+    } catch (error: any) {
+      console.error('Error fetching profile after signup:', error)
+      setConnectionError(error.message || 'SIGNUP COMPLETED BUT FAILED TO LOAD PROFILE')
+      setShowProfileSetup(false)
+    }
+  }
+
+  const handleSignupError = (error: string) => {
+    setConnectionError(error)
     setShowProfileSetup(false)
-    onClose()
-    
-    // Navigate to unified dashboard route
-    navigate('/dashboard')
   }
 
   const handleClose = () => {
@@ -346,13 +369,13 @@ const WalletSelectionModal: React.FC<WalletSelectionModalProps> = ({ isOpen, onC
         </div>
       </div>
 
-      {/* Profile Setup Modal */}
+      {/* Multi-Step Signup Modal */}
       {showProfileSetup && (
-        <ProfileSetupModal
+        <MultiStepSignupModal
           isOpen={showProfileSetup}
-          onComplete={handleProfileComplete}
-          userType={userType}
           walletAddress={walletAddress}
+          onComplete={handleProfileComplete}
+          onError={handleSignupError}
         />
       )}
 

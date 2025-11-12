@@ -170,3 +170,50 @@ export interface CancelChannelData {
 export interface ConfirmChannelData {
   channel: PaymentChannel          // Updated payment channel with status='closed'
 }
+
+/**
+ * Organization Data (Simplified Schema)
+ * Full organization record from database
+ *
+ * Backend endpoint: GET /api/organizations/:walletAddress, POST /api/organizations
+ * Component usage: OrganizationSetupStep.tsx, MultiStepSignupModal.tsx
+ *
+ * CRITICAL: escrowWalletAddress MUST match users.wallet_address (1:1 mapping)
+ * This mapping is essential for payment channel creation
+ */
+export interface OrganizationData {
+  id: number                       // Database organizations ID
+  organizationName: string         // Organization display name (required)
+  escrowWalletAddress: string      // MUST match user's wallet_address (required)
+  website?: string                 // Organization website URL (optional)
+  description?: string             // Mission statement/description (optional, max 2000 chars)
+  createdAt: string                // ISO 8601 timestamp of creation
+  updatedAt?: string               // ISO 8601 timestamp of last update
+}
+
+/**
+ * Organization Creation Request
+ * Used during signup (step 2 for NGO/Employer)
+ *
+ * Backend endpoint: POST /api/organizations
+ * Component usage: OrganizationSetupStep.tsx
+ */
+export interface OrganizationCreateRequest {
+  organizationName: string         // Organization name (required)
+  escrowWalletAddress: string      // MUST match logged-in user's wallet address (required)
+  website?: string                 // Website URL (optional)
+  description?: string             // Mission statement (optional, max 2000 chars)
+}
+
+/**
+ * Organization Update Request
+ * Used for profile editing (Phase 6 - future feature)
+ *
+ * Backend endpoint: PUT /api/organizations/:walletAddress
+ * Component usage: Future organization profile editing page
+ */
+export interface OrganizationUpdateRequest {
+  organizationName?: string        // Update organization name
+  website?: string                 // Update website URL
+  description?: string             // Update mission statement
+}

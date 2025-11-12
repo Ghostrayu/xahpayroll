@@ -3,6 +3,106 @@ const router = express.Router()
 const { query } = require('../database/db')
 
 /**
+ * POST /api/organizations
+ * Create a new organization (used during multi-step signup)
+ * CRITICAL: escrowWalletAddress MUST match the NGO/employer user's wallet_address (1:1 mapping)
+ */
+router.post('/', async (req, res) => {
+  try {
+    const {
+      organizationName,
+      escrowWalletAddress,
+      website,
+      description
+    } = req.body
+
+    // Validate required fields
+    if (!organizationName || !escrowWalletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'ORGANIZATION NAME AND WALLET ADDRESS REQUIRED' }
+      })
+    }
+
+    // Validate XRPL address format
+    const xrplAddressPattern = /^r[1-9A-HJ-NP-Za-km-z]{25,34}$/
+    if (!xrplAddressPattern.test(escrowWalletAddress)) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'INVALID XRPL WALLET ADDRESS FORMAT' }
+      })
+    }
+
+    // Validate website if provided
+    if (website) {
+      try {
+        new URL(website)
+      } catch (e) {
+        return res.status(400).json({
+          success: false,
+          error: { message: 'INVALID WEBSITE URL FORMAT' }
+        })
+      }
+    }
+
+    // Validate description length
+    if (description && description.length > 2000) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'DESCRIPTION MUST BE 2000 CHARACTERS OR LESS' }
+      })
+    }
+
+    // CRITICAL: Check if organization already exists for this wallet
+    // This prevents duplicate organizations and ensures 1:1 mapping
+    const existing = await query(
+      'SELECT * FROM organizations WHERE escrow_wallet_address = $1',
+      [escrowWalletAddress]
+    )
+
+    if (existing.rows.length > 0) {
+      return res.status(409).json({
+        success: false,
+        error: { message: 'ORGANIZATION ALREADY EXISTS FOR THIS WALLET ADDRESS' }
+      })
+    }
+
+    // Create organization with simplified schema
+    const result = await query(
+      `INSERT INTO organizations (
+        organization_name, escrow_wallet_address,
+        website, description, created_at
+      ) VALUES ($1, $2, $3, $4, NOW())
+      RETURNING *`,
+      [
+        organizationName,
+        escrowWalletAddress,
+        website || null,
+        description || null
+      ]
+    )
+
+    console.log('[ORG_CREATE_SUCCESS]', {
+      organizationId: result.rows[0].id,
+      walletAddress: escrowWalletAddress,
+      // Log for payment channel mapping verification
+      mapping: 'escrow_wallet_address matches user wallet_address'
+    })
+
+    res.json({
+      success: true,
+      data: { organization: result.rows[0] }
+    })
+  } catch (error) {
+    console.error('[ORG_CREATE_ERROR]', error)
+    res.status(500).json({
+      success: false,
+      error: { message: 'FAILED TO CREATE ORGANIZATION' }
+    })
+  }
+})
+
+/**
  * GET /api/organizations/stats/:walletAddress
  * Get organization statistics by wallet address
  */

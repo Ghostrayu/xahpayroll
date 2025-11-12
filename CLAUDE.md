@@ -408,3 +408,18 @@ See `PAYMENT_CHANNEL_TESTING.md` for detailed testing guide.
 - Validate all user inputs on backend
 - All wallet signing happens client-side via wallet providers
 - Database credentials should be rotated between environments
+
+## Code Style Conventions
+
+### Error Messages
+- **Capitalization**: ALL error messages MUST use FULL CAPITALIZATION (ALL CAPS)
+- **Format**: Every word in error messages should be fully capitalized
+- **Examples**:
+  - ✅ Correct: `'ORGANIZATION NAME AND WALLET ADDRESS REQUIRED'`
+  - ✅ Correct: `'INVALID XRPL WALLET ADDRESS FORMAT'`
+  - ✅ Correct: `'FAILED TO CREATE ORGANIZATION'`
+  - ✅ Correct: `'ORGANIZATION NOT FOUND'`
+  - ❌ Wrong: `'Organization name and wallet address required'`
+  - ❌ Wrong: `'Invalid XRPL wallet address format'`
+
+**Rationale**: ALL CAPS provides immediate visual distinction for error messages and ensures consistency across frontend and backend.

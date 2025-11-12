@@ -14,6 +14,9 @@ import type {
   WorkerForChannel,
   CancelChannelData,
   ConfirmChannelData,
+  OrganizationData,
+  OrganizationCreateRequest,
+  OrganizationUpdateRequest,
 } from '../types/api'
 
 // Re-export types for backward compatibility
@@ -28,6 +31,9 @@ export type {
   WorkerForChannel,
   CancelChannelData,
   ConfirmChannelData,
+  OrganizationData,
+  OrganizationCreateRequest,
+  OrganizationUpdateRequest,
 }
 
 const getBackendUrl = () => {
@@ -150,6 +156,63 @@ export const organizationApi = {
     }
 
     return response.data
+  },
+
+  /**
+   * Create a new organization (multi-step signup)
+   * CRITICAL: escrowWalletAddress MUST match user's wallet_address
+   */
+  async create(data: OrganizationCreateRequest): Promise<OrganizationData> {
+    const response = await apiFetch<ApiResponse<{ organization: OrganizationData }>>(
+      '/api/organizations',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    )
+
+    if (!response.success || !response.data) {
+      throw new ApiError('FAILED TO CREATE ORGANIZATION')
+    }
+
+    return response.data.organization
+  },
+
+  /**
+   * Get organization by wallet address
+   */
+  async get(walletAddress: string): Promise<OrganizationData> {
+    const response = await apiFetch<ApiResponse<{ organization: OrganizationData }>>(
+      `/api/organizations/${walletAddress}`
+    )
+
+    if (!response.success || !response.data) {
+      throw new ApiError('FAILED TO FETCH ORGANIZATION')
+    }
+
+    return response.data.organization
+  },
+
+  /**
+   * Update organization (Phase 6 - future feature)
+   */
+  async update(
+    walletAddress: string,
+    data: OrganizationUpdateRequest
+  ): Promise<OrganizationData> {
+    const response = await apiFetch<ApiResponse<{ organization: OrganizationData }>>(
+      `/api/organizations/${walletAddress}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }
+    )
+
+    if (!response.success || !response.data) {
+      throw new ApiError('FAILED TO UPDATE ORGANIZATION')
+    }
+
+    return response.data.organization
   },
 }
 

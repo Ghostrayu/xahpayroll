@@ -26,58 +26,42 @@ router.post('/create', async (req, res) => {
     if (!organizationWalletAddress || !workerWalletAddress || !workerName || !hourlyRate || !fundingAmount) {
       return res.status(400).json({
         success: false,
-        error: { message: 'Missing required fields' }
+        error: { message: 'MISSING REQUIRED FIELDS' }
       })
     }
 
-    // Get or create organization
-    let orgResult = await query(
-      'SELECT * FROM organizations WHERE escrow_wallet_address = $1',
+    // CRITICAL LOOKUP: Find organization by escrow_wallet_address
+    // This must match the NGO/employer's wallet_address (1:1 mapping)
+    const orgResult = await query(
+      `SELECT id, organization_name, escrow_wallet_address, website, description
+       FROM organizations
+       WHERE escrow_wallet_address = $1`,
       [organizationWalletAddress]
     )
 
-    let organization
     if (orgResult.rows.length === 0) {
-      // Organization doesn't exist - create it automatically from user profile
-      console.log('[AUTO_CREATE_ORG] Organization not found, checking user profile...')
+      console.error('[ORG_NOT_FOUND]', {
+        walletAddress: organizationWalletAddress,
+        reason: 'No organization record exists with this escrow_wallet_address',
+        solution: 'User must complete organization setup during signup'
+      })
 
-      const userResult = await query(
-        'SELECT * FROM users WHERE wallet_address = $1',
-        [organizationWalletAddress]
-      )
-
-      if (userResult.rows.length === 0) {
-        return res.status(404).json({
-          success: false,
-          error: { message: 'User profile not found. Please complete profile setup first.' }
-        })
-      }
-
-      const user = userResult.rows[0]
-
-      // Create organization from user profile
-      const newOrgResult = await query(
-        `INSERT INTO organizations (
-          organization_name,
-          escrow_wallet_address,
-          contact_email,
-          contact_phone,
-          created_at
-        ) VALUES ($1, $2, $3, $4, NOW())
-        RETURNING *`,
-        [
-          user.organization_name || user.display_name,
-          user.wallet_address,
-          user.email,
-          user.phone_number
-        ]
-      )
-
-      organization = newOrgResult.rows[0]
-      console.log('[AUTO_CREATE_ORG_SUCCESS] Created organization:', organization.id)
-    } else {
-      organization = orgResult.rows[0]
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'ORG_NOT_FOUND',
+          message: 'ORGANIZATION NOT FOUND. PLEASE COMPLETE YOUR ORGANIZATION SETUP IN YOUR PROFILE SETTINGS.',
+          details: 'Organizations must be created during signup. Contact support if you need assistance.'
+        }
+      })
     }
+
+    const organization = orgResult.rows[0]
+    console.log('[ORG_FOUND]', {
+      organizationId: organization.id,
+      walletAddress: organization.escrow_wallet_address,
+      mapping: 'Successfully mapped wallet address to organization ID'
+    })
 
     // Check if employee exists, if not create them
     let employeeResult = await query(
@@ -114,7 +98,7 @@ router.post('/create', async (req, res) => {
     if (existingChannelResult.rows.length > 0) {
       return res.status(400).json({
         success: false,
-        error: { message: 'Active payment channel already exists for this worker' }
+        error: { message: 'ACTIVE PAYMENT CHANNEL ALREADY EXISTS FOR THIS WORKER' }
       })
     }
 
@@ -166,7 +150,7 @@ router.post('/create', async (req, res) => {
     console.error('Error creating payment channel:', error)
     res.status(500).json({
       success: false,
-      error: { message: 'Failed to create payment channel', details: error.message }
+      error: { message: 'FAILED TO CREATE PAYMENT CHANNEL', details: error.message }
     })
   }
 })
@@ -217,7 +201,7 @@ router.post('/:channelId/close', async (req, res) => {
     if (!organizationWalletAddress) {
       return res.status(400).json({
         success: false,
-        error: { message: 'Organization wallet address is required' }
+        error: { message: 'ORGANIZATION WALLET ADDRESS IS REQUIRED' }
       })
     }
 
@@ -225,7 +209,7 @@ router.post('/:channelId/close', async (req, res) => {
     if (!channelId) {
       return res.status(400).json({
         success: false,
-        error: { message: 'Channel ID is required' }
+        error: { message: 'CHANNEL ID IS REQUIRED' }
       })
     }
 
@@ -234,7 +218,7 @@ router.post('/:channelId/close', async (req, res) => {
       return res.status(400).json({
         success: false,
         error: {
-          message: 'Invalid Xahau wallet address format. Must be a valid address starting with "r"'
+          message: 'INVALID XAHAU WALLET ADDRESS FORMAT. MUST BE A VALID ADDRESS STARTING WITH "R"'
         }
       })
     }
@@ -244,7 +228,7 @@ router.post('/:channelId/close', async (req, res) => {
       return res.status(400).json({
         success: false,
         error: {
-          message: 'Invalid channel ID format. Must be a 64-character hexadecimal string'
+          message: 'INVALID CHANNEL ID FORMAT. MUST BE A 64-CHARACTER HEXADECIMAL STRING'
         }
       })
     }
@@ -271,7 +255,7 @@ router.post('/:channelId/close', async (req, res) => {
     if (channelResult.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        error: { message: 'Payment channel not found' }
+        error: { message: 'PAYMENT CHANNEL NOT FOUND' }
       })
     }
 
@@ -285,7 +269,7 @@ router.post('/:channelId/close', async (req, res) => {
     if (channel.escrow_wallet_address !== organizationWalletAddress) {
       return res.status(403).json({
         success: false,
-        error: { message: 'Unauthorized: You do not own this payment channel' }
+        error: { message: 'UNAUTHORIZED: YOU DO NOT OWN THIS PAYMENT CHANNEL' }
       })
     }
 
@@ -297,7 +281,7 @@ router.post('/:channelId/close', async (req, res) => {
     if (channel.status === 'closed') {
       return res.status(400).json({
         success: false,
-        error: { message: 'Payment channel is already closed' }
+        error: { message: 'PAYMENT CHANNEL IS ALREADY CLOSED' }
       })
     }
 
@@ -372,7 +356,7 @@ router.post('/:channelId/close', async (req, res) => {
     })
     res.status(500).json({
       success: false,
-      error: { message: 'Failed to prepare channel closure', details: error.message }
+      error: { message: 'FAILED TO PREPARE CHANNEL CLOSURE', details: error.message }
     })
   }
 })
@@ -398,21 +382,21 @@ router.post('/:channelId/close/confirm', async (req, res) => {
     if (!txHash) {
       return res.status(400).json({
         success: false,
-        error: { message: 'Transaction hash is required' }
+        error: { message: 'TRANSACTION HASH IS REQUIRED' }
       })
     }
 
     if (!organizationWalletAddress) {
       return res.status(400).json({
         success: false,
-        error: { message: 'Organization wallet address is required' }
+        error: { message: 'ORGANIZATION WALLET ADDRESS IS REQUIRED' }
       })
     }
 
     if (!channelId) {
       return res.status(400).json({
         success: false,
-        error: { message: 'Channel ID is required' }
+        error: { message: 'CHANNEL ID IS REQUIRED' }
       })
     }
 
@@ -420,14 +404,14 @@ router.post('/:channelId/close/confirm', async (req, res) => {
     if (!isValidXahauAddress(organizationWalletAddress)) {
       return res.status(400).json({
         success: false,
-        error: { message: 'Invalid wallet address format' }
+        error: { message: 'INVALID WALLET ADDRESS FORMAT' }
       })
     }
 
     if (!isValidChannelId(channelId)) {
       return res.status(400).json({
         success: false,
-        error: { message: 'Invalid channel ID format' }
+        error: { message: 'INVALID CHANNEL ID FORMAT' }
       })
     }
 
@@ -447,7 +431,7 @@ router.post('/:channelId/close/confirm', async (req, res) => {
     if (channelResult.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        error: { message: 'Payment channel not found' }
+        error: { message: 'PAYMENT CHANNEL NOT FOUND' }
       })
     }
 
@@ -457,7 +441,7 @@ router.post('/:channelId/close/confirm', async (req, res) => {
     if (channel.escrow_wallet_address !== organizationWalletAddress) {
       return res.status(403).json({
         success: false,
-        error: { message: 'Unauthorized: You do not own this payment channel' }
+        error: { message: 'UNAUTHORIZED: YOU DO NOT OWN THIS PAYMENT CHANNEL' }
       })
     }
 
@@ -497,7 +481,7 @@ router.post('/:channelId/close/confirm', async (req, res) => {
     })
     res.status(500).json({
       success: false,
-      error: { message: 'Failed to confirm channel closure', details: error.message }
+      error: { message: 'FAILED TO CONFIRM CHANNEL CLOSURE', details: error.message }
     })
   }
 })
