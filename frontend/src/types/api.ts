@@ -217,3 +217,115 @@ export interface OrganizationUpdateRequest {
   website?: string                 // Update website URL
   description?: string             // Update mission statement
 }
+
+/**
+ * Worker Deletion - Blocking Reason
+ * Explains why a worker cannot delete their profile
+ *
+ * Backend endpoint: GET /api/workers/deletion-eligibility
+ * Component usage: DeleteProfileModal.tsx
+ */
+export interface BlockingReason {
+  type: 'active_channel' | 'unclosed_channel'  // Type of blocking reason
+  organization: string                         // Organization name
+  channelId: string                           // Payment channel ID
+  unpaidBalance: number                       // Unpaid balance amount (XAH)
+  status: string                              // Channel status
+}
+
+/**
+ * Worker Deletion - Eligibility Statistics
+ * Summary statistics for deletion eligibility check
+ *
+ * Backend endpoint: GET /api/workers/deletion-eligibility
+ * Component usage: DeleteProfileModal.tsx
+ */
+export interface DeletionStats {
+  totalOrganizations: number      // Total organizations worker is associated with
+  activeChannels: number          // Count of active payment channels
+  totalUnpaidBalance: number      // Sum of all unpaid balances (XAH)
+  closedChannels: number          // Count of closed payment channels
+}
+
+/**
+ * Worker Deletion - Eligibility Response
+ * Checks if worker can delete their profile
+ *
+ * Backend endpoint: GET /api/workers/deletion-eligibility
+ * Component usage: DeleteProfileModal.tsx
+ */
+export interface DeletionEligibilityResponse {
+  canDelete: boolean              // Whether worker is eligible for deletion
+  blockingReasons: BlockingReason[]  // Array of reasons preventing deletion
+  stats: DeletionStats           // Summary statistics
+}
+
+/**
+ * Worker Deletion - Request
+ * Request body for profile deletion
+ *
+ * Backend endpoint: POST /api/workers/delete-profile
+ * Component usage: DeleteProfileModal.tsx
+ */
+export interface DeleteProfileRequest {
+  walletAddress: string           // Worker's wallet address
+  confirmationText: string        // Must be "DELETE MY ACCOUNT"
+  reason?: string                 // Optional reason for deletion
+}
+
+/**
+ * Worker Deletion - Success Response
+ * Response after successful profile deletion scheduling
+ *
+ * Backend endpoint: POST /api/workers/delete-profile
+ * Component usage: DeleteProfileModal.tsx
+ */
+export interface DeleteProfileResponse {
+  success: boolean                // Always true on success
+  message: string                 // Success message (ALL CAPS)
+  deletionScheduledAt: string     // ISO 8601 timestamp of soft delete
+  hardDeleteAt: string            // ISO 8601 timestamp of scheduled hard delete
+  dataExportUrl: string | null    // PDF export URL (null for direct download)
+  affectedOrganizations: string[] // List of organization names
+  notificationsSent: number       // Count of NGO notifications sent
+}
+
+/**
+ * Orphaned Records - Statistics
+ * Summary of orphaned records found for a wallet address
+ *
+ * Backend endpoint: GET /api/workers/check-orphaned-records
+ * Component usage: OrphanedRecordsModal.tsx
+ */
+export interface OrphanedRecordsStats {
+  hasOrphanedRecords: boolean     // Whether orphaned records exist
+  workSessionsCount: number       // Number of previous work sessions
+  organizationsCount: number      // Number of previous organizations
+  totalEarnings: number           // Historical earnings (XAH)
+  lastActivityDate: string | null // ISO 8601 timestamp of last activity
+}
+
+/**
+ * Orphaned Records - Re-association Request
+ * Request body for re-associating orphaned records
+ *
+ * Backend endpoint: POST /api/workers/reassociate-records
+ * Component usage: OrphanedRecordsModal.tsx
+ */
+export interface ReassociateRecordsRequest {
+  walletAddress: string           // Worker's wallet address
+  newUserId: number               // New user ID to associate records with
+}
+
+/**
+ * Orphaned Records - Re-association Response
+ * Response after successful record re-association
+ *
+ * Backend endpoint: POST /api/workers/reassociate-records
+ * Component usage: OrphanedRecordsModal.tsx
+ */
+export interface ReassociateRecordsResponse {
+  success: boolean                // Always true on success
+  message: string                 // Success message (ALL CAPS)
+  recordsReassociated: number     // Count of records re-associated
+}

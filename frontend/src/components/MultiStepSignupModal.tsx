@@ -12,9 +12,11 @@
 
 import { useState } from 'react'
 import { UserType } from '../contexts/AuthContext'
-import { userApi, organizationApi } from '../services/api'
+import { userApi, organizationApi, workerDeletionApi } from '../services/api'
+import type { OrphanedRecordsStats } from '../types/api'
 import UserProfileStep, { UserProfileData } from './UserProfileStep'
 import OrganizationSetupStep from './OrganizationSetupStep'
+import OrphanedRecordsModal from './OrphanedRecordsModal'
 
 interface MultiStepSignupModalProps {
   isOpen: boolean
@@ -35,6 +37,9 @@ export default function MultiStepSignupModal({
   const [acceptedTerms, setAcceptedTerms] = useState(false)
   const [termsError, setTermsError] = useState<string>()
   const [isSaving, setIsSaving] = useState(false)
+  const [showOrphanedRecordsModal, setShowOrphanedRecordsModal] = useState(false)
+  const [orphanedStats, setOrphanedStats] = useState<OrphanedRecordsStats | null>(null)
+  const [newUserId, setNewUserId] = useState<number | null>(null)
 
   // Handle Step 1 completion (User Profile)
   const handleUserProfileComplete = (data: UserProfileData) => {
@@ -86,7 +91,7 @@ export default function MultiStepSignupModal({
         organizationName: data.organizationName || '',
       }
 
-      await userApi.saveProfile(profileData)
+      const userResponse = await userApi.saveProfile(profileData)
 
       console.log('[SIGNUP_SUCCESS]', {
         userType: data.userType,
@@ -94,7 +99,26 @@ export default function MultiStepSignupModal({
         organizationCreated: data.userType === 'ngo' || data.userType === 'employer',
       })
 
-      // Complete signup flow
+      // Check for orphaned records (only for employees)
+      if (data.userType === 'employee' && userResponse?.id) {
+        try {
+          const orphanedData = await workerDeletionApi.checkOrphanedRecords(walletAddress)
+
+          if (orphanedData.hasOrphanedRecords) {
+            // Show orphaned records modal
+            setOrphanedStats(orphanedData)
+            setNewUserId(userResponse.id)
+            setShowOrphanedRecordsModal(true)
+            setIsSaving(false)
+            return
+          }
+        } catch (orphanedError) {
+          console.error('[ORPHANED_RECORDS_CHECK_ERROR]', orphanedError)
+          // Continue with signup if orphaned check fails
+        }
+      }
+
+      // Complete signup flow (no orphaned records or not an employee)
       onComplete()
     } catch (error: any) {
       console.error('[SIGNUP_ERROR]', error)
@@ -124,6 +148,40 @@ export default function MultiStepSignupModal({
     setUserProfileData(null)
     setAcceptedTerms(false)
     setTermsError(undefined)
+  }
+
+  // Handle orphaned records re-association
+  const handleReassociateRecords = async () => {
+    if (!newUserId) {
+      console.error('[REASSOCIATE_ERROR] newUserId is null')
+      if (onError) onError('USER ID NOT FOUND')
+      return
+    }
+
+    try {
+      await workerDeletionApi.reassociateRecords(walletAddress, newUserId)
+      console.log('[REASSOCIATE_SUCCESS] Records re-associated')
+
+      // Close orphaned records modal and complete signup
+      setShowOrphanedRecordsModal(false)
+      onComplete()
+    } catch (error: any) {
+      console.error('[REASSOCIATE_ERROR]', error)
+      if (onError) {
+        const errorMessage = error.message || 'FAILED TO RE-ASSOCIATE RECORDS'
+        onError(errorMessage)
+      }
+      throw error
+    }
+  }
+
+  // Handle skip orphaned records re-association
+  const handleSkipReassociation = () => {
+    console.log('[REASSOCIATE_SKIP] User chose to skip re-association')
+
+    // Close orphaned records modal and complete signup
+    setShowOrphanedRecordsModal(false)
+    onComplete()
   }
 
   if (!isOpen) return null
@@ -205,6 +263,17 @@ export default function MultiStepSignupModal({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Orphaned Records Modal (shown after successful signup if records found) */}
+      {showOrphanedRecordsModal && orphanedStats && (
+        <OrphanedRecordsModal
+          isOpen={showOrphanedRecordsModal}
+          walletAddress={walletAddress}
+          orphanedStats={orphanedStats}
+          onReassociate={handleReassociateRecords}
+          onSkip={handleSkipReassociation}
+        />
       )}
     </>
   )

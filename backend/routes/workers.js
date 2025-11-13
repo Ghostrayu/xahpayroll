@@ -1,6 +1,7 @@
 const express = require('express')
 const router = express.Router()
 const { query } = require('../database/db')
+const { generateWorkerDataPDF } = require('../utils/pdfGenerator')
 
 /**
  * POST /api/workers/add
@@ -532,19 +533,256 @@ router.get('/export-data', async (req, res) => {
       })
     }
 
-    // TODO: Implement PDF generation
-    // For now, return placeholder
-    res.status(501).json({
-      success: false,
-      error: 'NOT_IMPLEMENTED',
-      message: 'PDF EXPORT FEATURE COMING SOON'
+    // Generate and stream PDF directly to response
+    // No cloud storage - on-the-fly generation
+    console.log(`📄 [PDF_EXPORT] Generating PDF for: ${walletAddress}`)
+    await generateWorkerDataPDF(walletAddress, res)
+  } catch (error) {
+    console.error('❌ [PDF_EXPORT_ERROR]', error)
+
+    // Only send error response if headers haven't been sent yet
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: 'EXPORT_FAILED',
+        message: 'FAILED TO EXPORT DATA. PLEASE TRY AGAIN.',
+        details: error.message
+      })
+    }
+  }
+})
+
+/**
+ * GET /api/workers/check-orphaned-records
+ * Check if wallet address has orphaned employee records from previous deletion
+ * Orphaned records = employee records exist but user account was deleted
+ * Returns statistics about previous work history
+ */
+router.get('/check-orphaned-records', async (req, res) => {
+  try {
+    const { walletAddress } = req.query
+
+    if (!walletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'WALLET ADDRESS REQUIRED'
+      })
+    }
+
+    // Check if user currently exists and is NOT deleted
+    const userCheck = await query(`
+      SELECT id, deleted_at
+      FROM users
+      WHERE wallet_address = $1
+    `, [walletAddress])
+
+    const userExists = userCheck.rows.length > 0
+    const userDeleted = userExists && userCheck.rows[0].deleted_at !== null
+
+    // Only show orphaned records if:
+    // 1. User doesn't exist, OR
+    // 2. User exists but is marked as deleted
+    // This prevents showing orphaned records to active users
+    if (userExists && !userDeleted) {
+      return res.json({
+        hasOrphanedRecords: false,
+        workSessionsCount: 0,
+        organizationsCount: 0,
+        totalEarnings: 0,
+        lastActivityDate: null
+      })
+    }
+
+    // Count orphaned work sessions
+    const workSessions = await query(`
+      SELECT COUNT(*) as count
+      FROM work_sessions ws
+      WHERE ws.employee_wallet_address = $1
+    `, [walletAddress])
+
+    // Count organizations worker was associated with
+    const organizations = await query(`
+      SELECT COUNT(DISTINCT e.organization_id) as count
+      FROM employees e
+      WHERE e.employee_wallet_address = $1
+    `, [walletAddress])
+
+    // Calculate total historical earnings (all payments + unpaid balances)
+    const earnings = await query(`
+      SELECT
+        COALESCE(SUM(p.amount), 0) as paid_earnings,
+        COALESCE(SUM(pc.unpaid_balance), 0) as unpaid_earnings
+      FROM employees e
+      LEFT JOIN payment_channels pc ON pc.employee_wallet_address = e.employee_wallet_address
+      LEFT JOIN payments p ON p.payment_channel_id = pc.id
+      WHERE e.employee_wallet_address = $1
+    `, [walletAddress])
+
+    const totalEarnings = parseFloat(earnings.rows[0]?.paid_earnings || 0) +
+                         parseFloat(earnings.rows[0]?.unpaid_earnings || 0)
+
+    // Get last activity date
+    const lastActivity = await query(`
+      SELECT MAX(clock_out) as last_activity
+      FROM work_sessions
+      WHERE employee_wallet_address = $1
+    `, [walletAddress])
+
+    const workSessionsCount = parseInt(workSessions.rows[0]?.count || 0)
+    const organizationsCount = parseInt(organizations.rows[0]?.count || 0)
+    const hasOrphanedRecords = workSessionsCount > 0 || organizationsCount > 0
+
+    res.json({
+      hasOrphanedRecords,
+      workSessionsCount,
+      organizationsCount,
+      totalEarnings: parseFloat(totalEarnings.toFixed(6)),
+      lastActivityDate: lastActivity.rows[0]?.last_activity || null
     })
   } catch (error) {
-    console.error('Error exporting data:', error)
+    console.error('Error checking orphaned records:', error)
     res.status(500).json({
       success: false,
-      error: 'EXPORT_FAILED',
-      message: 'FAILED TO EXPORT DATA. PLEASE TRY AGAIN.',
+      error: 'FAILED TO CHECK ORPHANED RECORDS',
+      details: error.message
+    })
+  }
+})
+
+/**
+ * POST /api/workers/reassociate-records
+ * Re-associate orphaned employee records with new user account
+ * This restores complete work history when worker re-signs up with same wallet
+ */
+router.post('/reassociate-records', async (req, res) => {
+  try {
+    const { walletAddress, newUserId } = req.body
+
+    // Validate required fields
+    if (!walletAddress || !newUserId) {
+      return res.status(400).json({
+        success: false,
+        error: 'WALLET ADDRESS AND USER ID REQUIRED'
+      })
+    }
+
+    // Verify user exists and is not deleted
+    const userCheck = await query(`
+      SELECT id, user_type, deleted_at
+      FROM users
+      WHERE id = $1
+    `, [newUserId])
+
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'USER_NOT_FOUND',
+        message: 'USER ACCOUNT NOT FOUND'
+      })
+    }
+
+    if (userCheck.rows[0].deleted_at !== null) {
+      return res.status(400).json({
+        success: false,
+        error: 'USER_DELETED',
+        message: 'CANNOT RE-ASSOCIATE TO DELETED ACCOUNT'
+      })
+    }
+
+    // Verify user is an employee (not NGO/employer)
+    if (userCheck.rows[0].user_type !== 'employee') {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_USER_TYPE',
+        message: 'CAN ONLY RE-ASSOCIATE TO EMPLOYEE ACCOUNTS'
+      })
+    }
+
+    // Verify wallet address matches user
+    const walletCheck = await query(`
+      SELECT id
+      FROM users
+      WHERE id = $1 AND wallet_address = $2
+    `, [newUserId, walletAddress])
+
+    if (walletCheck.rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'WALLET_MISMATCH',
+        message: 'WALLET ADDRESS DOES NOT MATCH USER ACCOUNT'
+      })
+    }
+
+    // Check if there are any orphaned records to re-associate
+    const orphanedCheck = await query(`
+      SELECT COUNT(*) as count
+      FROM employees
+      WHERE employee_wallet_address = $1
+    `, [walletAddress])
+
+    const orphanedCount = parseInt(orphanedCheck.rows[0]?.count || 0)
+
+    if (orphanedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'NO_ORPHANED_RECORDS',
+        message: 'NO ORPHANED RECORDS FOUND FOR THIS WALLET ADDRESS'
+      })
+    }
+
+    // Start transaction
+    await query('BEGIN')
+
+    try {
+      // Re-associate employee records
+      // Note: employee_wallet_address should already match, but we update user_id
+      // if that column exists in future schema updates
+      let recordsUpdated = 0
+
+      // Update work_sessions if they have user_id reference
+      const workSessionUpdate = await query(`
+        UPDATE work_sessions
+        SET user_id = $1
+        WHERE employee_wallet_address = $2
+        AND (user_id IS NULL OR user_id != $1)
+        RETURNING id
+      `, [newUserId, walletAddress])
+
+      recordsUpdated += workSessionUpdate.rowCount || 0
+
+      // Update employees table if needed
+      // Note: employees table uses employee_wallet_address as primary link,
+      // so no update needed unless we add user_id column in future
+
+      // Log re-association event
+      await query(`
+        INSERT INTO deletion_logs (
+          wallet_address,
+          user_type,
+          deleted_by,
+          deletion_reason,
+          restored_at
+        ) VALUES ($1, 'employee', 'system', 'Records re-associated on re-signup', CURRENT_TIMESTAMP)
+      `, [walletAddress])
+
+      // Commit transaction
+      await query('COMMIT')
+
+      res.json({
+        success: true,
+        message: 'RECORDS RE-ASSOCIATED SUCCESSFULLY',
+        recordsReassociated: orphanedCount
+      })
+    } catch (error) {
+      await query('ROLLBACK')
+      throw error
+    }
+  } catch (error) {
+    console.error('Error re-associating records:', error)
+    res.status(500).json({
+      success: false,
+      error: 'REASSOCIATION_FAILED',
+      message: 'FAILED TO RE-ASSOCIATE RECORDS. PLEASE TRY AGAIN.',
       details: error.message
     })
   }

@@ -8,6 +8,7 @@ import DashboardRedirect from './components/DashboardRedirect'
 import HomePage from './pages/HomePage'
 import WorkerPage from './pages/WorkerPage'
 import WorkerDashboard from './pages/WorkerDashboard'
+import EmployeeSettings from './pages/EmployeeSettings'
 import NgoPage from './pages/NgoPage'
 import NgoDashboard from './pages/NgoDashboard'
 import TermsOfService from './pages/TermsOfService'
@@ -31,6 +32,14 @@ const App: React.FC = () => {
                   element={
                     <ProtectedRoute allowedUserTypes={['employee']} redirectTo="/worker">
                       <WorkerDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/worker/settings"
+                  element={
+                    <ProtectedRoute allowedUserTypes={['employee']} redirectTo="/worker">
+                      <EmployeeSettings />
                     </ProtectedRoute>
                   }
                 />

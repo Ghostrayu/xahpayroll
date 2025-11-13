@@ -17,6 +17,10 @@ import type {
   OrganizationData,
   OrganizationCreateRequest,
   OrganizationUpdateRequest,
+  DeletionEligibilityResponse,
+  DeleteProfileResponse,
+  OrphanedRecordsStats,
+  ReassociateRecordsResponse,
 } from '../types/api'
 
 // Re-export types for backward compatibility
@@ -34,6 +38,10 @@ export type {
   OrganizationData,
   OrganizationCreateRequest,
   OrganizationUpdateRequest,
+  DeletionEligibilityResponse,
+  DeleteProfileResponse,
+  OrphanedRecordsStats,
+  ReassociateRecordsResponse,
 }
 
 const getBackendUrl = () => {
@@ -384,6 +392,121 @@ export const paymentChannelApi = {
         response.error?.message || 'Failed to confirm channel closure'
       )
     }
+
+    return response
+  },
+}
+
+/**
+ * Worker Deletion API calls
+ */
+export const workerDeletionApi = {
+  /**
+   * Check if worker is eligible for profile deletion
+   * Verifies no active channels or unpaid balances exist
+   */
+  async checkDeletionEligibility(
+    walletAddress: string
+  ): Promise<DeletionEligibilityResponse> {
+    const response = await apiFetch<DeletionEligibilityResponse>(
+      `/api/workers/deletion-eligibility?walletAddress=${walletAddress}`
+    )
+
+    return response
+  },
+
+  /**
+   * Request worker profile deletion
+   * Requires confirmation text and eligibility
+   */
+  async deleteProfile(
+    walletAddress: string,
+    confirmationText: string,
+    reason?: string
+  ): Promise<DeleteProfileResponse> {
+    const response = await apiFetch<DeleteProfileResponse>(
+      `/api/workers/delete-profile`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          walletAddress,
+          confirmationText,
+          reason,
+        }),
+      }
+    )
+
+    return response
+  },
+
+  /**
+   * Export worker data to PDF
+   * Opens PDF in new window for direct download
+   */
+  exportWorkerData(walletAddress: string): void {
+    const backendUrl = getBackendUrl()
+    const exportUrl = `${backendUrl}/api/workers/export-data?walletAddress=${walletAddress}`
+    window.open(exportUrl, '_blank')
+  },
+
+  /**
+   * Cancel profile deletion within 48-hour grace period
+   * Restores soft-deleted account
+   */
+  async cancelDeletion(walletAddress: string): Promise<ApiResponse<{
+    message: string
+    restoredAt: string
+  }>> {
+    const response = await apiFetch<ApiResponse<{
+      message: string
+      restoredAt: string
+    }>>(
+      `/api/workers/cancel-deletion`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ walletAddress }),
+      }
+    )
+
+    if (!response.success || !response.data) {
+      throw new ApiError(
+        response.error?.message || 'Failed to cancel deletion'
+      )
+    }
+
+    return response
+  },
+
+  /**
+   * Check for orphaned records for a wallet address
+   * Returns statistics about previous work history
+   */
+  async checkOrphanedRecords(walletAddress: string): Promise<OrphanedRecordsStats> {
+    const response = await apiFetch<OrphanedRecordsStats>(
+      `/api/workers/check-orphaned-records?walletAddress=${walletAddress}`
+    )
+
+    return response
+  },
+
+  /**
+   * Re-associate orphaned records with new user account
+   * Restores complete work history
+   */
+  async reassociateRecords(
+    walletAddress: string,
+    newUserId: number
+  ): Promise<ReassociateRecordsResponse> {
+    const response = await apiFetch<ReassociateRecordsResponse>(
+      `/api/workers/reassociate-records`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          walletAddress,
+          newUserId,
+        }),
+      }
+    )
 
     return response
   },
