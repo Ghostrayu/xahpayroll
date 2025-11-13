@@ -411,15 +411,77 @@ See `PAYMENT_CHANNEL_TESTING.md` for detailed testing guide.
 
 ## Code Style Conventions
 
-### Error Messages
-- **Capitalization**: ALL error messages MUST use FULL CAPITALIZATION (ALL CAPS)
-- **Format**: Every word in error messages should be fully capitalized
-- **Examples**:
-  - ✅ Correct: `'ORGANIZATION NAME AND WALLET ADDRESS REQUIRED'`
-  - ✅ Correct: `'INVALID XRPL WALLET ADDRESS FORMAT'`
-  - ✅ Correct: `'FAILED TO CREATE ORGANIZATION'`
-  - ✅ Correct: `'ORGANIZATION NOT FOUND'`
-  - ❌ Wrong: `'Organization name and wallet address required'`
-  - ❌ Wrong: `'Invalid XRPL wallet address format'`
+### Text Capitalization - ALL USER-FACING TEXT
+- **Universal Rule**: ALL user-facing text MUST use FULL CAPITALIZATION (ALL CAPS)
+- **Applies To**:
+  - Error messages
+  - Success messages
+  - Warning messages
+  - Button labels
+  - Modal titles and headers
+  - Alert messages
+  - Notification messages
+  - Form labels and placeholders
+  - Confirmation dialogs
+  - Status indicators
+  - Any text visible to users in the UI
 
-**Rationale**: ALL CAPS provides immediate visual distinction for error messages and ensures consistency across frontend and backend.
+### Examples
+
+**Error Messages**:
+- ✅ Correct: `'ORGANIZATION NAME AND WALLET ADDRESS REQUIRED'`
+- ✅ Correct: `'INVALID XRPL WALLET ADDRESS FORMAT'`
+- ✅ Correct: `'FAILED TO CREATE ORGANIZATION'`
+- ❌ Wrong: `'Organization name and wallet address required'`
+
+**Success Messages**:
+- ✅ Correct: `'PROFILE DELETION SCHEDULED. DATA WILL BE PERMANENTLY REMOVED IN 48 HOURS.'`
+- ✅ Correct: `'DELETION CANCELLED. YOUR ACCOUNT HAS BEEN RESTORED.'`
+- ❌ Wrong: `'Profile deletion scheduled. Data will be permanently removed in 48 hours.'`
+
+**Button Labels**:
+- ✅ Correct: `<button>DELETE MY PROFILE</button>`
+- ✅ Correct: `<button>EXPORT MY DATA (PDF)</button>`
+- ✅ Correct: `<button>CANCEL</button>`
+- ❌ Wrong: `<button>Delete My Profile</button>`
+
+**Modal Titles**:
+- ✅ Correct: `<h2>⚠️ DANGER ZONE</h2>`
+- ✅ Correct: `<h2>PROFILE DELETION ELIGIBILITY CHECK</h2>`
+- ❌ Wrong: `<h2>⚠️ Danger Zone</h2>`
+
+**Warnings/Alerts**:
+- ✅ Correct: `alert('CANNOT DELETE PROFILE WITH ACTIVE CHANNELS OR UNPAID BALANCES')`
+- ✅ Correct: `<div className="warning">YOU HAVE ACTIVE PAYMENT CHANNELS</div>`
+- ❌ Wrong: `alert('Cannot delete profile with active channels')`
+
+**Form Labels**:
+- ✅ Correct: `<label>WALLET ADDRESS</label>`
+- ✅ Correct: `<input placeholder="ENTER YOUR NAME" />`
+- ❌ Wrong: `<label>Wallet Address</label>`
+
+**Notifications**:
+- ✅ Correct: `message: 'WORKER JOHN DOE HAS DELETED THEIR PROFILE'`
+- ✅ Correct: `type: 'WORKER_DELETED'`
+- ❌ Wrong: `message: 'Worker John Doe has deleted their profile'`
+
+### Exceptions (Do NOT Capitalize)
+
+- **Code/Technical Identifiers**: Variable names, function names, API endpoints, database columns
+  - ✅ Correct: `walletAddress`, `user_type`, `/api/workers/delete-profile`
+  - ❌ Wrong: `WALLETADDRESS`, `USER_TYPE`, `/API/WORKERS/DELETE-PROFILE`
+
+- **Email addresses, URLs, file paths**: Keep as-is
+  - ✅ Correct: `john.doe@example.com`, `https://xahpayroll.com`, `/home/user/file.pdf`
+
+- **Documentation and code comments**: Use standard sentence case
+  - ✅ Correct: `// Check if user has active channels`
+  - ❌ Wrong: `// CHECK IF USER HAS ACTIVE CHANNELS`
+
+**Rationale**: ALL CAPS for user-facing text provides:
+1. Immediate visual distinction and clarity
+2. Professional, authoritative tone
+3. Consistency across frontend and backend
+4. Clear differentiation from code elements
+5. Better accessibility (high visual contrast)
+6. Alignment with financial/legal application standards

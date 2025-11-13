@@ -12,6 +12,10 @@ const organizationsRoutes = require('./routes/organizations')
 const paymentChannelsRoutes = require('./routes/paymentChannels')
 const workersRoutes = require('./routes/workers')
 
+// Import scheduled jobs
+const { startHardDeleteJob } = require('./jobs/hardDelete')
+const { startInactivityDeletionJob } = require('./jobs/inactivityDeletion')
+
 const app = express()
 const PORT = process.env.PORT || 3001
 
@@ -73,13 +77,31 @@ const startServer = async () => {
   try {
     // Initialize database
     await initializeDatabase()
-    
+
+    // Start scheduled jobs
+    const hardDeleteJobId = startHardDeleteJob()
+    const inactivityDeleteJobId = startInactivityDeletionJob()
+    console.log('⏰ Scheduled jobs initialized:')
+    console.log('   - Hard delete job (runs every hour)')
+    console.log('   - Inactivity deletion job (runs daily at 2:00 AM)')
+
     // Start Express server
     app.listen(PORT, () => {
       console.log(`🚀 XAH Payroll Backend running on port ${PORT}`)
       console.log(`📡 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`)
       console.log(`🔐 Xaman API configured: ${process.env.XAMAN_API_KEY ? 'Yes' : 'No'}`)
       console.log(`💾 Database: ${process.env.DB_NAME || 'xahpayroll'} on ${process.env.DB_HOST || 'localhost'}`)
+    })
+
+    // Graceful shutdown
+    process.on('SIGTERM', () => {
+      console.log('📴 SIGTERM signal received: closing HTTP server')
+      process.exit(0)
+    })
+
+    process.on('SIGINT', () => {
+      console.log('📴 SIGINT signal received: closing HTTP server')
+      process.exit(0)
     })
   } catch (error) {
     console.error('❌ Failed to start server:', error)

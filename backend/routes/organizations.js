@@ -479,4 +479,165 @@ router.get('/payment-channels/:walletAddress', async (req, res) => {
   }
 })
 
+/**
+ * GET /api/organizations/:organizationId/notifications
+ * Get all notifications for an organization
+ * Supports filtering by type and read status
+ * Supports pagination
+ */
+router.get('/:organizationId/notifications', async (req, res) => {
+  try {
+    const { organizationId } = req.params
+    const { type, isRead, limit = 20, offset = 0 } = req.query
+
+    // Build WHERE clause based on filters
+    let whereClause = 'WHERE organization_id = $1'
+    const params = [organizationId]
+    let paramIndex = 2
+
+    if (type) {
+      whereClause += ` AND notification_type = $${paramIndex}`
+      params.push(type)
+      paramIndex++
+    }
+
+    if (isRead !== undefined) {
+      whereClause += ` AND is_read = $${paramIndex}`
+      params.push(isRead === 'true')
+      paramIndex++
+    }
+
+    // Get total count
+    const countResult = await query(
+      `SELECT COUNT(*) as total
+       FROM ngo_notifications
+       ${whereClause}`,
+      params
+    )
+
+    const total = parseInt(countResult.rows[0]?.total || 0)
+
+    // Get notifications with pagination
+    const notificationsResult = await query(
+      `SELECT *
+       FROM ngo_notifications
+       ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      [...params, limit, offset]
+    )
+
+    const notifications = notificationsResult.rows.map(n => ({
+      id: n.id,
+      type: n.notification_type,
+      workerWalletAddress: n.worker_wallet_address,
+      workerName: n.worker_name,
+      message: n.message,
+      metadata: n.metadata || {},
+      isRead: n.is_read,
+      createdAt: n.created_at
+    }))
+
+    res.json({
+      success: true,
+      data: {
+        notifications,
+        pagination: {
+          total,
+          limit: parseInt(limit),
+          offset: parseInt(offset)
+        }
+      }
+    })
+  } catch (error) {
+    console.error('Error fetching notifications:', error)
+    res.status(500).json({
+      success: false,
+      error: 'FAILED TO FETCH NOTIFICATIONS',
+      details: error.message
+    })
+  }
+})
+
+/**
+ * PATCH /api/organizations/:organizationId/notifications/:notificationId
+ * Mark a notification as read/unread
+ */
+router.patch('/:organizationId/notifications/:notificationId', async (req, res) => {
+  try {
+    const { organizationId, notificationId } = req.params
+    const { isRead } = req.body
+
+    if (isRead === undefined) {
+      return res.status(400).json({
+        success: false,
+        error: 'IS_READ FIELD REQUIRED'
+      })
+    }
+
+    // Verify notification belongs to organization
+    const checkResult = await query(
+      `SELECT * FROM ngo_notifications
+       WHERE id = $1 AND organization_id = $2`,
+      [notificationId, organizationId]
+    )
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'NOTIFICATION NOT FOUND'
+      })
+    }
+
+    // Update read status
+    await query(
+      `UPDATE ngo_notifications
+       SET is_read = $1
+       WHERE id = $2 AND organization_id = $3`,
+      [isRead, notificationId, organizationId]
+    )
+
+    res.json({
+      success: true,
+      message: 'NOTIFICATION STATUS UPDATED'
+    })
+  } catch (error) {
+    console.error('Error updating notification:', error)
+    res.status(500).json({
+      success: false,
+      error: 'FAILED TO UPDATE NOTIFICATION',
+      details: error.message
+    })
+  }
+})
+
+/**
+ * POST /api/organizations/:organizationId/notifications/mark-all-read
+ * Mark all notifications as read for an organization
+ */
+router.post('/:organizationId/notifications/mark-all-read', async (req, res) => {
+  try {
+    const { organizationId } = req.params
+
+    await query(
+      `UPDATE ngo_notifications
+       SET is_read = true
+       WHERE organization_id = $1 AND is_read = false`,
+      [organizationId]
+    )
+
+    res.json({
+      success: true,
+      message: 'ALL NOTIFICATIONS MARKED AS READ'
+    })
+  } catch (error) {
+    console.error('Error marking notifications as read:', error)
+    res.status(500).json({
+      success: false,
+      error: 'FAILED TO MARK NOTIFICATIONS AS READ',
+      details: error.message
+    })
+  }
+})
+
 module.exports = router
