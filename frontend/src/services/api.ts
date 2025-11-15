@@ -21,6 +21,10 @@ import type {
   DeleteProfileResponse,
   OrphanedRecordsStats,
   ReassociateRecordsResponse,
+  NGONotification,
+  NGONotificationsResponse,
+  NotificationsQueryParams,
+  MarkNotificationReadRequest,
 } from '../types/api'
 
 // Re-export types for backward compatibility
@@ -42,6 +46,10 @@ export type {
   DeleteProfileResponse,
   OrphanedRecordsStats,
   ReassociateRecordsResponse,
+  NGONotification,
+  NGONotificationsResponse,
+  NotificationsQueryParams,
+  MarkNotificationReadRequest,
 }
 
 const getBackendUrl = () => {
@@ -295,6 +303,22 @@ export const workerApi = {
 
     return response.data
   },
+
+  /**
+   * Get worker payment channels
+   * Returns all active payment channels for a worker across all organizations
+   */
+  async getPaymentChannels(walletAddress: string): Promise<PaymentChannel[]> {
+    const response = await apiFetch<ApiResponse<PaymentChannel[]>>(
+      `/api/workers/${walletAddress}/payment-channels`
+    )
+
+    if (!response.success || !response.data) {
+      throw new ApiError('Failed to fetch payment channels')
+    }
+
+    return response.data
+  },
 }
 
 /**
@@ -343,14 +367,25 @@ export const paymentChannelApi = {
   /**
    * Initiate payment channel cancellation
    * Returns XRPL transaction details needed for closure
+   * Can be called by either NGO/employer or worker
    */
   async cancelPaymentChannel(
     channelId: string,
-    organizationWalletAddress: string
+    walletAddress: string,
+    userType: 'ngo' | 'worker',
+    forceClose?: boolean
   ): Promise<ApiResponse<{
     channel: any
     xrplTransaction: any
   }>> {
+    const body: any = { forceClose }
+
+    if (userType === 'ngo') {
+      body.organizationWalletAddress = walletAddress
+    } else {
+      body.workerWalletAddress = walletAddress
+    }
+
     const response = await apiFetch<ApiResponse<{
       channel: any
       xrplTransaction: any
@@ -358,38 +393,44 @@ export const paymentChannelApi = {
       `/api/payment-channels/${channelId}/close`,
       {
         method: 'POST',
-        body: JSON.stringify({ organizationWalletAddress }),
+        body: JSON.stringify(body),
       }
     )
 
-    if (!response.success || !response.data) {
-      throw new ApiError(
-        response.error?.message || 'Failed to cancel payment channel'
-      )
-    }
-
+    // Return response as-is (including error cases for UNCLAIMED_BALANCE warning)
+    // Frontend will handle the error appropriately
     return response
   },
 
   /**
    * Confirm payment channel closure after XRPL transaction succeeds
+   * Can be called by either NGO/employer or worker
    */
   async confirmChannelClosure(
     channelId: string,
     txHash: string,
-    organizationWalletAddress: string
+    walletAddress: string,
+    userType: 'ngo' | 'worker'
   ): Promise<ApiResponse<{ channel: any }>> {
+    const body: any = { txHash }
+
+    if (userType === 'ngo') {
+      body.organizationWalletAddress = walletAddress
+    } else {
+      body.workerWalletAddress = walletAddress
+    }
+
     const response = await apiFetch<ApiResponse<{ channel: any }>>(
       `/api/payment-channels/${channelId}/close/confirm`,
       {
         method: 'POST',
-        body: JSON.stringify({ txHash, organizationWalletAddress }),
+        body: JSON.stringify(body),
       }
     )
 
     if (!response.success || !response.data) {
       throw new ApiError(
-        response.error?.message || 'Failed to confirm channel closure'
+        response.error?.message || 'FAILED TO CONFIRM CHANNEL CLOSURE'
       )
     }
 
@@ -509,6 +550,87 @@ export const workerDeletionApi = {
     )
 
     return response
+  },
+}
+
+/**
+ * NGO Notifications API calls
+ */
+export const notificationApi = {
+  /**
+   * Get notifications for an organization
+   * Supports filtering by type, read status, and pagination
+   */
+  async getNotifications(
+    organizationId: number,
+    params?: NotificationsQueryParams
+  ): Promise<NGONotificationsResponse> {
+    // Build query string from parameters
+    const queryParams = new URLSearchParams()
+    if (params?.type) queryParams.append('type', params.type)
+    if (params?.isRead !== undefined) queryParams.append('isRead', String(params.isRead))
+    if (params?.limit) queryParams.append('limit', String(params.limit))
+    if (params?.offset) queryParams.append('offset', String(params.offset))
+
+    const queryString = queryParams.toString()
+    const endpoint = `/api/organizations/${organizationId}/notifications${queryString ? `?${queryString}` : ''}`
+
+    const response = await apiFetch<NGONotificationsResponse>(endpoint)
+
+    return response
+  },
+
+  /**
+   * Mark a specific notification as read
+   */
+  async markAsRead(
+    organizationId: number,
+    notificationId: number
+  ): Promise<ApiResponse<{ notification: NGONotification }>> {
+    const response = await apiFetch<ApiResponse<{ notification: NGONotification }>>(
+      `/api/organizations/${organizationId}/notifications/${notificationId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ isRead: true } as MarkNotificationReadRequest),
+      }
+    )
+
+    if (!response.success || !response.data) {
+      throw new ApiError('FAILED TO MARK NOTIFICATION AS READ')
+    }
+
+    return response
+  },
+
+  /**
+   * Mark all notifications as read for an organization
+   */
+  async markAllAsRead(organizationId: number): Promise<ApiResponse<{ count: number }>> {
+    const response = await apiFetch<ApiResponse<{ count: number }>>(
+      `/api/organizations/${organizationId}/notifications/mark-all-read`,
+      {
+        method: 'POST',
+      }
+    )
+
+    if (!response.success || !response.data) {
+      throw new ApiError('FAILED TO MARK ALL NOTIFICATIONS AS READ')
+    }
+
+    return response
+  },
+
+  /**
+   * Get unread notification count for an organization
+   */
+  async getUnreadCount(organizationId: number): Promise<number> {
+    const response = await this.getNotifications(organizationId, {
+      isRead: false,
+      limit: 1, // Just need the count, not all notifications
+      offset: 0,
+    })
+
+    return response.pagination.total
   },
 }
 

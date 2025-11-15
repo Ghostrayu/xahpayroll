@@ -1,19 +1,50 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useWallet } from '../contexts/WalletContext'
 import { useData } from '../contexts/DataContext'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
+import UnclaimedBalanceWarningModal from '../components/UnclaimedBalanceWarningModal'
+import { paymentChannelApi, workerApi } from '../services/api'
+import { closePaymentChannel } from '../utils/paymentChannels'
 
 const WorkerDashboard: React.FC = () => {
   const { userName } = useAuth()
-  const { balance, reserve, isConnected, walletAddress, network } = useWallet()
-  const { earnings, workSessions, clockIn, clockOut, isLoading } = useData()
+  const { balance, reserve, isConnected, walletAddress, network, provider } = useWallet()
+  const { earnings, workSessions, clockIn, clockOut, isLoading, refreshData } = useData()
+
+  // Payment channel state
+  const [paymentChannels, setPaymentChannels] = useState<any[]>([])
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  const [showUnclaimedWarning, setShowUnclaimedWarning] = useState(false)
+  const [unclaimedBalanceData, setUnclaimedBalanceData] = useState<any>(null)
+  const [selectedChannel, setSelectedChannel] = useState<any>(null)
+  const [cancelingChannel, setCancelingChannel] = useState<string | null>(null)
 
   // Check if currently working based on active work session
   const activeSession = workSessions.find(session => !session.clockOut)
   const isWorking = !!activeSession
+
+  // Fetch worker payment channels
+  useEffect(() => {
+    const fetchWorkerChannels = async () => {
+      if (!walletAddress) return
+
+      try {
+        console.log('[WORKER_CHANNELS] Fetching channels for worker:', walletAddress)
+        const channels = await workerApi.getPaymentChannels(walletAddress)
+        console.log('[WORKER_CHANNELS] Fetched channels:', channels.length)
+        setPaymentChannels(channels)
+      } catch (error) {
+        console.error('[WORKER_CHANNELS_ERROR] Failed to fetch worker payment channels:', error)
+        // Don't show alert for this - just log the error
+        // Payment channels section will simply not show if empty
+      }
+    }
+
+    fetchWorkerChannels()
+  }, [walletAddress])
 
   // Use data from context with fallback defaults
   const workerData = {
@@ -48,8 +79,132 @@ const WorkerDashboard: React.FC = () => {
       }
     } catch (error) {
       console.error('Error clocking in/out:', error)
-      alert('Failed to clock in/out. Please try again.')
+      alert('FAILED TO CLOCK IN/OUT. PLEASE TRY AGAIN.')
     }
+  }
+
+  /**
+   * Handle close channel button click - opens confirmation modal
+   */
+  const handleCloseClick = (channel: any) => {
+    setSelectedChannel(channel)
+    setShowCancelConfirm(true)
+  }
+
+  /**
+   * Handle close confirmation - executes the 3-step closure flow
+   * Same as NGO flow but with worker authorization
+   *
+   * @param forceClose - If true, bypass unclaimed balance warning
+   */
+  const handleCloseConfirm = async (forceClose: boolean = false) => {
+    if (!selectedChannel || !walletAddress) {
+      alert('MISSING WALLET ADDRESS OR CHANNEL SELECTION')
+      return
+    }
+
+    setCancelingChannel(selectedChannel.channelId)
+
+    try {
+      // Step 1: Get XRPL transaction details from backend
+      console.log('[WORKER_CLOSE_FLOW] Step 1: Getting transaction details', { forceClose })
+      const response = await paymentChannelApi.cancelPaymentChannel(
+        selectedChannel.channelId,
+        walletAddress,
+        'worker',
+        forceClose
+      )
+
+      if (!response.success) {
+        // Check if error is UNCLAIMED_BALANCE warning
+        if (response.error?.code === 'UNCLAIMED_BALANCE' && !forceClose) {
+          console.log('[WORKER_CLOSE_FLOW] Unclaimed balance detected, showing warning')
+          setUnclaimedBalanceData({
+            unpaidBalance: response.error.unpaidBalance,
+            callerType: response.error.callerType
+          })
+          setShowCancelConfirm(false)
+          setShowUnclaimedWarning(true)
+          setCancelingChannel(null)
+          return
+        }
+
+        throw new Error(response.error?.message || 'FAILED TO PREPARE CLOSURE')
+      }
+
+      if (!response.data) {
+        throw new Error('NO DATA RETURNED FROM BACKEND')
+      }
+
+      const { channel, xrplTransaction } = response.data
+
+      console.log('[WORKER_CLOSE_FLOW] Step 1 complete. Worker payment:', channel.accumulatedBalance, 'XAH')
+
+      // Step 2: Execute XRPL transaction
+      console.log('[WORKER_CLOSE_FLOW] Step 2: Executing XRPL PaymentChannelClaim')
+      const txResult = await closePaymentChannel(
+        {
+          channelId: channel.channelId,
+          balance: xrplTransaction.Balance,
+          escrowReturn: xrplTransaction.Amount,
+          account: walletAddress,
+          publicKey: xrplTransaction.Public
+        },
+        provider,
+        network
+      )
+
+      if (!txResult.success || !txResult.hash) {
+        throw new Error(txResult.error || 'XRPL TRANSACTION FAILED')
+      }
+
+      console.log('[WORKER_CLOSE_FLOW] Step 2 complete. TX:', txResult.hash)
+
+      // Step 3: Confirm closure in database
+      console.log('[WORKER_CLOSE_FLOW] Step 3: Confirming closure')
+      await paymentChannelApi.confirmChannelClosure(
+        selectedChannel.channelId,
+        txResult.hash,
+        walletAddress,
+        'worker'
+      )
+
+      console.log('[WORKER_CLOSE_FLOW] Complete! Channel closed.')
+
+      // Success feedback
+      alert(
+        `✅ PAYMENT CHANNEL CLOSED SUCCESSFULLY!\n\n` +
+        `YOU RECEIVED: ${channel.accumulatedBalance} XAH\n` +
+        `ESCROW RETURNED TO EMPLOYER: ${channel.escrowReturn} XAH\n` +
+        `TRANSACTION: ${txResult.hash}`
+      )
+
+      // Refresh data (work sessions and earnings)
+      await refreshData()
+
+      // Refresh payment channels
+      const updatedChannels = await workerApi.getPaymentChannels(walletAddress)
+      setPaymentChannels(updatedChannels)
+
+      // Close modals
+      setShowCancelConfirm(false)
+      setShowUnclaimedWarning(false)
+
+    } catch (error: any) {
+      console.error('[WORKER_CLOSE_ERROR]', error)
+      alert(`❌ FAILED TO CLOSE CHANNEL:\n\n${error.message}`)
+    } finally {
+      setCancelingChannel(null)
+      setSelectedChannel(null)
+      setUnclaimedBalanceData(null)
+    }
+  }
+
+  /**
+   * Handle force close after unclaimed balance warning
+   */
+  const handleForceClose = async () => {
+    await handleCloseConfirm(true)
   }
 
   return (
@@ -245,7 +400,7 @@ const WorkerDashboard: React.FC = () => {
 
           {/* Quick Stats */}
           <div className="mt-12 bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl shadow-lg p-8 border-2 border-gray-200">
-            <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-6 text-center">Quick Stats</h3>
+            <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-6 text-center">QUICK STATS</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
               <div className="text-center">
                 <p className="text-3xl font-extrabold text-xah-blue mb-2">{workerData.hourlyRate}</p>
@@ -265,10 +420,160 @@ const WorkerDashboard: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Payment Channels Section (when API is ready) */}
+          {paymentChannels.length > 0 && (
+            <div className="mt-12 bg-white rounded-2xl shadow-xl p-6 border-2 border-xah-blue/30">
+              <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-6">
+                MY PAYMENT CHANNELS
+              </h3>
+              <div className="space-y-3">
+                {paymentChannels.map((channel) => (
+                  <div
+                    key={channel.id}
+                    className="bg-gradient-to-br from-green-50 to-blue-50 rounded-lg p-4 border-2 border-green-200"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <p className="font-bold text-gray-900 text-sm uppercase tracking-wide">
+                          {channel.jobName}
+                        </p>
+                        <p className="text-xs text-gray-600 uppercase tracking-wide">
+                          {channel.channelId}
+                        </p>
+                      </div>
+                      <span className="inline-flex items-center px-2 py-0.5 bg-green-500 text-white rounded-full text-xs font-bold">
+                        ● ACTIVE
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      <div className="bg-white/60 rounded-lg p-2 border border-green-200">
+                        <p className="text-xs text-gray-600 uppercase tracking-wide font-semibold mb-0.5">
+                          ACCUMULATED
+                        </p>
+                        <p className="text-base font-extrabold text-green-600">
+                          {channel.balance?.toLocaleString() || '0'} XAH
+                        </p>
+                      </div>
+                      <div className="bg-white/60 rounded-lg p-2 border border-blue-200">
+                        <p className="text-xs text-gray-600 uppercase tracking-wide font-semibold mb-0.5">
+                          HOURLY RATE
+                        </p>
+                        <p className="text-base font-extrabold text-xah-blue">
+                          {channel.hourlyRate?.toFixed(2) || '0'} XAH
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end">
+                      <button
+                        onClick={() => handleCloseClick(channel)}
+                        disabled={cancelingChannel === channel.channelId}
+                        className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white font-bold rounded text-xs uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {cancelingChannel === channel.channelId ? 'CLOSING...' : 'CLOSE CHANNEL'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
       <Footer />
+
+      {/* Close Channel Confirmation Modal */}
+      {showCancelConfirm && selectedChannel && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-2xl">
+            <div className="mb-4">
+              <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-2">
+                CLOSE PAYMENT CHANNEL
+              </h3>
+              <p className="text-sm text-gray-700 uppercase">
+                ARE YOU SURE YOU WANT TO CLOSE THIS CHANNEL?
+              </p>
+            </div>
+
+            {/* Channel Details */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <div className="space-y-2 text-sm uppercase">
+                <div className="flex justify-between">
+                  <span className="text-gray-600 uppercase tracking-wide font-semibold">JOB:</span>
+                  <span className="text-gray-900 font-bold">{selectedChannel.jobName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 uppercase tracking-wide font-semibold">YOUR BALANCE:</span>
+                  <span className="text-green-600 font-bold">{selectedChannel.balance?.toLocaleString() || '0'} XAH</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 uppercase tracking-wide font-semibold">HOURS WORKED:</span>
+                  <span className="text-purple-600 font-bold">{selectedChannel.hoursAccumulated?.toFixed(1) || '0'}h</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Warning */}
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+              <div className="flex gap-2">
+                <div className="text-yellow-600 text-xl flex-shrink-0">⚠️</div>
+                <div className="space-y-2 text-xs text-yellow-800 uppercase">
+                  <p className="font-bold uppercase tracking-wide">IMPORTANT:</p>
+                  <p>• YOU WILL RECEIVE YOUR ACCUMULATED BALANCE</p>
+                  <p>• UNUSED ESCROW RETURNS TO EMPLOYER</p>
+                  <p>• THIS ACTION CANNOT BE UNDONE</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowCancelConfirm(false)
+                  setSelectedChannel(null)
+                }}
+                disabled={cancelingChannel === selectedChannel.channelId}
+                className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold rounded uppercase tracking-wide text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                KEEP CHANNEL
+              </button>
+              <button
+                onClick={() => handleCloseConfirm(false)}
+                disabled={cancelingChannel === selectedChannel.channelId}
+                className="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded uppercase tracking-wide text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {cancelingChannel === selectedChannel.channelId ? 'CLOSING...' : 'CLOSE CHANNEL'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unclaimed Balance Warning Modal */}
+      {showUnclaimedWarning && selectedChannel && unclaimedBalanceData && (
+        <UnclaimedBalanceWarningModal
+          isOpen={showUnclaimedWarning}
+          onClose={() => {
+            setShowUnclaimedWarning(false)
+            setUnclaimedBalanceData(null)
+            setSelectedChannel(null)
+          }}
+          onForceClose={handleForceClose}
+          unpaidBalance={unclaimedBalanceData.unpaidBalance}
+          channelDetails={{
+            jobName: selectedChannel.jobName,
+            worker: selectedChannel.employer || 'Employer',
+            escrowBalance: selectedChannel.escrowBalance,
+            hoursAccumulated: selectedChannel.hoursAccumulated
+          }}
+          callerType={unclaimedBalanceData.callerType}
+          isClosing={cancelingChannel === selectedChannel.channelId}
+        />
+      )}
     </div>
   )
 }

@@ -650,6 +650,100 @@ router.get('/check-orphaned-records', async (req, res) => {
 })
 
 /**
+ * GET /api/workers/:walletAddress/payment-channels
+ * Get all payment channels for a worker across all organizations
+ * Returns channels with employer name and channel details
+ */
+router.get('/:walletAddress/payment-channels', async (req, res) => {
+  try {
+    const { walletAddress } = req.params
+
+    // Validate wallet address
+    if (!walletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'WALLET ADDRESS REQUIRED'
+      })
+    }
+
+    // Validate XRPL address format
+    if (!walletAddress.match(/^r[1-9A-HJ-NP-Za-km-z]{24,34}$/)) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID XRPL WALLET ADDRESS FORMAT'
+      })
+    }
+
+    // Get payment channels for this worker
+    const channelsResult = await query(
+      `SELECT
+        pc.id,
+        pc.channel_id,
+        pc.job_name,
+        pc.hourly_rate,
+        pc.balance_update_frequency,
+        pc.status,
+        pc.updated_at,
+        pc.accumulated_balance,
+        pc.hours_accumulated,
+        pc.escrow_funded_amount,
+        o.organization_name as employer
+       FROM payment_channels pc
+       JOIN organizations o ON pc.organization_id = o.id
+       JOIN employees e ON pc.employee_id = e.id
+       WHERE e.employee_wallet_address = $1
+       AND pc.status = 'active'
+       ORDER BY pc.created_at DESC`,
+      [walletAddress]
+    )
+
+    // Transform to camelCase and calculate derived values
+    const channels = channelsResult.rows.map(c => {
+      const now = new Date()
+      const updated = new Date(c.updated_at)
+      const diffMs = now.getTime() - updated.getTime()
+      const diffMins = Math.floor(diffMs / 60000)
+
+      let lastUpdate
+      if (diffMins < 1) lastUpdate = 'Just now'
+      else if (diffMins < 60) lastUpdate = `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`
+      else lastUpdate = `${Math.floor(diffMins / 60)} hour${Math.floor(diffMins / 60) > 1 ? 's' : ''} ago`
+
+      // Escrow balance is the funded amount minus what's been accumulated
+      const fundedAmount = parseFloat(c.escrow_funded_amount || 0)
+      const accumulatedAmount = parseFloat(c.accumulated_balance || 0)
+      const escrowBalance = fundedAmount - accumulatedAmount
+
+      return {
+        id: c.id,
+        employer: c.employer,
+        jobName: c.job_name || 'Unnamed Job',
+        channelId: c.channel_id || `CH-${new Date().getFullYear()}-${String(c.id).padStart(3, '0')}`,
+        balance: parseFloat(c.accumulated_balance || 0),
+        escrowBalance: escrowBalance,
+        hourlyRate: parseFloat(c.hourly_rate || 0),
+        hoursAccumulated: parseFloat(c.hours_accumulated || 0),
+        status: c.status,
+        lastUpdate,
+        balanceUpdateFrequency: c.balance_update_frequency || 'Hourly'
+      }
+    })
+
+    res.json({
+      success: true,
+      data: channels
+    })
+  } catch (error) {
+    console.error('Error fetching worker payment channels:', error)
+    res.status(500).json({
+      success: false,
+      error: 'FAILED TO FETCH PAYMENT CHANNELS',
+      details: error.message
+    })
+  }
+})
+
+/**
  * POST /api/workers/reassociate-records
  * Re-associate orphaned employee records with new user account
  * This restores complete work history when worker re-signs up with same wallet

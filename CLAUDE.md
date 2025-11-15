@@ -184,11 +184,18 @@ openssl rand -base64 32
 - Returns workers sorted alphabetically by name
 - Used by CreatePaymentChannelModal dropdown
 
+**GET /api/workers/:walletAddress/payment-channels**
+- Fetch all active payment channels for a worker across all organizations
+- Returns channel details including employer name, job, balance, escrow
+- Used by WorkerDashboard to display worker's payment channels
+- Supports multi-organization workers (same wallet, multiple employers)
+
 **Key Features**:
 - Same worker wallet can work for multiple organizations
 - Each organization can set different hourly rates per worker
 - Workers must be added before creating payment channels
 - "Scan with Xaman" QR code feature in AddWorkerModal for easy address input
+- Workers can view and close their own payment channels from WorkerDashboard
 
 ## Payment Channel Implementation
 
@@ -253,6 +260,26 @@ See `PAYMENT_CHANNEL_TESTING.md` for detailed testing guide.
 
 ## Recent Updates & Features
 
+### Worker Payment Channels Dashboard (Added 2025-11-15) ✅
+- **Worker Payment Channels Endpoint**: New API endpoint for workers to view their payment channels
+  - `GET /api/workers/:walletAddress/payment-channels` - Fetches all active channels for a worker
+  - Returns channels across all organizations (supports multi-employer workers)
+  - Includes employer name, job details, balance, escrow, and hourly rate
+  - Backend: `backend/routes/workers.js` (lines 657-743)
+  - API Client: `frontend/src/services/api.ts` (lines 311-321)
+
+- **WorkerDashboard Integration**: Workers can now view and manage their payment channels
+  - Displays all active payment channels with employer information
+  - Shows accumulated balance, escrow balance, and hours worked
+  - "Close Channel" button for worker-initiated channel closure
+  - Auto-refreshes after successful channel closure
+  - Frontend: `frontend/src/pages/WorkerDashboard.tsx` (lines 30-47, 186-187, 425-476)
+
+- **Database Query Optimization**: Proper table joins for efficient data retrieval
+  - Joins payment_channels → organizations → employees tables
+  - Filters by employee_wallet_address for worker-specific queries
+  - Transforms snake_case to camelCase for frontend compatibility
+
 ### Worker Management System (Added)
 - **Add Worker Modal**: NGOs can add workers to their organization
   - "Scan with Xaman" QR code feature for easy wallet address input
@@ -266,16 +293,48 @@ See `PAYMENT_CHANNEL_TESTING.md` for detailed testing guide.
   - Prevents manual entry errors
   - Workers must be added before creating payment channels
 
-### Payment Channel Cancellation (Added)
-- **Complete Cancel Flow**: NGOs can cancel active payment channels with automatic escrow return
-  - **Backend Endpoints**:
-    - `POST /api/payment-channels/:channelId/close` - Initiates cancellation, returns XRPL transaction details
-    - `POST /api/payment-channels/:channelId/close/confirm` - Confirms closure after XRPL transaction succeeds
-  - **Authorization**: Only channel owner (NGO) can cancel
-  - **State Validation**: Cannot cancel already-closed channels
-  - **Escrow Return**: Calculates and returns unused escrow to NGO wallet
-  - **Worker Payment**: Worker receives accumulated unpaid balance
-  - **2-Phase Commit**: Database updates only after successful XRPL transaction
+### Payment Channel Closure Enhancements (Phase 5 - Added 2025-11-15) ✅
+- **Dual Authorization**: Both NGO AND Worker can now close payment channels
+  - NGO-initiated closure: Returns escrow to NGO, pays worker accumulated balance
+  - Worker-initiated closure: Worker claims accumulated balance, escrow returns to NGO
+
+- **Unclaimed Balance Warnings**: Comprehensive protection against forfeiting wages
+  - **UnclaimedBalanceWarningModal** component with caller-specific messaging
+  - **NGO warnings**: "WORKER HAS X XAH IN UNCLAIMED WAGES. ENSURE PAYMENT BEFORE CLOSING."
+  - **Worker warnings**: "YOU WILL FORFEIT X XAH IN UNCLAIMED WAGES. CLAIM BEFORE CLOSING."
+  - **Force close option**: Allows override with explicit acknowledgment of consequences
+  - **Recommended actions**: Prominently suggests claiming balance first
+
+- **Backend Endpoints**:
+  - `POST /api/payment-channels/:channelId/close` - Initiates closure, returns XRPL transaction details
+    - Supports both NGO (`organizationWalletAddress`) and Worker (`workerWalletAddress`) authorization
+    - Checks for unclaimed balance, returns `UNCLAIMED_BALANCE` error if balance > 0
+    - Accepts `forceClose` parameter to bypass warning after user acknowledgment
+  - `POST /api/payment-channels/:channelId/close/confirm` - Confirms closure after XRPL transaction succeeds
+    - Re-validates authorization for security (never trust client)
+    - Updates channel status to 'closed' with transaction hash
+
+- **Frontend Implementation**:
+  - **NgoDashboard**: Updated cancel flow with unclaimed balance warning integration
+  - **WorkerDashboard**: Added close channel functionality with worker-specific warnings
+  - **UnclaimedBalanceWarningModal**: Shared component for both user types
+  - **3-Step Closure Flow**: API → XRPL PaymentChannelClaim → Database Confirmation
+  - **State Management**: Clean modal state transitions with loading indicators
+
+- **Security Features**:
+  - Authorization check: Only channel participants (NGO or Worker) can close
+  - State validation: Cannot close already-closed channels
+  - Input validation: Wallet address and channel ID format checks
+  - Re-validation on confirm: Backend verifies authorization again
+  - Atomic operations: Database update only after XRPL transaction succeeds
+  - Escrow safety: Prevents negative returns, handles edge cases
+
+- **User Experience**:
+  - Clear warnings with different messaging for NGO vs Worker perspectives
+  - Visual hierarchy: Red/yellow colors for important warnings
+  - Recommended actions: "GO BACK (RECOMMENDED)" vs "FORCE CLOSE ANYWAY"
+  - ALL CAPS text convention: Consistent with project standards
+  - Professional tone: User-protective without being patronizing
 
 - **XRPL Integration**:
   - `frontend/src/utils/paymentChannels.ts` - `closePaymentChannel()` function

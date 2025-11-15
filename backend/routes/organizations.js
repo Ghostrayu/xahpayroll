@@ -529,7 +529,8 @@ router.get('/:organizationId/notifications', async (req, res) => {
 
     const notifications = notificationsResult.rows.map(n => ({
       id: n.id,
-      type: n.notification_type,
+      organizationId: n.organization_id,
+      notificationType: n.notification_type,
       workerWalletAddress: n.worker_wallet_address,
       workerName: n.worker_name,
       message: n.message,
@@ -538,15 +539,15 @@ router.get('/:organizationId/notifications', async (req, res) => {
       createdAt: n.created_at
     }))
 
+    const hasMore = (parseInt(offset) + parseInt(limit)) < total
+
     res.json({
-      success: true,
-      data: {
-        notifications,
-        pagination: {
-          total,
-          limit: parseInt(limit),
-          offset: parseInt(offset)
-        }
+      notifications,
+      pagination: {
+        total,
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        hasMore
       }
     })
   } catch (error) {
@@ -590,16 +591,32 @@ router.patch('/:organizationId/notifications/:notificationId', async (req, res) 
     }
 
     // Update read status
-    await query(
+    const updateResult = await query(
       `UPDATE ngo_notifications
        SET is_read = $1
-       WHERE id = $2 AND organization_id = $3`,
+       WHERE id = $2 AND organization_id = $3
+       RETURNING *`,
       [isRead, notificationId, organizationId]
     )
 
+    const updatedNotification = updateResult.rows[0]
+
     res.json({
       success: true,
-      message: 'NOTIFICATION STATUS UPDATED'
+      message: 'NOTIFICATION STATUS UPDATED',
+      data: {
+        notification: {
+          id: updatedNotification.id,
+          organizationId: updatedNotification.organization_id,
+          notificationType: updatedNotification.notification_type,
+          workerWalletAddress: updatedNotification.worker_wallet_address,
+          workerName: updatedNotification.worker_name,
+          message: updatedNotification.message,
+          metadata: updatedNotification.metadata || {},
+          isRead: updatedNotification.is_read,
+          createdAt: updatedNotification.created_at
+        }
+      }
     })
   } catch (error) {
     console.error('Error updating notification:', error)
@@ -619,16 +636,22 @@ router.post('/:organizationId/notifications/mark-all-read', async (req, res) => 
   try {
     const { organizationId } = req.params
 
-    await query(
+    const result = await query(
       `UPDATE ngo_notifications
        SET is_read = true
-       WHERE organization_id = $1 AND is_read = false`,
+       WHERE organization_id = $1 AND is_read = false
+       RETURNING id`,
       [organizationId]
     )
 
+    const count = result.rows.length
+
     res.json({
       success: true,
-      message: 'ALL NOTIFICATIONS MARKED AS READ'
+      message: 'ALL NOTIFICATIONS MARKED AS READ',
+      data: {
+        count
+      }
     })
   } catch (error) {
     console.error('Error marking notifications as read:', error)

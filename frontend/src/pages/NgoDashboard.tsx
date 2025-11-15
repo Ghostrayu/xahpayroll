@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useWallet } from '../contexts/WalletContext'
@@ -7,8 +7,12 @@ import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import CreatePaymentChannelModal from '../components/CreatePaymentChannelModal'
 import AddWorkerModal from '../components/AddWorkerModal'
-import { paymentChannelApi } from '../services/api'
+import NGONotifications from '../components/NGONotifications'
+import UnclaimedBalanceWarningModal from '../components/UnclaimedBalanceWarningModal'
+import { paymentChannelApi, organizationApi, notificationApi } from '../services/api'
 import { closePaymentChannel } from '../utils/paymentChannels'
+
+type DashboardTab = 'overview' | 'notifications'
 
 const NgoDashboard: React.FC = () => {
   const { userName } = useAuth()
@@ -17,8 +21,13 @@ const NgoDashboard: React.FC = () => {
   const [showEscrowModal, setShowEscrowModal] = useState(false)
   const [showAddWorkerModal, setShowAddWorkerModal] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  const [showUnclaimedWarning, setShowUnclaimedWarning] = useState(false)
+  const [unclaimedBalanceData, setUnclaimedBalanceData] = useState<any>(null)
   const [selectedChannel, setSelectedChannel] = useState<any>(null)
   const [cancelingChannel, setCancelingChannel] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<DashboardTab>('overview')
+  const [organizationId, setOrganizationId] = useState<number | null>(null)
+  const [unreadCount, setUnreadCount] = useState<number>(0)
 
   // Use data from context with fallback defaults
   const stats = orgStats || {
@@ -29,6 +38,38 @@ const NgoDashboard: React.FC = () => {
     avgHourlyRate: 0,
     hoursThisMonth: 0
   }
+
+  // Fetch organization ID and unread notification count
+  useEffect(() => {
+    const fetchOrganizationData = async () => {
+      if (!walletAddress) return
+
+      try {
+        // Get organization ID
+        const org = await organizationApi.get(walletAddress)
+        setOrganizationId(org.id)
+
+        // Fetch unread count
+        if (org.id) {
+          const count = await notificationApi.getUnreadCount(org.id)
+          setUnreadCount(count)
+        }
+      } catch (error) {
+        console.error('Failed to fetch organization data:', error)
+      }
+    }
+
+    fetchOrganizationData()
+
+    // Poll for unread count every 30 seconds
+    const interval = setInterval(() => {
+      if (organizationId) {
+        notificationApi.getUnreadCount(organizationId).then(setUnreadCount).catch(console.error)
+      }
+    }, 30000)
+
+    return () => clearInterval(interval)
+  }, [walletAddress, organizationId])
 
   /**
    * Handle cancel channel button click - opens confirmation modal
@@ -43,10 +84,12 @@ const NgoDashboard: React.FC = () => {
    * 1. Call API to get XRPL transaction details
    * 2. Execute XRPL PaymentChannelClaim transaction
    * 3. Confirm closure in database
+   *
+   * @param forceClose - If true, bypass unclaimed balance warning
    */
-  const handleCancelConfirm = async () => {
+  const handleCancelConfirm = async (forceClose: boolean = false) => {
     if (!selectedChannel || !walletAddress) {
-      alert('Missing wallet address or channel selection')
+      alert('MISSING WALLET ADDRESS OR CHANNEL SELECTION')
       return
     }
 
@@ -54,14 +97,33 @@ const NgoDashboard: React.FC = () => {
 
     try {
       // Step 1: Get XRPL transaction details from backend
-      console.log('[CANCEL_FLOW] Step 1: Getting transaction details from backend')
+      console.log('[CANCEL_FLOW] Step 1: Getting transaction details from backend', { forceClose })
       const response = await paymentChannelApi.cancelPaymentChannel(
         selectedChannel.channelId,
-        walletAddress
+        walletAddress,
+        'ngo',
+        forceClose
       )
 
-      if (!response.success || !response.data) {
-        throw new Error('Failed to prepare cancellation')
+      if (!response.success) {
+        // Check if error is UNCLAIMED_BALANCE warning
+        if (response.error?.code === 'UNCLAIMED_BALANCE' && !forceClose) {
+          console.log('[CANCEL_FLOW] Unclaimed balance detected, showing warning modal')
+          setUnclaimedBalanceData({
+            unpaidBalance: response.error.unpaidBalance,
+            callerType: response.error.callerType
+          })
+          setShowCancelConfirm(false)
+          setShowUnclaimedWarning(true)
+          setCancelingChannel(null)
+          return
+        }
+
+        throw new Error(response.error?.message || 'Failed to prepare cancellation')
+      }
+
+      if (!response.data) {
+        throw new Error('NO DATA RETURNED FROM BACKEND')
       }
 
       const { channel, xrplTransaction } = response.data
@@ -83,7 +145,7 @@ const NgoDashboard: React.FC = () => {
       )
 
       if (!txResult.success || !txResult.hash) {
-        throw new Error(txResult.error || 'XRPL transaction failed')
+        throw new Error(txResult.error || 'XRPL TRANSACTION FAILED')
       }
 
       console.log('[CANCEL_FLOW] Step 2 complete. Transaction hash:', txResult.hash)
@@ -93,30 +155,42 @@ const NgoDashboard: React.FC = () => {
       await paymentChannelApi.confirmChannelClosure(
         selectedChannel.channelId,
         txResult.hash,
-        walletAddress
+        walletAddress,
+        'ngo'
       )
 
       console.log('[CANCEL_FLOW] Step 3 complete. Channel closed successfully')
 
       // Success feedback
       alert(
-        `✅ Payment channel canceled successfully!\n\n` +
-        `Escrow returned: ${channel.escrowReturn} XAH\n` +
-        `Worker payment: ${channel.accumulatedBalance} XAH\n` +
-        `Transaction: ${txResult.hash}`
+        `✅ PAYMENT CHANNEL CANCELED SUCCESSFULLY!\n\n` +
+        `ESCROW RETURNED: ${channel.escrowReturn} XAH\n` +
+        `WORKER PAYMENT: ${channel.accumulatedBalance} XAH\n` +
+        `TRANSACTION: ${txResult.hash}`
       )
 
       // Refresh data
       await refreshData()
 
+      // Close all modals
+      setShowCancelConfirm(false)
+      setShowUnclaimedWarning(false)
+
     } catch (error: any) {
       console.error('[CANCEL_FLOW_ERROR]', error)
-      alert(`❌ Failed to cancel channel:\n\n${error.message}`)
+      alert(`❌ FAILED TO CANCEL CHANNEL:\n\n${error.message}`)
     } finally {
       setCancelingChannel(null)
-      setShowCancelConfirm(false)
       setSelectedChannel(null)
+      setUnclaimedBalanceData(null)
     }
+  }
+
+  /**
+   * Handle force close after unclaimed balance warning
+   */
+  const handleForceClose = async () => {
+    await handleCancelConfirm(true)
   }
 
   return (
@@ -232,11 +306,47 @@ const NgoDashboard: React.FC = () => {
         </div>
       </div>
 
+      {/* Tab Navigation */}
+      <section className="bg-white border-b-2 border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex gap-4">
+            <button
+              onClick={() => setActiveTab('overview')}
+              className={`px-6 py-4 font-bold text-sm uppercase tracking-wide transition-all ${
+                activeTab === 'overview'
+                  ? 'text-xah-blue border-b-4 border-xah-blue'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              OVERVIEW
+            </button>
+            <button
+              onClick={() => setActiveTab('notifications')}
+              className={`px-6 py-4 font-bold text-sm uppercase tracking-wide transition-all relative ${
+                activeTab === 'notifications'
+                  ? 'text-xah-blue border-b-4 border-xah-blue'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              NOTIFICATIONS
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 px-2 py-0.5 bg-red-500 text-white rounded-full text-[10px] font-bold">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+      </section>
+
       {/* Dashboard Content */}
       <section className="py-12 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Active Payment Channels Section */}
-          <div className="mb-12">
+          {/* Overview Tab */}
+          {activeTab === 'overview' && (
+            <>
+              {/* Active Payment Channels Section */}
+              <div className="mb-12">
             <div className="bg-white rounded-2xl shadow-xl p-4 border-2 border-green-500/30">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-extrabold text-gray-900 uppercase tracking-tight">Active Payment Channels</h3>
@@ -445,6 +555,23 @@ const NgoDashboard: React.FC = () => {
               </button>
             </div>
           </div>
+            </>
+          )}
+
+          {/* Notifications Tab */}
+          {activeTab === 'notifications' && organizationId && (
+            <NGONotifications organizationId={organizationId} />
+          )}
+
+          {/* Loading state for notifications tab when org ID not available */}
+          {activeTab === 'notifications' && !organizationId && (
+            <div className="text-center py-12">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-xah-blue"></div>
+              <p className="text-sm text-gray-600 uppercase tracking-wide mt-4">
+                LOADING ORGANIZATION DATA...
+              </p>
+            </div>
+          )}
         </div>
       </section>
 
@@ -473,10 +600,10 @@ const NgoDashboard: React.FC = () => {
           <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-2xl">
             <div className="mb-4">
               <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-2">
-                Cancel Payment Channel
+                CANCEL PAYMENT CHANNEL
               </h3>
               <p className="text-sm text-gray-700 uppercase">
-                Are you sure you want to cancel the payment channel for{' '}
+                ARE YOU SURE YOU WANT TO CANCEL THE PAYMENT CHANNEL FOR{' '}
                 <strong className="text-gray-900">{selectedChannel.worker}</strong>?
               </p>
             </div>
@@ -508,7 +635,7 @@ const NgoDashboard: React.FC = () => {
               <div className="flex gap-2">
                 <div className="text-yellow-600 text-xl flex-shrink-0">⚠️</div>
                 <div className="space-y-2 text-xs text-yellow-800 uppercase">
-                  <p className="font-bold uppercase tracking-wide">Important:</p>
+                  <p className="font-bold uppercase tracking-wide">IMPORTANT:</p>
                   <p>• UNUSED ESCROW WILL BE RETURNED TO YOUR WALLET</p>
                   <p>• WORKER WILL RECEIVE ACCUMULATED BALANCE: <strong>{selectedChannel.balance?.toLocaleString() || '0'} XAH</strong></p>
                   <p>• THIS ACTION CANNOT BE UNDONE</p>
@@ -526,18 +653,40 @@ const NgoDashboard: React.FC = () => {
                 disabled={cancelingChannel === selectedChannel.channelId}
                 className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold rounded uppercase tracking-wide text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Keep Channel
+                KEEP CHANNEL
               </button>
               <button
-                onClick={handleCancelConfirm}
+                onClick={() => handleCancelConfirm(false)}
                 disabled={cancelingChannel === selectedChannel.channelId}
                 className="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded uppercase tracking-wide text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {cancelingChannel === selectedChannel.channelId ? 'Canceling...' : 'Cancel Channel'}
+                {cancelingChannel === selectedChannel.channelId ? 'CANCELING...' : 'CANCEL CHANNEL'}
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Unclaimed Balance Warning Modal */}
+      {showUnclaimedWarning && selectedChannel && unclaimedBalanceData && (
+        <UnclaimedBalanceWarningModal
+          isOpen={showUnclaimedWarning}
+          onClose={() => {
+            setShowUnclaimedWarning(false)
+            setUnclaimedBalanceData(null)
+            setSelectedChannel(null)
+          }}
+          onForceClose={handleForceClose}
+          unpaidBalance={unclaimedBalanceData.unpaidBalance}
+          channelDetails={{
+            jobName: selectedChannel.jobName,
+            worker: selectedChannel.worker,
+            escrowBalance: selectedChannel.escrowBalance,
+            hoursAccumulated: selectedChannel.hoursAccumulated
+          }}
+          callerType={unclaimedBalanceData.callerType}
+          isClosing={cancelingChannel === selectedChannel.channelId}
+        />
       )}
     </div>
   )

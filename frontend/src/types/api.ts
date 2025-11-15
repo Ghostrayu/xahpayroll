@@ -329,3 +329,84 @@ export interface ReassociateRecordsResponse {
   message: string                 // Success message (ALL CAPS)
   recordsReassociated: number     // Count of records re-associated
 }
+
+/**
+ * NGO Notification Type
+ * Different types of notifications that can be sent to NGOs
+ *
+ * Backend: ngo_notifications.notification_type column
+ * Component usage: NGONotifications.tsx, notification components
+ */
+export type NotificationType =
+  | 'worker_deleted'      // Worker self-deleted their profile
+  | 'worker_removed'      // Worker removed by NGO admin
+  | 'deletion_error'      // Deletion attempt failed
+
+/**
+ * NGO Notification
+ * Individual notification record for organizations
+ *
+ * Backend endpoint: GET /api/organizations/:orgId/notifications
+ * Component usage: NGONotifications.tsx
+ */
+export interface NGONotification {
+  id: number                      // Database ngo_notifications ID
+  organizationId: number          // Organization receiving the notification
+  notificationType: NotificationType  // Type of notification
+  workerWalletAddress: string     // Worker's XRPL wallet address
+  workerName: string              // Worker's full name
+  message: string                 // Notification message (ALL CAPS)
+  metadata: {                     // Additional context data (JSONB)
+    reason?: string               // Deletion reason
+    deletionDate?: string         // ISO 8601 timestamp
+    deletionType?: string         // 'manual' | 'automatic'
+    inactivityDays?: number       // Days of inactivity before auto-deletion
+    error?: string                // Error type for deletion_error
+    blockingChannelId?: string    // Channel ID blocking deletion
+    removedBy?: string            // Email/ID of admin who removed worker
+  }
+  isRead: boolean                 // Whether notification has been read
+  createdAt: string               // ISO 8601 timestamp of notification creation
+}
+
+/**
+ * NGO Notifications List Response
+ * Paginated list of notifications for an organization
+ *
+ * Backend endpoint: GET /api/organizations/:orgId/notifications
+ * Component usage: NGONotifications.tsx
+ */
+export interface NGONotificationsResponse {
+  notifications: NGONotification[]  // Array of notifications
+  pagination: {
+    total: number                  // Total count of notifications
+    limit: number                  // Page size limit
+    offset: number                 // Current offset
+    hasMore: boolean              // Whether more notifications exist
+  }
+}
+
+/**
+ * NGO Notifications Query Parameters
+ * Filter and pagination options for notifications list
+ *
+ * Backend endpoint: GET /api/organizations/:orgId/notifications?type=...&isRead=...
+ * Component usage: NGONotifications.tsx
+ */
+export interface NotificationsQueryParams {
+  type?: NotificationType         // Filter by notification type
+  isRead?: boolean                // Filter by read status
+  limit?: number                  // Page size (default: 20)
+  offset?: number                 // Pagination offset (default: 0)
+}
+
+/**
+ * Mark Notification Read Request
+ * Request to mark notification(s) as read
+ *
+ * Backend endpoint: PATCH /api/organizations/:orgId/notifications/:notificationId
+ * Component usage: NGONotifications.tsx, notification components
+ */
+export interface MarkNotificationReadRequest {
+  isRead: boolean                 // New read status
+}

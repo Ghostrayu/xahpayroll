@@ -191,17 +191,18 @@ const isValidChannelId = (channelId) => {
 router.post('/:channelId/close', async (req, res) => {
   try {
     const { channelId } = req.params
-    const { organizationWalletAddress } = req.body
+    const { organizationWalletAddress, workerWalletAddress, forceClose } = req.body
 
     // ============================================
     // STEP 1: INPUT VALIDATION
     // ============================================
 
-    // Validate organizationWalletAddress is provided
-    if (!organizationWalletAddress) {
+    // Validate that at least one wallet address is provided
+    const callerWalletAddress = organizationWalletAddress || workerWalletAddress
+    if (!callerWalletAddress) {
       return res.status(400).json({
         success: false,
-        error: { message: 'ORGANIZATION WALLET ADDRESS IS REQUIRED' }
+        error: { message: 'WALLET ADDRESS IS REQUIRED (ORGANIZATION OR WORKER)' }
       })
     }
 
@@ -214,7 +215,7 @@ router.post('/:channelId/close', async (req, res) => {
     }
 
     // Validate Xahau wallet address format
-    if (!isValidXahauAddress(organizationWalletAddress)) {
+    if (!isValidXahauAddress(callerWalletAddress)) {
       return res.status(400).json({
         success: false,
         error: {
@@ -265,11 +266,15 @@ router.post('/:channelId/close', async (req, res) => {
     // STEP 3: AUTHORIZATION CHECK
     // ============================================
 
-    // Verify organization owns this channel
-    if (channel.escrow_wallet_address !== organizationWalletAddress) {
+    // Determine caller type (NGO or Worker)
+    const isNGO = channel.escrow_wallet_address === callerWalletAddress
+    const isWorker = channel.employee_wallet_address === callerWalletAddress
+
+    // Verify caller is authorized (either NGO or worker)
+    if (!isNGO && !isWorker) {
       return res.status(403).json({
         success: false,
-        error: { message: 'UNAUTHORIZED: YOU DO NOT OWN THIS PAYMENT CHANNEL' }
+        error: { message: 'UNAUTHORIZED: YOU DO NOT HAVE PERMISSION TO CLOSE THIS PAYMENT CHANNEL' }
       })
     }
 
@@ -282,6 +287,30 @@ router.post('/:channelId/close', async (req, res) => {
       return res.status(400).json({
         success: false,
         error: { message: 'PAYMENT CHANNEL IS ALREADY CLOSED' }
+      })
+    }
+
+    // ============================================
+    // STEP 4.5: UNCLAIMED BALANCE WARNING
+    // ============================================
+
+    const unpaidBalance = parseFloat(channel.accumulated_balance) || 0
+
+    // Check if there's an unclaimed balance
+    if (unpaidBalance > 0 && !forceClose) {
+      const warningMessage = isWorker
+        ? `WARNING: YOU HAVE ${unpaidBalance.toFixed(2)} XAH IN UNCLAIMED WAGES. CLAIM BEFORE CLOSING OR FORFEIT YOUR EARNINGS.`
+        : `WARNING: WORKER HAS ${unpaidBalance.toFixed(2)} XAH IN UNCLAIMED WAGES. ENSURE PAYMENT BEFORE CLOSING.`
+
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'UNCLAIMED_BALANCE',
+          message: warningMessage,
+          unpaidBalance: unpaidBalance,
+          requiresForceClose: true,
+          callerType: isWorker ? 'worker' : 'ngo'
+        }
       })
     }
 
@@ -373,7 +402,7 @@ router.post('/:channelId/close', async (req, res) => {
 router.post('/:channelId/close/confirm', async (req, res) => {
   try {
     const { channelId } = req.params
-    const { txHash, organizationWalletAddress } = req.body
+    const { txHash, organizationWalletAddress, workerWalletAddress } = req.body
 
     // ============================================
     // STEP 1: INPUT VALIDATION
@@ -386,10 +415,11 @@ router.post('/:channelId/close/confirm', async (req, res) => {
       })
     }
 
-    if (!organizationWalletAddress) {
+    const callerWalletAddress = organizationWalletAddress || workerWalletAddress
+    if (!callerWalletAddress) {
       return res.status(400).json({
         success: false,
-        error: { message: 'ORGANIZATION WALLET ADDRESS IS REQUIRED' }
+        error: { message: 'WALLET ADDRESS IS REQUIRED (ORGANIZATION OR WORKER)' }
       })
     }
 
@@ -401,7 +431,7 @@ router.post('/:channelId/close/confirm', async (req, res) => {
     }
 
     // Validate formats
-    if (!isValidXahauAddress(organizationWalletAddress)) {
+    if (!isValidXahauAddress(callerWalletAddress)) {
       return res.status(400).json({
         success: false,
         error: { message: 'INVALID WALLET ADDRESS FORMAT' }
@@ -419,11 +449,12 @@ router.post('/:channelId/close/confirm', async (req, res) => {
     // STEP 2: RE-VERIFY AUTHORIZATION
     // ============================================
 
-    // Fetch channel with organization details
+    // Fetch channel with organization and employee details
     const channelResult = await query(
-      `SELECT pc.*, o.escrow_wallet_address
+      `SELECT pc.*, o.escrow_wallet_address, e.employee_wallet_address
       FROM payment_channels pc
       JOIN organizations o ON pc.organization_id = o.id
+      JOIN employees e ON pc.employee_id = e.id
       WHERE pc.channel_id = $1`,
       [channelId]
     )
@@ -438,10 +469,13 @@ router.post('/:channelId/close/confirm', async (req, res) => {
     const channel = channelResult.rows[0]
 
     // Verify authorization again (security: never trust client)
-    if (channel.escrow_wallet_address !== organizationWalletAddress) {
+    const isNGO = channel.escrow_wallet_address === callerWalletAddress
+    const isWorker = channel.employee_wallet_address === callerWalletAddress
+
+    if (!isNGO && !isWorker) {
       return res.status(403).json({
         success: false,
-        error: { message: 'UNAUTHORIZED: YOU DO NOT OWN THIS PAYMENT CHANNEL' }
+        error: { message: 'UNAUTHORIZED: YOU DO NOT HAVE PERMISSION TO CLOSE THIS PAYMENT CHANNEL' }
       })
     }
 
