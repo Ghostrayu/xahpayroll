@@ -11,6 +11,7 @@ import WorkerDashboard from './pages/WorkerDashboard'
 import EmployeeSettings from './pages/EmployeeSettings'
 import NgoPage from './pages/NgoPage'
 import NgoDashboard from './pages/NgoDashboard'
+import NgoSettings from './pages/NgoSettings'
 import TermsOfService from './pages/TermsOfService'
 import ScrollToTop from './components/ScrollToTop'
 
@@ -49,6 +50,14 @@ const App: React.FC = () => {
                   element={
                     <ProtectedRoute allowedUserTypes={['ngo', 'employer']} redirectTo="/ngo">
                       <NgoDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/ngo/settings"
+                  element={
+                    <ProtectedRoute allowedUserTypes={['ngo', 'employer']} redirectTo="/ngo">
+                      <NgoSettings />
                     </ProtectedRoute>
                   }
                 />

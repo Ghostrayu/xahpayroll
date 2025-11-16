@@ -89,16 +89,20 @@ const Navbar: React.FC = () => {
                         </div>
                       )}
                     </div>
-                    <Link 
-                      to={userType === 'ngo' || userType === 'employer' ? '/ngo/dashboard' : '/worker/dashboard'} 
+                    <Link
+                      to={userType === 'ngo' || userType === 'employer' ? '/ngo/dashboard' : '/worker/dashboard'}
                       className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 uppercase tracking-wide"
                       onClick={() => setShowDropdown(false)}
                     >
                       📊 DASHBOARD
                     </Link>
-                    <a href="/settings" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 uppercase tracking-wide">
+                    <Link
+                      to={userType === 'ngo' || userType === 'employer' ? '/ngo/settings' : '/worker/settings'}
+                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 uppercase tracking-wide"
+                      onClick={() => setShowDropdown(false)}
+                    >
                       ⚙️ SETTINGS
-                    </a>
+                    </Link>
                     <button
                       onClick={handleLogout}
                       className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 uppercase tracking-wide font-bold"
@@ -185,16 +189,20 @@ const Navbar: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                <Link 
-                  to={userType === 'ngo' || userType === 'employer' ? '/ngo/dashboard' : '/worker/dashboard'} 
+                <Link
+                  to={userType === 'ngo' || userType === 'employer' ? '/ngo/dashboard' : '/worker/dashboard'}
                   className="block px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-md uppercase text-sm"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   📊 DASHBOARD
                 </Link>
-                <a href="/settings" className="block px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-md uppercase text-sm">
+                <Link
+                  to={userType === 'ngo' || userType === 'employer' ? '/ngo/settings' : '/worker/settings'}
+                  className="block px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-md uppercase text-sm"
+                  onClick={() => setIsMenuOpen(false)}
+                >
                   ⚙️ SETTINGS
-                </a>
+                </Link>
                 <button
                   onClick={() => {
                     setIsMenuOpen(false)
