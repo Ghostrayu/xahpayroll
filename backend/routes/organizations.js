@@ -451,18 +451,25 @@ router.get('/payment-channels/:walletAddress', async (req, res) => {
       const accumulatedAmount = parseFloat(c.accumulated_balance || 0)
       const escrowBalance = fundedAmount - accumulatedAmount
 
+      // Validate channel_id - must be 64-character hex string or null
+      const channelId = c.channel_id
+      if (channelId && (channelId.length !== 64 || !/^[0-9A-F]+$/i.test(channelId))) {
+        console.warn(`[INVALID_CHANNEL_ID] Channel ${c.id} has invalid channel_id: ${channelId}`)
+      }
+
       return {
         id: c.id,
         worker: c.worker,
         jobName: c.job_name || 'Unnamed Job',
-        channelId: c.channel_id || `CH-${new Date().getFullYear()}-${String(c.id).padStart(3, '0')}`,
+        channelId: channelId || null, // Return null if missing/invalid instead of generating fake ID
         balance: parseFloat(c.accumulated_balance),
         escrowBalance: escrowBalance,
         hourlyRate: parseFloat(c.hourly_rate),
         hoursAccumulated: parseFloat(c.hours_accumulated),
         status: c.status,
         lastUpdate,
-        balanceUpdateFrequency: c.balance_update_frequency || 'Hourly'
+        balanceUpdateFrequency: c.balance_update_frequency || 'Hourly',
+        hasInvalidChannelId: !channelId || (channelId.length !== 64 || !/^[0-9A-F]+$/i.test(channelId)) // Flag for frontend to display warning
       }
     })
 

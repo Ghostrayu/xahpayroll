@@ -29,6 +29,12 @@ const Navbar: React.FC = () => {
     return location.pathname === '/' || location.pathname === ''
   }
 
+  // Determine if we should show "Back to Home" button
+  // Show on registration pages (/ngo, /worker) when navbar would otherwise be empty
+  const shouldShowBackButton = () => {
+    return location.pathname === '/ngo' || location.pathname === '/worker'
+  }
+
   return (
     <nav className="bg-white shadow-md fixed w-full top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -54,7 +60,20 @@ const Navbar: React.FC = () => {
                 </a>
               </>
             )}
-            
+
+            {/* Back to Home button for registration pages */}
+            {shouldShowBackButton() && (
+              <Link
+                to="/"
+                className="flex items-center gap-2 text-gray-700 hover:text-xah-blue transition-colors uppercase font-bold"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                BACK TO HOME
+              </Link>
+            )}
+
             {/* Login/User Button */}
             {isLoggedIn ? (
               <div className="relative">
@@ -167,7 +186,21 @@ const Navbar: React.FC = () => {
                 </a>
               </>
             )}
-            
+
+            {/* Back to Home button for registration pages (mobile) */}
+            {shouldShowBackButton() && (
+              <Link
+                to="/"
+                className="flex items-center gap-2 px-3 py-2 text-gray-700 hover:text-xah-blue hover:bg-gray-50 rounded-md uppercase font-bold"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                BACK TO HOME
+              </Link>
+            )}
+
             {/* Mobile Login/User Section */}
             {isLoggedIn ? (
               <div className="mt-2 border-t pt-2">

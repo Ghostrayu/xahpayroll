@@ -68,7 +68,7 @@ export interface PaymentChannel {
   id: number                       // Database payment_channels ID
   worker: string                   // Worker's full name
   jobName: string                  // Job/channel description
-  channelId: string                // XRPL payment channel ID
+  channelId: string | null         // XRPL payment channel ID (64-char hex) or null if invalid/missing
   balance: number                  // Accumulated balance (XAH) - what worker has earned
   escrowBalance: number            // Remaining escrow (funded - accumulated)
   hourlyRate: number               // Payment rate in XAH per hour
@@ -76,6 +76,7 @@ export interface PaymentChannel {
   status: string                   // Channel status: 'active' | 'closed'
   lastUpdate: string               // Human-readable time since last update
   balanceUpdateFrequency: string   // How often claims are generated: 'Hourly' | 'Every 30 Minutes' | etc.
+  hasInvalidChannelId?: boolean    // Flag indicating channel_id is missing or invalid format
 }
 
 /**

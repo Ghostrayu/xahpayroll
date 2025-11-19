@@ -17,7 +17,7 @@ type ModalStep = 'eligibility-check' | 'blocked' | 'eligible' | 'confirmation' |
 
 const DeleteProfileModal: React.FC<DeleteProfileModalProps> = ({ isOpen, onClose }) => {
   const { userName, logout } = useAuth()
-  const { walletAddress } = useWallet()
+  const { walletAddress, disconnectWallet } = useWallet()
 
   const [currentStep, setCurrentStep] = useState<ModalStep>('eligibility-check')
   const [loading, setLoading] = useState(false)
@@ -76,7 +76,7 @@ const DeleteProfileModal: React.FC<DeleteProfileModalProps> = ({ isOpen, onClose
   }
 
   const handleDeleteProfile = async () => {
-    if (confirmationText !== 'DELETE MY ACCOUNT') {
+    if (confirmationText.toUpperCase() !== 'DELETE MY ACCOUNT') {
       setError('CONFIRMATION TEXT MUST BE "DELETE MY ACCOUNT"')
       return
     }
@@ -105,7 +105,8 @@ const DeleteProfileModal: React.FC<DeleteProfileModalProps> = ({ isOpen, onClose
   }
 
   const handleAutoLogout = () => {
-    logout()
+    disconnectWallet() // Disconnect wallet first to prevent auto-reconnect
+    logout() // Then logout from auth
     window.location.href = '/'
   }
 
@@ -145,7 +146,37 @@ const DeleteProfileModal: React.FC<DeleteProfileModalProps> = ({ isOpen, onClose
           </div>
         )}
 
-        {/* Step 2a: Blocked State */}
+        {/* Step 2a: Error State (API failure) */}
+        {currentStep === 'blocked' && error && !eligibilityData && (
+          <div className="p-8">
+            <div className="text-center mb-6">
+              <div className="text-4xl mb-4">⚠️</div>
+              <h3 className="text-xl font-bold text-red-900 uppercase tracking-wide mb-2">
+                ERROR CHECKING ELIGIBILITY
+              </h3>
+              <p className="text-sm text-red-600 uppercase mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
+                {error}
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={checkEligibility}
+                className="flex-1 bg-xah-blue hover:bg-primary-700 text-white font-bold py-3 px-6 rounded-lg text-sm uppercase tracking-wide transition-colors"
+              >
+                TRY AGAIN
+              </button>
+              <button
+                onClick={handleClose}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 px-6 rounded-lg text-sm uppercase tracking-wide transition-colors"
+              >
+                CLOSE
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2b: Blocked State (has blocking reasons) */}
         {currentStep === 'blocked' && eligibilityData && !eligibilityData.canDelete && (
           <div className="p-8">
             <div className="text-center mb-6">
@@ -383,7 +414,7 @@ const DeleteProfileModal: React.FC<DeleteProfileModalProps> = ({ isOpen, onClose
               </button>
               <button
                 onClick={handleDeleteProfile}
-                disabled={loading || confirmationText !== 'DELETE MY ACCOUNT'}
+                disabled={loading || confirmationText.toUpperCase() !== 'DELETE MY ACCOUNT'}
                 className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white font-bold text-sm uppercase tracking-wide rounded-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span>🗑️</span>

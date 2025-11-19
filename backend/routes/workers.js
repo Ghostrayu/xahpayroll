@@ -236,7 +236,8 @@ router.get('/deletion-eligibility', async (req, res) => {
         o.organization_name
       FROM payment_channels pc
       JOIN organizations o ON pc.organization_id = o.id
-      WHERE pc.employee_wallet_address = $1
+      JOIN employees e ON pc.employee_id = e.id
+      WHERE e.employee_wallet_address = $1
       AND (
         pc.status = 'active'
         OR pc.status = 'timeout'
@@ -246,9 +247,11 @@ router.get('/deletion-eligibility', async (req, res) => {
 
     // Check for unpaid balances
     const unpaidBalances = await query(`
-      SELECT SUM(unpaid_balance) as total
-      FROM payment_channels
-      WHERE employee_wallet_address = $1
+      SELECT SUM(pc.accumulated_balance) as total
+      FROM payment_channels pc
+      JOIN employees e ON pc.employee_id = e.id
+      WHERE e.employee_wallet_address = $1
+      AND pc.status = 'active'
     `, [walletAddress])
 
     const totalUnpaid = unpaidBalances.rows[0]?.total || 0
@@ -258,10 +261,10 @@ router.get('/deletion-eligibility', async (req, res) => {
 
     for (const channel of activeChannels.rows) {
       blockingReasons.push({
-        type: channel.unpaid_balance > 0 ? 'active_channel' : 'unclosed_channel',
+        type: channel.accumulated_balance > 0 ? 'active_channel' : 'unclosed_channel',
         organization: channel.organization_name,
         channelId: channel.id,
-        unpaidBalance: parseFloat(channel.unpaid_balance || 0),
+        unpaidBalance: parseFloat(channel.accumulated_balance || 0),
         status: channel.status
       })
     }
@@ -274,7 +277,7 @@ router.get('/deletion-eligibility', async (req, res) => {
         COUNT(CASE WHEN pc.closure_tx_hash IS NOT NULL THEN 1 END) as closed_channels
       FROM employees e
       LEFT JOIN organizations o ON e.organization_id = o.id
-      LEFT JOIN payment_channels pc ON pc.employee_wallet_address = e.employee_wallet_address
+      LEFT JOIN payment_channels pc ON pc.employee_id = e.id
         AND pc.organization_id = o.id
       WHERE e.employee_wallet_address = $1
     `, [walletAddress])
@@ -318,8 +321,8 @@ router.post('/delete-profile', async (req, res) => {
       })
     }
 
-    // Validate confirmation text
-    if (confirmationText !== 'DELETE MY ACCOUNT') {
+    // Validate confirmation text (case-insensitive)
+    if (confirmationText.toUpperCase() !== 'DELETE MY ACCOUNT') {
       return res.status(400).json({
         success: false,
         error: 'INVALID_CONFIRMATION',
@@ -332,10 +335,11 @@ router.post('/delete-profile', async (req, res) => {
       SELECT
         COUNT(*) as blocking_count
       FROM payment_channels pc
-      WHERE pc.employee_wallet_address = $1
+      JOIN employees e ON pc.employee_id = e.id
+      WHERE e.employee_wallet_address = $1
       AND (
         pc.status = 'active'
-        OR pc.unpaid_balance > 0
+        OR pc.accumulated_balance > 0
         OR pc.closure_tx_hash IS NULL
       )
     `, [walletAddress])
@@ -356,14 +360,15 @@ router.post('/delete-profile', async (req, res) => {
       WHERE e.employee_wallet_address = $1
     `, [walletAddress])
 
-    // Get user info
+    // Get user name from employees table (workers are stored there)
     const userInfo = await query(`
-      SELECT name, display_name
-      FROM users
-      WHERE wallet_address = $1
+      SELECT full_name
+      FROM employees
+      WHERE employee_wallet_address = $1
+      LIMIT 1
     `, [walletAddress])
 
-    const userName = userInfo.rows[0]?.name || userInfo.rows[0]?.display_name || walletAddress
+    const userName = userInfo.rows[0]?.full_name || walletAddress
 
     // Start transaction
     await query('BEGIN')
@@ -611,9 +616,9 @@ router.get('/check-orphaned-records', async (req, res) => {
     const earnings = await query(`
       SELECT
         COALESCE(SUM(p.amount), 0) as paid_earnings,
-        COALESCE(SUM(pc.unpaid_balance), 0) as unpaid_earnings
+        COALESCE(SUM(pc.accumulated_balance), 0) as unpaid_earnings
       FROM employees e
-      LEFT JOIN payment_channels pc ON pc.employee_wallet_address = e.employee_wallet_address
+      LEFT JOIN payment_channels pc ON pc.employee_id = e.id
       LEFT JOIN payments p ON p.payment_channel_id = pc.id
       WHERE e.employee_wallet_address = $1
     `, [walletAddress])
@@ -644,6 +649,116 @@ router.get('/check-orphaned-records', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'FAILED TO CHECK ORPHANED RECORDS',
+      details: error.message
+    })
+  }
+})
+
+/**
+ * GET /api/workers/earnings/:walletAddress
+ * Get worker earnings summary (today, week, month, total)
+ */
+router.get('/earnings/:walletAddress', async (req, res) => {
+  try {
+    const { walletAddress } = req.params
+
+    if (!walletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'WALLET ADDRESS REQUIRED'
+      })
+    }
+
+    // Get all payment history for this worker
+    const earningsResult = await query(`
+      SELECT
+        COALESCE(SUM(CASE
+          WHEN DATE(p.paid_at) = CURRENT_DATE THEN p.amount
+          ELSE 0
+        END), 0) as today,
+        COALESCE(SUM(CASE
+          WHEN p.paid_at >= DATE_TRUNC('week', CURRENT_DATE) THEN p.amount
+          ELSE 0
+        END), 0) as week,
+        COALESCE(SUM(CASE
+          WHEN p.paid_at >= DATE_TRUNC('month', CURRENT_DATE) THEN p.amount
+          ELSE 0
+        END), 0) as month,
+        COALESCE(SUM(p.amount), 0) as total
+      FROM payments p
+      JOIN employees e ON p.employee_id = e.id
+      WHERE e.employee_wallet_address = $1
+      AND p.payment_status = 'completed'
+    `, [walletAddress])
+
+    const earnings = earningsResult.rows[0] || { today: 0, week: 0, month: 0, total: 0 }
+
+    res.json({
+      success: true,
+      data: {
+        today: parseFloat(earnings.today),
+        week: parseFloat(earnings.week),
+        month: parseFloat(earnings.month),
+        total: parseFloat(earnings.total)
+      }
+    })
+  } catch (error) {
+    console.error('Error fetching worker earnings:', error)
+    res.status(500).json({
+      success: false,
+      error: 'FAILED TO FETCH EARNINGS',
+      details: error.message
+    })
+  }
+})
+
+/**
+ * GET /api/workers/sessions/:walletAddress
+ * Get work sessions for a worker
+ */
+router.get('/sessions/:walletAddress', async (req, res) => {
+  try {
+    const { walletAddress } = req.params
+
+    if (!walletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'WALLET ADDRESS REQUIRED'
+      })
+    }
+
+    // Get all work sessions for this worker
+    const sessionsResult = await query(`
+      SELECT
+        ws.id,
+        ws.clock_in,
+        ws.clock_out,
+        ws.hours_worked,
+        ws.session_status as status
+      FROM work_sessions ws
+      JOIN employees e ON ws.employee_id = e.id
+      WHERE e.employee_wallet_address = $1
+      ORDER BY ws.clock_in DESC
+      LIMIT 50
+    `, [walletAddress])
+
+    const sessions = sessionsResult.rows.map(s => ({
+      id: s.id,
+      clockIn: s.clock_in,
+      clockOut: s.clock_out,
+      hours: s.hours_worked ? parseFloat(s.hours_worked) : undefined,
+      status: s.status
+    }))
+
+    res.json({
+      success: true,
+      data: sessions
+    })
+  } catch (error) {
+    console.error('Error fetching work sessions:', error)
+    res.status(500).json({
+      success: false,
+      error: 'FAILED TO FETCH WORK SESSIONS',
       details: error.message
     })
   }

@@ -1,4 +1,5 @@
 import React from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useWallet } from '../contexts/WalletContext'
 import Navbar from '../components/Navbar'
@@ -15,13 +16,24 @@ const NgoSettings: React.FC = () => {
       {/* Page Header */}
       <div className="pt-28 pb-8 bg-gradient-to-br from-xah-light via-white to-primary-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-extrabold text-gray-900 uppercase tracking-tight">
-              ORGANIZATION SETTINGS
-            </h1>
-            <p className="text-sm text-gray-600 uppercase tracking-wide mt-2">
-              Manage your organization account settings
-            </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl md:text-4xl font-extrabold text-gray-900 uppercase tracking-tight">
+                ORGANIZATION SETTINGS
+              </h1>
+              <p className="text-sm text-gray-600 uppercase tracking-wide mt-2">
+                Manage your organization account settings
+              </p>
+            </div>
+            <Link
+              to="/ngo/dashboard"
+              className="inline-flex items-center gap-2 text-xah-blue hover:text-primary-700 font-bold text-sm uppercase tracking-wide transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              BACK TO DASHBOARD
+            </Link>
           </div>
         </div>
       </div>

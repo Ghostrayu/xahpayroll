@@ -253,14 +253,24 @@ const WorkerDashboard: React.FC = () => {
                 </div>
               )}
             </div>
-            <Link 
-              to="/worker" 
+            <Link
+              to="/worker"
               className="inline-flex items-center gap-2 text-xah-blue hover:text-primary-700 font-bold text-sm uppercase tracking-wide transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
               BACK TO INFO
+            </Link>
+          </div>
+
+          {/* Settings Button */}
+          <div className="mt-6">
+            <Link
+              to="/worker/settings"
+              className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-sm"
+            >
+              ⚙️ ACCOUNT SETTINGS
             </Link>
           </div>
         </div>
