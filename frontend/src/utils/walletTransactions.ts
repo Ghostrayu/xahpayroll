@@ -98,10 +98,10 @@ async function submitWithCrossmark(transaction: any): Promise<TransactionResult>
 
 /**
  * Submit transaction using Xaman (formerly Xumm)
+ * FIXED 2025-11-28: Now waits for actual transaction hash instead of returning payload UUID
  */
 async function submitWithXaman(transaction: any, _network: string, customDescription?: string): Promise<TransactionResult> {
   try {
-    // Xaman uses a different flow - create a payload and wait for signing
     const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
 
     // Build request body with optional custom description
@@ -115,14 +115,13 @@ async function submitWithXaman(transaction: any, _network: string, customDescrip
       }
     }
 
-    // Add custom_meta if description is provided
     if (customDescription) {
       requestBody.custom_meta = {
         instruction: customDescription
       }
     }
 
-    // Send transaction to backend to create Xaman payload
+    // Step 1: Create Xaman payload
     const response = await fetch(`${backendUrl}/api/xaman/create-payload`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -130,25 +129,93 @@ async function submitWithXaman(transaction: any, _network: string, customDescrip
     })
 
     if (!response.ok) {
-      return { success: false, error: 'Failed to create Xaman payload' }
+      return { success: false, error: 'FAILED TO CREATE XAMAN PAYLOAD' }
     }
 
     const data = await response.json()
-    
-    // Open Xaman app/website for signing
-    if (data.refs?.qr_png) {
-      // Show QR code or redirect to Xaman
+    const payloadUuid = data.uuid
+
+    console.log('[XAMAN] Created payload:', payloadUuid)
+
+    // Step 2: Open Xaman app/website for signing
+    if (data.refs?.qr_png || data.next?.always) {
       window.open(data.next.always, '_blank')
     }
 
-    // Poll for transaction result
-    // In production, you'd use websockets or webhooks
-    return {
-      success: true,
-      hash: data.uuid // Xaman payload UUID
+    // Step 3: Poll for transaction result (check every 2 seconds for up to 5 minutes)
+    console.log('[XAMAN] Waiting for user to sign transaction...')
+    const maxAttempts = 150 // 5 minutes (150 * 2 seconds)
+    let attempts = 0
+
+    while (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 2000)) // Wait 2 seconds
+      attempts++
+
+      try {
+        // Query payload status
+        const statusResponse = await fetch(
+          `${backendUrl}/api/xaman/payload/${payloadUuid}`,
+          { method: 'GET', headers: { 'Content-Type': 'application/json' } }
+        )
+
+        if (!statusResponse.ok) {
+          console.warn('[XAMAN] Failed to fetch payload status, retrying...')
+          continue
+        }
+
+        const statusData = await statusResponse.json()
+        const { signed, resolved, expired, txid } = statusData.data
+
+        console.log('[XAMAN] Payload status:', { signed, resolved, expired, txid, attempt: attempts })
+
+        // Check if payload expired
+        if (expired) {
+          return {
+            success: false,
+            error: 'XAMAN PAYLOAD EXPIRED. PLEASE TRY AGAIN.'
+          }
+        }
+
+        // Check if user rejected
+        if (resolved && !signed) {
+          return {
+            success: false,
+            error: 'TRANSACTION REJECTED BY USER'
+          }
+        }
+
+        // Check if transaction was signed and submitted successfully
+        if (signed && resolved && txid) {
+          console.log('[XAMAN] ✅ Transaction signed successfully. TX Hash:', txid)
+
+          // ✅ FIXED: Return actual transaction hash, not UUID
+          return {
+            success: true,
+            hash: txid // Real XRPL transaction hash
+          }
+        }
+
+        // Not resolved yet, continue polling
+        console.log(`[XAMAN] Waiting... (${attempts}/${maxAttempts})`)
+
+      } catch (pollError: any) {
+        console.error('[XAMAN] Error polling payload status:', pollError)
+        // Continue polling on error
+      }
     }
+
+    // Timeout after 5 minutes
+    return {
+      success: false,
+      error: 'TIMEOUT: USER DID NOT SIGN TRANSACTION WITHIN 5 MINUTES'
+    }
+
   } catch (error: any) {
-    return { success: false, error: error.message || 'Xaman transaction failed' }
+    console.error('[XAMAN] Transaction submission error:', error)
+    return {
+      success: false,
+      error: error.message || 'XAMAN TRANSACTION FAILED'
+    }
   }
 }
 

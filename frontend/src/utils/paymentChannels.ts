@@ -91,39 +91,120 @@ export const getChannelIdFromTransaction = async (
 
   try {
     await client.connect()
+    console.log('[CHANNEL_ID] Connected to Xahau, querying tx hash:', txHash)
 
-    // Query the validated transaction by hash
-    // Note: Xahau does not support 'binary: false' parameter, so we omit it
-    const txResponse = await client.request({
-      command: 'tx',
-      transaction: txHash
-    })
+    // ATTEMPT 1: Query transaction metadata via 'tx' command
+    try {
+      const txResponse = await client.request({
+        command: 'tx',
+        transaction: txHash
+      })
 
-    await client.disconnect()
+      console.log('[CHANNEL_ID] tx command response received')
 
-    // Look for the CreatedNode with LedgerEntryType: "PayChannel" in the metadata
-    if (txResponse.result.meta && typeof txResponse.result.meta === 'object') {
-      const meta = txResponse.result.meta as any
+      // Look for the CreatedNode with LedgerEntryType: "PayChannel" in the metadata
+      if (txResponse.result.meta && typeof txResponse.result.meta === 'object') {
+        const meta = txResponse.result.meta as any
 
-      if (meta.AffectedNodes) {
-        for (const node of meta.AffectedNodes) {
-          if (node.CreatedNode?.LedgerEntryType === 'PayChannel') {
-            // The LedgerIndex is the actual Channel ID
-            const channelId = node.CreatedNode.LedgerIndex
-            console.log('✅ Found actual channel ID from ledger:', channelId)
-            return channelId
+        if (meta.AffectedNodes) {
+          for (const node of meta.AffectedNodes) {
+            if (node.CreatedNode?.LedgerEntryType === 'PayChannel') {
+              // The LedgerIndex is the actual Channel ID
+              const channelId = node.CreatedNode.LedgerIndex
+              console.log('[CHANNEL_ID] ✅ Found channel ID from tx metadata:', channelId)
+              await client.disconnect()
+              return channelId
+            }
           }
         }
       }
+
+      console.warn('[CHANNEL_ID] ⚠️ tx command succeeded but no PayChannel in metadata')
+    } catch (txError: any) {
+      console.warn('[CHANNEL_ID] tx command failed:', txError.message || txError)
+      // Don't throw - continue to fallback method
     }
 
-    // Fallback: Generate temporary ID if we can't find it (shouldn't happen)
-    console.warn('⚠️ Could not find channel ID in transaction metadata, using fallback')
+    // ATTEMPT 2: Query account_channels as fallback (works on Xahau even when tx command fails)
+    console.log('[CHANNEL_ID] Attempting fallback: account_channels query for account:', account)
+
+    try {
+      const channelsResponse = await client.request({
+        command: 'account_channels',
+        account: account,
+        ledger_index: 'validated'
+      })
+
+      console.log('[CHANNEL_ID] account_channels response:', {
+        channelCount: channelsResponse.result?.channels?.length || 0
+      })
+
+      if (channelsResponse.result?.channels && channelsResponse.result.channels.length > 0) {
+        const channels = channelsResponse.result.channels
+
+        // Strategy: Find the channel with the highest amount (most recently funded)
+        // This is more reliable than assuming "last in array" is most recent
+        const sortedChannels = [...channels].sort((a, b) =>
+          parseInt(b.amount || '0') - parseInt(a.amount || '0')
+        )
+
+        const mostRecentChannel = sortedChannels[0]
+
+        if (mostRecentChannel.channel_id) {
+          console.log('[CHANNEL_ID] ✅ Found channel ID via account_channels:', mostRecentChannel.channel_id)
+          console.log('[CHANNEL_ID] Channel details:', {
+            destination: mostRecentChannel.destination_account,
+            amount: mostRecentChannel.amount,
+            balance: mostRecentChannel.balance
+          })
+          await client.disconnect()
+          return mostRecentChannel.channel_id
+        }
+      } else {
+        console.warn('[CHANNEL_ID] ⚠️ account_channels returned no channels')
+      }
+    } catch (channelsError: any) {
+      console.error('[CHANNEL_ID] account_channels query failed:', channelsError.message || channelsError)
+    }
+
+    // ATTEMPT 3: Wait a moment and retry account_channels (ledger might be processing)
+    console.log('[CHANNEL_ID] Waiting 2 seconds for ledger to process, then retrying...')
+    await new Promise(resolve => setTimeout(resolve, 2000))
+
+    try {
+      const retryResponse = await client.request({
+        command: 'account_channels',
+        account: account,
+        ledger_index: 'validated'
+      })
+
+      if (retryResponse.result?.channels && retryResponse.result.channels.length > 0) {
+        const channels = retryResponse.result.channels
+        const sortedChannels = [...channels].sort((a, b) =>
+          parseInt(b.amount || '0') - parseInt(a.amount || '0')
+        )
+
+        const mostRecentChannel = sortedChannels[0]
+
+        if (mostRecentChannel.channel_id) {
+          console.log('[CHANNEL_ID] ✅ Found channel ID on retry:', mostRecentChannel.channel_id)
+          await client.disconnect()
+          return mostRecentChannel.channel_id
+        }
+      }
+    } catch (retryError: any) {
+      console.error('[CHANNEL_ID] Retry failed:', retryError.message || retryError)
+    }
+
+    // All attempts failed - disconnect and fallback to TEMP ID
+    await client.disconnect()
+    console.error('[CHANNEL_ID] ❌ ALL METHODS FAILED - Falling back to temporary ID')
+    console.error('[CHANNEL_ID] This should not happen in normal operation. Check Xahau node connectivity.')
     return generateFallbackChannelId(txHash, account)
-  } catch (error) {
-    console.error('Error querying channel ID from ledger:', error)
+
+  } catch (error: any) {
+    console.error('[CHANNEL_ID] ❌ Critical error in getChannelIdFromTransaction:', error)
     await client.disconnect().catch(() => {})
-    // Fallback to generated ID
     return generateFallbackChannelId(txHash, account)
   }
 }
@@ -165,6 +246,59 @@ export const isValidXrplAddress = (address: string): boolean => {
 }
 
 /**
+ * Check if an account exists on the XAH Ledger
+ * An account must be activated (funded with minimum reserve) before it can receive payments
+ * 
+ * @param address - XRPL wallet address to check
+ * @param network - Network ('testnet' or 'mainnet')
+ * @returns true if account exists and is active, false otherwise
+ */
+export const checkAccountExists = async (
+  address: string,
+  network: string
+): Promise<boolean> => {
+  const client = new Client(getNetworkUrl(network))
+
+  try {
+    await client.connect()
+
+    // Query the ledger for account information
+    const response = await client.request({
+      command: 'account_info',
+      account: address,
+      ledger_index: 'validated' // Use validated ledger
+    })
+
+    await client.disconnect()
+
+    // If we get a response with account_data, the account exists
+    return !!(response.result?.account_data)
+  } catch (error: any) {
+    await client.disconnect().catch(() => {})
+
+    // Check if error is specifically "account not found"
+    if (error.data?.error === 'actNotFound' || error.message?.includes('Account not found')) {
+      console.log(`Account ${address} does not exist on ledger`)
+      return false
+    }
+
+    // Handle Xahau API compatibility issues
+    if (error.message?.includes('Not implemented')) {
+      console.warn('⚠️ Xahau API limitation: account_info validation unavailable')
+      console.warn('⚠️ Skipping account existence check - assuming account exists')
+      console.warn('⚠️ If tecNO_DST error occurs, worker wallet needs activation')
+      // Return true to allow transaction attempt (will fail at ledger level if account doesn't exist)
+      return true
+    }
+
+    // For other errors, log and return true (fail-open for now to not block channel creation)
+    console.error('Error checking account existence:', error)
+    console.warn('⚠️ Proceeding with channel creation despite validation error')
+    return true
+  }
+}
+
+/**
  * Get payment channel details from the ledger
  * This would query the actual on-chain payment channel
  */
@@ -199,7 +333,7 @@ export const getPaymentChannelDetails = async (
 export interface CloseChannelParams {
   channelId: string
   balance: string // Amount owed to worker (in drops)
-  escrowReturn: string // Amount to return to NGO (in drops)
+  escrowReturn?: string // DEPRECATED: Escrow returns automatically, no longer used
   account: string // NGO wallet address (channel owner)
   publicKey?: string
 }
@@ -233,14 +367,20 @@ export const closePaymentChannel = async (
 
   try {
     // Build PaymentChannelClaim transaction with close flag
+    // IMPORTANT: Escrow automatically returns to Account when channel closes
+    // DO NOT use Amount field - that's for sending additional XAH from Account's balance
     const transaction: PaymentChannelClaim = {
       TransactionType: 'PaymentChannelClaim',
       Account: params.account, // NGO wallet address (channel owner)
       Channel: params.channelId,
-      Balance: params.balance, // Final balance for worker
-      Amount: params.escrowReturn, // Return to sender (NGO)
+      Balance: params.balance, // Final balance for worker (in drops)
       Flags: 0x00010000, // tfClose flag (closes channel)
     }
+
+    // NOTE: We do NOT include the Amount field
+    // The Amount field is for sending ADDITIONAL XAH from the Account's regular balance
+    // Escrow return happens automatically when the channel closes
+    // Including Amount with escrowReturn value causes temBAD_AMOUNT error
 
     // Add public key if available
     if (params.publicKey) {

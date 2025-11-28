@@ -212,9 +212,32 @@ Payment channels use native XRPL `PaymentChannelCreate` transactions.
 **Creation Process**:
 1. NGO adds workers via "Add Worker" button (optional: scan Xaman QR code)
 2. NGO creates channel via `CreatePaymentChannelModal` (selects worker from dropdown)
-3. Transaction signed by connected wallet (Xaman/Crossmark/GemWallet)
-4. Channel details stored in database with job name, worker, hourly rate
-5. Dashboard displays active channels and escrow balances
+3. **Pre-flight validation**: System checks if worker's wallet is activated on ledger
+4. Transaction signed by connected wallet (Xaman/Crossmark/GemWallet)
+5. **Channel ID retrieval**: System queries Xahau ledger for real 64-char hex channel ID
+6. Channel details stored in database with real channel ID (not TEMP ID)
+7. Dashboard displays active channels and escrow balances
+
+**Account Activation Requirement** (Added 2025-11-28):
+- **Critical**: Worker wallet MUST be activated on XAH Ledger before payment channel creation
+- **Error**: `tecNO_DST` occurs if destination wallet doesn't exist on ledger
+- **Minimum Reserve**: Worker needs 10-20 XAH to activate account
+- **Pre-flight Check**: `checkAccountExists()` validates worker wallet before transaction
+- **User Guidance**: Clear error message with activation steps if wallet not active
+- **Implementation**: `frontend/src/utils/paymentChannels.ts:203-245` (checkAccountExists)
+- **Integration**: `frontend/src/components/CreatePaymentChannelModal.tsx:274-296` (validation)
+
+**Channel ID Retrieval** (Enhanced 2025-11-28):
+- **Real IDs Required**: Channels MUST use real 64-character hexadecimal ledger IDs for cancellation
+- **3-Tier Fallback Strategy** (prevents TEMP IDs):
+  1. **Primary**: Query `tx` command for transaction metadata → extract channel ID from CreatedNode
+  2. **Fallback 1**: Query `account_channels` → find most recently funded channel by amount
+  3. **Fallback 2**: Wait 2 seconds for ledger processing → retry `account_channels`
+- **Xahau Compatibility**: Handles "Not implemented" errors from Xahau's `tx` command gracefully
+- **Logging**: Detailed `[CHANNEL_ID]` prefixed logs for troubleshooting
+- **TEMP ID Prevention**: Only falls back to TEMP-* format if all 3 methods fail (rare)
+- **Implementation**: `frontend/src/utils/paymentChannels.ts:85-210` (getChannelIdFromTransaction)
+- **Fix Script**: `backend/scripts/fix-temp-channel-ids.js` (updates existing TEMP IDs with real ledger IDs)
 
 **Cancellation Process**:
 1. NGO clicks "Cancel Channel" button on active channel
@@ -222,9 +245,37 @@ Payment channels use native XRPL `PaymentChannelCreate` transactions.
 3. NGO confirms cancellation
 4. Backend API returns XRPL transaction details (`POST /close`)
 5. Frontend executes `PaymentChannelClaim` transaction with wallet
-6. Worker receives accumulated balance, unused escrow returns to NGO
+6. Worker receives accumulated balance, unused escrow returns to NGO **automatically**
 7. Frontend confirms closure in database (`POST /close/confirm`)
 8. Channel status updated to 'closed' with transaction hash stored
+
+**Critical Fix #1 (2025-11-28)** - temBAD_AMOUNT Error:
+- **Problem**: Original code incorrectly used `Amount` field to return escrow, causing `temBAD_AMOUNT` errors
+- **XRPL Specification**:
+  - `Balance` = Total amount to send to destination (worker) from channel escrow
+  - `Amount` = Additional XAH to send from Account's **regular balance**, NOT from escrow
+  - Escrow automatically returns to Account when channel closes with tfClose flag
+- **Fix**: Removed `Amount` field from `PaymentChannelClaim` transaction entirely
+- **Implementation**: `frontend/src/utils/paymentChannels.ts:368-388`, `backend/routes/paymentChannels.js:368-377`
+
+**Critical Fix #2 (2025-11-28)** - Xaman UUID as Transaction Hash:
+- **Problem**: Xaman wallet integration returned payload UUID instead of waiting for actual transaction hash
+  - Failed transactions incorrectly marked as successful in database
+  - Database stored UUIDs like `7e0d0e48-4dad-450d-98cf-f687d7b58004` instead of real 64-character hex transaction hashes
+  - Channel appeared closed in frontend but still existed on ledger with locked funds (240 XAH)
+- **Root Cause**: `submitWithXaman()` returned `{ success: true, hash: data.uuid }` immediately after creating payload
+  - Never waited for user to sign transaction
+  - Never checked if XRPL transaction succeeded or failed
+  - Comment acknowledged issue: "Poll for transaction result - In production, you'd use websockets or webhooks"
+- **Fix**: Implemented polling loop that waits for actual transaction hash
+  - Polls `/api/xaman/payload/:uuid` endpoint every 2 seconds (max 5 minutes)
+  - Checks `signed`, `resolved`, `expired` flags from payload status
+  - Returns real transaction hash (`txid`) from payload response, NOT UUID
+  - Proper error handling for timeout, expiration, user rejection
+- **Implementation**: `frontend/src/utils/walletTransactions.ts:103-220`
+- **User Experience**: Transaction now shows "WAITING FOR XAMAN SIGNATURE..." while polling
+- **Documentation**: See `backend/claudedocs/XAMAN_TRANSACTION_FIX.md` for comprehensive fix details
+- **Recovery**: Use `backend/scripts/recover-stuck-channel.js` for channels stuck with UUID closure hashes
 
 See `PAYMENT_CHANNEL_TESTING.md` for detailed testing guide.
 

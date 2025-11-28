@@ -78,9 +78,8 @@ router.post('/create', async (req, res) => {
           full_name,
           employee_wallet_address,
           hourly_rate,
-          employment_status,
-          role
-        ) VALUES ($1, $2, $3, $4, 'active', 'worker')
+          employment_status
+        ) VALUES ($1, $2, $3, $4, 'active')
         RETURNING *`,
         [organization.id, workerName, workerWalletAddress, hourlyRate]
       )
@@ -339,7 +338,6 @@ router.post('/:channelId/close', async (req, res) => {
 
     // Convert XAH to drops (1 XAH = 1,000,000 drops)
     const balanceDrops = Math.floor(accumulatedBalance * 1000000).toString()
-    const amountDrops = Math.floor(escrowReturn * 1000000).toString()
 
     console.log('[CHANNEL_CLOSE_INIT]', {
       channelId,
@@ -368,12 +366,14 @@ router.post('/:channelId/close', async (req, res) => {
           hourlyRate: parseFloat(channel.hourly_rate) || 0
         },
         // XRPL transaction details for PaymentChannelClaim
+        // NOTE: Amount field is NOT included - escrow returns automatically on close
+        // The Amount field was causing temBAD_AMOUNT errors because it's meant for
+        // sending additional XAH from Account's balance, not for returning escrow
         xrplTransaction: {
           TransactionType: 'PaymentChannelClaim',
           Channel: channel.channel_id,
           Balance: balanceDrops, // Amount to pay worker (in drops)
-          Amount: amountDrops,   // Escrow return to NGO (in drops)
-          Flags: 0x00010000      // tfClose flag (closes channel)
+          Flags: 0x00010000 // tfClose flag (closes channel)
         }
       }
     })

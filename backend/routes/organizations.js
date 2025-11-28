@@ -119,12 +119,12 @@ router.get('/stats/:walletAddress', async (req, res) => {
       })
     }
 
-    // Get organization by user wallet address
+    // Get organization by escrow wallet address
+    // CRITICAL: organizations.escrow_wallet_address = user's wallet_address (1:1 mapping)
     const orgResult = await query(
-      `SELECT o.* 
-       FROM organizations o
-       JOIN users u ON o.user_id = u.id
-       WHERE u.wallet_address = $1`,
+      `SELECT *
+       FROM organizations
+       WHERE escrow_wallet_address = $1`,
       [walletAddress]
     )
 
@@ -221,12 +221,12 @@ router.get('/workers/:walletAddress', async (req, res) => {
   try {
     const { walletAddress } = req.params
 
-    // Get organization by user wallet address
+    // Get organization by escrow wallet address
+    // CRITICAL: organizations.escrow_wallet_address = user's wallet_address (1:1 mapping)
     const orgResult = await query(
-      `SELECT o.* 
-       FROM organizations o
-       JOIN users u ON o.user_id = u.id
-       WHERE u.wallet_address = $1`,
+      `SELECT *
+       FROM organizations
+       WHERE escrow_wallet_address = $1`,
       [walletAddress]
     )
 
@@ -291,12 +291,12 @@ router.get('/activity/:walletAddress', async (req, res) => {
   try {
     const { walletAddress } = req.params
 
-    // Get organization
+    // Get organization by escrow wallet address
+    // CRITICAL: organizations.escrow_wallet_address = user's wallet_address (1:1 mapping)
     const orgResult = await query(
-      `SELECT o.* 
-       FROM organizations o
-       JOIN users u ON o.user_id = u.id
-       WHERE u.wallet_address = $1`,
+      `SELECT *
+       FROM organizations
+       WHERE escrow_wallet_address = $1`,
       [walletAddress]
     )
 
@@ -396,12 +396,12 @@ router.get('/payment-channels/:walletAddress', async (req, res) => {
   try {
     const { walletAddress } = req.params
 
-    // Get organization
+    // Get organization by escrow wallet address
+    // CRITICAL: organizations.escrow_wallet_address = user's wallet_address (1:1 mapping)
     const orgResult = await query(
-      `SELECT o.* 
-       FROM organizations o
-       JOIN users u ON o.user_id = u.id
-       WHERE u.wallet_address = $1`,
+      `SELECT *
+       FROM organizations
+       WHERE escrow_wallet_address = $1`,
       [walletAddress]
     )
 
@@ -666,6 +666,59 @@ router.post('/:organizationId/notifications/mark-all-read', async (req, res) => 
       success: false,
       error: 'FAILED TO MARK NOTIFICATIONS AS READ',
       details: error.message
+    })
+  }
+})
+
+/**
+ * GET /api/organizations/:walletAddress
+ * Get organization by wallet address (MUST BE LAST - catch-all route)
+ * Returns basic organization info (id, name, wallet, etc.)
+ */
+router.get('/:walletAddress', async (req, res) => {
+  try {
+    const { walletAddress } = req.params
+
+    if (!walletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'WALLET ADDRESS REQUIRED'
+        }
+      })
+    }
+
+    // Get organization by escrow wallet address
+    // CRITICAL: organizations.escrow_wallet_address = user's wallet_address (1:1 mapping)
+    const result = await query(
+      `SELECT *
+       FROM organizations
+       WHERE escrow_wallet_address = $1`,
+      [walletAddress]
+    )
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          message: 'ORGANIZATION NOT FOUND FOR THIS WALLET ADDRESS'
+        }
+      })
+    }
+
+    res.json({
+      success: true,
+      data: {
+        organization: result.rows[0]
+      }
+    })
+  } catch (error) {
+    console.error('[ORG_GET_ERROR]', error)
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'FAILED TO FETCH ORGANIZATION'
+      }
     })
   }
 })

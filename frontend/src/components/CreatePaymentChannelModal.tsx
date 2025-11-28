@@ -4,7 +4,8 @@ import {
   preparePaymentChannelTransaction,
   xahToDrops,
   toRippleTime,
-  getChannelIdFromTransaction
+  getChannelIdFromTransaction,
+  checkAccountExists
 } from '../utils/paymentChannels'
 import { submitTransactionWithWallet } from '../utils/walletTransactions'
 import type { WorkerForChannel } from '../types/api'
@@ -269,6 +270,30 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
         settleDelay: settleDelaySeconds,
         balanceUpdateFrequency: config.paymentFrequency
       })
+
+      // Step 0: PRE-FLIGHT VALIDATION - Check if worker account exists on ledger
+      console.log('Checking if worker account exists on ledger...')
+      const workerAccountExists = await checkAccountExists(config.workerAddress, network)
+
+      if (!workerAccountExists) {
+        const networkName = network === 'mainnet' ? 'MAINNET' : 'TESTNET'
+        const faucetInfo = network === 'testnet'
+          ? '\n\nFOR TESTNET: USE XAHAU TESTNET FAUCET AT https://xahau-test.net/portal/faucet'
+          : ''
+
+        throw new Error(
+          `WORKER WALLET NOT ACTIVATED ON ${networkName}.\n\n` +
+          `THE WORKER'S WALLET ADDRESS (${config.workerAddress}) DOES NOT EXIST ON THE XAH LEDGER YET.\n\n` +
+          `BEFORE CREATING A PAYMENT CHANNEL, THE WORKER MUST:\n` +
+          `1. INSTALL XAMAN WALLET (OR CROSSMARK/GEMWALLET)\n` +
+          `2. CREATE OR IMPORT THEIR WALLET\n` +
+          `3. RECEIVE AT LEAST 10-20 XAH TO ACTIVATE THE ACCOUNT\n` +
+          `4. CONFIRM WALLET SHOWS A BALANCE (NOT "ACCOUNT NOT FOUND")${faucetInfo}\n\n` +
+          `ONCE THE WORKER'S WALLET IS ACTIVATED, RETRY CREATING THE PAYMENT CHANNEL.`
+        )
+      }
+
+      console.log('✅ Worker account exists on ledger - proceeding with channel creation')
 
       // Step 1: Prepare the PayChannelCreate transaction
       const paymentChannelTx = preparePaymentChannelTransaction({
