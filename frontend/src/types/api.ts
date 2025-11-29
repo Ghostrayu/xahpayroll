@@ -342,6 +342,7 @@ export type NotificationType =
   | 'worker_deleted'      // Worker self-deleted their profile
   | 'worker_removed'      // Worker removed by NGO admin
   | 'deletion_error'      // Deletion attempt failed
+  | 'channel_closure_failed'  // Payment channel closure validation failed
 
 /**
  * NGO Notification

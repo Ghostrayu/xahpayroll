@@ -277,6 +277,62 @@ Payment channels use native XRPL `PaymentChannelCreate` transactions.
 - **Documentation**: See `backend/claudedocs/XAMAN_TRANSACTION_FIX.md` for comprehensive fix details
 - **Recovery**: Use `backend/scripts/recover-stuck-channel.js` for channels stuck with UUID closure hashes
 
+**Critical Fix #3 (2025-11-28)** - temBAD_AMOUNT Error with Zero Balance:
+- **Problem**: PaymentChannelClaim failing with `temBAD_AMOUNT` when closing channels with zero accumulated balance (no hours worked)
+  - Workers who log no hours → accumulated balance = 0
+  - Transaction included `Balance: "0"` field with `tfClose` flag
+  - XRPL validation error: Balance must be **greater than** current channel balance (which is already 0)
+- **XRPL Specification Discovery**:
+  - Per official XRPL docs: "Balance must be provided **EXCEPT when closing the channel**"
+  - When using `tfClose` flag, the `Balance` field is **OPTIONAL** and can be omitted
+  - Including `Balance: "0"` when closing violates the "greater than current balance" constraint
+- **Root Cause**: `frontend/src/utils/paymentChannels.ts:376` always included Balance field, even when zero
+  - Backend: `balanceDrops = Math.floor(0 * 1000000) = "0"`
+  - Frontend: Transaction built with `Balance: "0"` + `tfClose` flag
+  - XRPL: Rejects because 0 is not greater than current balance (0)
+- **Fix**: Conditional Balance field inclusion based on accumulated balance
+  - If `params.balance !== '0'`: Include Balance field (worker gets paid)
+  - If `params.balance === '0'`: **OMIT Balance field entirely** (escrow only returns to NGO)
+  - Added logging: `balanceFieldIncluded: params.balance !== '0'` for visibility
+- **Implementation**: `frontend/src/utils/paymentChannels.ts:372-405`
+- **Documentation**: See `backend/claudedocs/TEMBAD_AMOUNT_FIX_2025_11_28.md` for complete technical analysis
+- **Testing**: Verify channel closure works with both zero and non-zero accumulated balances
+
+**Critical Fix #4 (2025-11-28)** - Database-Ledger Consistency Validation:
+- **Problem**: Database-ledger mismatches caused by failed transactions being marked as successful
+  - Channel marked 'closed' in database but still active on ledger with locked funds
+  - Transaction received hash but failed validation on ledger (e.g., temBAD_AMOUNT with old code)
+  - Frontend/backend assumed success based on hash existence alone
+  - No verification that transaction validated on ledger or channel removed
+- **Solution**: Post-transaction validation system with state management
+  - **3-State Model**: `active` → `closing` (pending validation) → `closed` (verified)
+  - **Validation Function**: `verifyChannelClosure()` checks transaction + ledger state
+  - **Backend Verification**: Confirm endpoint validates before marking 'closed'
+  - **Automatic Rollback**: Failed validation returns channel to 'active' state
+- **Implementation**:
+  - **Database Migration**: `backend/database/migrations/004_add_closing_state.sql`
+    - Added 'closing' state to payment_channels status enum
+    - Added `validation_attempts` and `last_validation_at` tracking columns
+  - **Frontend Validation**: `frontend/src/utils/paymentChannels.ts:330-509`
+    - `verifyChannelClosure()` function with 2-step verification
+    - Step 1: Verify transaction validated on ledger (`validated: true`, `result: tesSUCCESS`)
+    - Step 2: Verify channel removed from ledger (query fails with 'entryNotFound')
+  - **Backend API**: `backend/routes/paymentChannels.js:347-669`
+    - Close endpoint: Sets status='closing' before returning transaction details
+    - Confirm endpoint: Validates with ledger before setting status='closed'
+    - Rollback: Returns to status='active' if validation fails
+  - **Frontend UI**:
+    - NgoDashboard.tsx:458-461: Disable button + show "Closing..." for 'closing' status
+    - WorkerDashboard.tsx:482-485: Same UI treatment for worker view
+- **Flow**:
+  1. User clicks "Cancel Channel" → Backend sets status='closing'
+  2. XRPL transaction submitted → User signs with wallet
+  3. Transaction hash received → Frontend calls confirm endpoint
+  4. Backend validates with ledger → Checks tx validated + channel removed
+  5. Success → status='closed' | Failure → status='active' (automatic rollback)
+- **Prevention**: Eliminates scenarios where database shows 'closed' but ledger still has active channel
+- **User Experience**: "Closing..." state provides visibility during validation period
+
 See `PAYMENT_CHANNEL_TESTING.md` for detailed testing guide.
 
 ## Important Files

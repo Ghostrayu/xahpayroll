@@ -479,10 +479,10 @@ const WorkerDashboard: React.FC = () => {
                     <div className="flex justify-end">
                       <button
                         onClick={() => handleCloseClick(channel)}
-                        disabled={cancelingChannel === channel.channelId}
+                        disabled={cancelingChannel === channel.channelId || channel.status === 'closing'}
                         className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white font-bold rounded text-xs uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {cancelingChannel === channel.channelId ? 'CLOSING...' : 'CLOSE CHANNEL'}
+                        {cancelingChannel === channel.channelId || channel.status === 'closing' ? 'CLOSING...' : 'CLOSE CHANNEL'}
                       </button>
                     </div>
                   </div>

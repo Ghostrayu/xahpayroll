@@ -455,10 +455,10 @@ const NgoDashboard: React.FC = () => {
                           </button>
                           <button
                             onClick={() => handleCancelClick(channel)}
-                            disabled={cancelingChannel === channel.channelId}
+                            disabled={cancelingChannel === channel.channelId || channel.status === 'closing'}
                             className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white font-bold rounded text-[10px] uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            {cancelingChannel === channel.channelId ? 'Canceling...' : 'Cancel Channel'}
+                            {cancelingChannel === channel.channelId || channel.status === 'closing' ? 'Closing...' : 'Cancel Channel'}
                           </button>
                         </div>
                       </div>

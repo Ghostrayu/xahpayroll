@@ -328,6 +328,185 @@ export const getPaymentChannelDetails = async (
 }
 
 /**
+ * Verify channel closure on XRPL ledger after PaymentChannelClaim transaction
+ *
+ * This function prevents database-ledger mismatches by verifying that:
+ * 1. The transaction was validated on the ledger (not just submitted)
+ * 2. The channel no longer exists on the ledger (actually closed)
+ *
+ * @param channelId - XRPL payment channel ID (64-char hex)
+ * @param txHash - Transaction hash from PaymentChannelClaim
+ * @param network - Network ('testnet' or 'mainnet')
+ * @returns Validation result with success status and error details
+ */
+export interface ChannelClosureValidation {
+  success: boolean
+  validated: boolean
+  channelRemoved: boolean
+  error?: string
+  details?: {
+    transactionResult?: string
+    channelStillExists?: boolean
+    validationAttempt?: number
+  }
+}
+
+export const verifyChannelClosure = async (
+  channelId: string,
+  txHash: string,
+  network: string
+): Promise<ChannelClosureValidation> => {
+  const client = new Client(getNetworkUrl(network))
+
+  try {
+    await client.connect()
+    console.log('[VERIFY_CLOSURE] Connected to Xahau, verifying closure', {
+      channelId,
+      txHash,
+      network
+    })
+
+    // STEP 1: Verify transaction was validated on ledger
+    let transactionValidated = false
+    let transactionResult = ''
+
+    try {
+      const txResponse = await client.request({
+        command: 'tx',
+        transaction: txHash
+      })
+
+      transactionValidated = txResponse.result.validated === true
+      // Extract TransactionResult from meta (may be string or object)
+      const meta = txResponse.result.meta as any
+      transactionResult = meta?.TransactionResult || 'UNKNOWN'
+
+      console.log('[VERIFY_CLOSURE] Transaction validation check', {
+        validated: transactionValidated,
+        result: transactionResult
+      })
+
+      if (!transactionValidated) {
+        await client.disconnect()
+        return {
+          success: false,
+          validated: false,
+          channelRemoved: false,
+          error: 'TRANSACTION NOT VALIDATED ON LEDGER',
+          details: {
+            transactionResult,
+            validationAttempt: 1
+          }
+        }
+      }
+
+      if (transactionResult !== 'tesSUCCESS') {
+        await client.disconnect()
+        return {
+          success: false,
+          validated: true,
+          channelRemoved: false,
+          error: `TRANSACTION FAILED: ${transactionResult}`,
+          details: {
+            transactionResult,
+            validationAttempt: 1
+          }
+        }
+      }
+    } catch (txError: any) {
+      console.error('[VERIFY_CLOSURE] Failed to verify transaction', txError)
+      await client.disconnect()
+      return {
+        success: false,
+        validated: false,
+        channelRemoved: false,
+        error: `FAILED TO QUERY TRANSACTION: ${txError.message}`,
+        details: {
+          validationAttempt: 1
+        }
+      }
+    }
+
+    // STEP 2: Verify channel no longer exists on ledger
+    try {
+      await client.request({
+        command: 'ledger_entry',
+        payment_channel: channelId
+      })
+
+      // If we get here, channel still exists
+      console.warn('[VERIFY_CLOSURE] ⚠️ Channel still exists on ledger', {
+        channelId,
+        txHash
+      })
+
+      await client.disconnect()
+      return {
+        success: false,
+        validated: true,
+        channelRemoved: false,
+        error: 'CHANNEL STILL EXISTS ON LEDGER AFTER CLOSURE TRANSACTION',
+        details: {
+          transactionResult: 'tesSUCCESS',
+          channelStillExists: true,
+          validationAttempt: 1
+        }
+      }
+    } catch (channelError: any) {
+      // Expected error: channel not found (successfully removed)
+      if (channelError.data?.error === 'entryNotFound' ||
+          channelError.message?.includes('not found')) {
+        console.log('[VERIFY_CLOSURE] ✅ Channel successfully removed from ledger', {
+          channelId,
+          txHash
+        })
+      } else {
+        // Unexpected error querying channel
+        console.error('[VERIFY_CLOSURE] Unexpected error querying channel', channelError)
+        await client.disconnect()
+        return {
+          success: false,
+          validated: true,
+          channelRemoved: false,
+          error: `FAILED TO VERIFY CHANNEL REMOVAL: ${channelError.message}`,
+          details: {
+            transactionResult: 'tesSUCCESS',
+            validationAttempt: 1
+          }
+        }
+      }
+    }
+
+    await client.disconnect()
+
+    // SUCCESS: Transaction validated AND channel removed
+    return {
+      success: true,
+      validated: true,
+      channelRemoved: true,
+      details: {
+        transactionResult: 'tesSUCCESS',
+        channelStillExists: false,
+        validationAttempt: 1
+      }
+    }
+  } catch (error: any) {
+    console.error('[VERIFY_CLOSURE] Critical error during validation', error)
+    await client.disconnect().catch(() => {})
+
+    return {
+      success: false,
+      validated: false,
+      channelRemoved: false,
+      error: `VALIDATION ERROR: ${error.message}`,
+      details: {
+        validationAttempt: 1
+      }
+    }
+  }
+}
+
+/**
  * Parameters for closing a payment channel
  */
 export interface CloseChannelParams {
@@ -373,8 +552,16 @@ export const closePaymentChannel = async (
       TransactionType: 'PaymentChannelClaim',
       Account: params.account, // NGO wallet address (channel owner)
       Channel: params.channelId,
-      Balance: params.balance, // Final balance for worker (in drops)
       Flags: 0x00010000, // tfClose flag (closes channel)
+    }
+
+    // CRITICAL: Balance field handling for channel closure
+    // Per XRPL spec: "Balance must be provided EXCEPT when closing the channel"
+    // - If accumulated balance > 0: Include Balance to pay worker
+    // - If accumulated balance = 0: OMIT Balance field (required for tfClose with no claims)
+    // Including Balance="0" causes temBAD_AMOUNT error when closing channel with no prior claims
+    if (params.balance !== '0') {
+      transaction.Balance = params.balance // Final balance for worker (in drops)
     }
 
     // NOTE: We do NOT include the Amount field
@@ -390,6 +577,7 @@ export const closePaymentChannel = async (
     console.log('[CLOSE_CHANNEL] Submitting PaymentChannelClaim transaction', {
       channelId: params.channelId,
       balance: params.balance,
+      balanceFieldIncluded: params.balance !== '0',
       escrowReturn: params.escrowReturn,
       provider,
       network

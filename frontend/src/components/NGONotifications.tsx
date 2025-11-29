@@ -4,6 +4,7 @@ import type { NGONotification, NotificationType } from '../types/api'
 import WorkerDeletedNotification from './WorkerDeletedNotification'
 import DeletionErrorNotification from './DeletionErrorNotification'
 import WorkerRemovedNotification from './WorkerRemovedNotification'
+import ChannelClosureFailedNotification from './ChannelClosureFailedNotification'
 
 interface NGONotificationsProps {
   organizationId: number
@@ -105,6 +106,8 @@ const NGONotifications: React.FC<NGONotificationsProps> = ({ organizationId }) =
         return <DeletionErrorNotification key={notification.id} {...props} />
       case 'worker_removed':
         return <WorkerRemovedNotification key={notification.id} {...props} />
+      case 'channel_closure_failed':
+        return <ChannelClosureFailedNotification key={notification.id} {...props} />
       default:
         return null
     }
@@ -156,6 +159,7 @@ const NGONotifications: React.FC<NGONotificationsProps> = ({ organizationId }) =
             <option value="worker_deleted">WORKER DELETED</option>
             <option value="deletion_error">DELETION ERROR</option>
             <option value="worker_removed">WORKER REMOVED</option>
+            <option value="channel_closure_failed">CHANNEL CLOSURE FAILED</option>
           </select>
         </div>
 

@@ -1,6 +1,15 @@
 const express = require('express')
 const router = express.Router()
 const { query } = require('../database/db')
+const { Client } = require('xrpl')
+
+/**
+ * Get XRPL network URL based on environment
+ */
+function getNetworkUrl() {
+  const network = process.env.XRPL_NETWORK || 'testnet'
+  return network === 'mainnet' ? 'wss://xahau.network' : 'wss://xahau-test.net'
+}
 
 /**
  * POST /api/payment-channels/create
@@ -289,6 +298,18 @@ router.post('/:channelId/close', async (req, res) => {
       })
     }
 
+    // Check channel is not already in closing state
+    if (channel.status === 'closing') {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'PAYMENT CHANNEL IS CURRENTLY BEING CLOSED. PLEASE WAIT FOR VALIDATION TO COMPLETE.',
+          status: 'closing',
+          lastValidationAt: channel.last_validation_at
+        }
+      })
+    }
+
     // ============================================
     // STEP 4.5: UNCLAIMED BALANCE WARNING
     // ============================================
@@ -333,7 +354,30 @@ router.post('/:channelId/close', async (req, res) => {
     }
 
     // ============================================
-    // STEP 6: RETURN XRPL TRANSACTION DETAILS
+    // STEP 6: SET CHANNEL TO 'CLOSING' STATE
+    // ============================================
+
+    // Update channel status to 'closing' to prevent concurrent closure attempts
+    // This provides optimistic locking - transaction will proceed, but database
+    // won't be marked as 'closed' until validation confirms it
+    await query(
+      `UPDATE payment_channels
+       SET status = 'closing',
+           validation_attempts = validation_attempts + 1,
+           last_validation_at = NOW(),
+           updated_at = NOW()
+       WHERE channel_id = $1`,
+      [channelId]
+    )
+
+    console.log('[CHANNEL_STATUS_CLOSING]', {
+      channelId,
+      status: 'closing',
+      validationAttempt: (channel.validation_attempts || 0) + 1
+    })
+
+    // ============================================
+    // STEP 7: RETURN XRPL TRANSACTION DETAILS
     // ============================================
 
     // Convert XAH to drops (1 XAH = 1,000,000 drops)
@@ -480,33 +524,206 @@ router.post('/:channelId/close/confirm', async (req, res) => {
     }
 
     // ============================================
-    // STEP 3: UPDATE DATABASE
+    // STEP 3: VERIFY CHANNEL CLOSURE ON LEDGER
     // ============================================
 
-    // Update channel status with transaction hash
-    const updateResult = await query(
-      `UPDATE payment_channels
-      SET
-        status = 'closed',
-        closure_tx_hash = $1,
-        closed_at = NOW(),
-        updated_at = NOW()
-      WHERE channel_id = $2
-      RETURNING *`,
-      [txHash, channelId]
-    )
+    const client = new Client(getNetworkUrl())
+    let validationResult = {
+      success: false,
+      validated: false,
+      channelRemoved: false,
+      error: null
+    }
 
-    console.log('[CHANNEL_CLOSE_SUCCESS]', {
-      channelId,
-      txHash,
-      organizationWallet: organizationWalletAddress,
-      timestamp: new Date().toISOString()
-    })
+    try {
+      await client.connect()
+      console.log('[VERIFY_CLOSURE] Connected to Xahau', { channelId, txHash })
 
-    res.json({
-      success: true,
-      data: { channel: updateResult.rows[0] }
-    })
+      // STEP 3.1: Verify transaction was validated
+      let transactionValidated = false
+      let transactionResult = ''
+
+      try {
+        const txResponse = await client.request({
+          command: 'tx',
+          transaction: txHash
+        })
+
+        transactionValidated = txResponse.result.validated === true
+        transactionResult = txResponse.result.meta?.TransactionResult || 'UNKNOWN'
+
+        console.log('[VERIFY_CLOSURE] Transaction check', {
+          validated: transactionValidated,
+          result: transactionResult
+        })
+
+        if (!transactionValidated) {
+          validationResult.error = 'TRANSACTION NOT VALIDATED ON LEDGER'
+          validationResult.validated = false
+        } else if (transactionResult !== 'tesSUCCESS') {
+          validationResult.error = `TRANSACTION FAILED: ${transactionResult}`
+          validationResult.validated = true
+        } else {
+          validationResult.validated = true
+        }
+      } catch (txError) {
+        console.error('[VERIFY_CLOSURE] Failed to verify transaction', txError)
+        validationResult.error = `FAILED TO QUERY TRANSACTION: ${txError.message}`
+      }
+
+      // STEP 3.2: Verify channel no longer exists on ledger
+      if (validationResult.validated && !validationResult.error) {
+        try {
+          await client.request({
+            command: 'ledger_entry',
+            payment_channel: channelId
+          })
+
+          // Channel still exists - validation failed
+          console.warn('[VERIFY_CLOSURE] Channel still exists on ledger', { channelId, txHash })
+          validationResult.error = 'CHANNEL STILL EXISTS ON LEDGER'
+          validationResult.channelRemoved = false
+        } catch (channelError) {
+          // Expected error: channel not found (successfully removed)
+          if (channelError.data?.error === 'entryNotFound' ||
+              channelError.message?.includes('not found')) {
+            console.log('[VERIFY_CLOSURE] ✅ Channel successfully removed from ledger', {
+              channelId,
+              txHash
+            })
+            validationResult.channelRemoved = true
+            validationResult.success = true
+          } else {
+            console.error('[VERIFY_CLOSURE] Unexpected error querying channel', channelError)
+            validationResult.error = `FAILED TO VERIFY CHANNEL REMOVAL: ${channelError.message}`
+          }
+        }
+      }
+
+      await client.disconnect()
+    } catch (error) {
+      console.error('[VERIFY_CLOSURE] Critical error during validation', error)
+      await client.disconnect().catch(() => {})
+      validationResult.error = `VALIDATION ERROR: ${error.message}`
+    }
+
+    // ============================================
+    // STEP 4: UPDATE DATABASE BASED ON VALIDATION
+    // ============================================
+
+    if (validationResult.success) {
+      // SUCCESS: Transaction validated AND channel removed from ledger
+      const updateResult = await query(
+        `UPDATE payment_channels
+        SET
+          status = 'closed',
+          closure_tx_hash = $1,
+          closed_at = NOW(),
+          updated_at = NOW()
+        WHERE channel_id = $2
+        RETURNING *`,
+        [txHash, channelId]
+      )
+
+      console.log('[CHANNEL_CLOSE_SUCCESS]', {
+        channelId,
+        txHash,
+        organizationWallet: organizationWalletAddress,
+        timestamp: new Date().toISOString()
+      })
+
+      res.json({
+        success: true,
+        data: { channel: updateResult.rows[0] }
+      })
+    } else {
+      // FAILURE: Validation failed, rollback to 'active' state
+      await query(
+        `UPDATE payment_channels
+        SET
+          status = 'active',
+          last_validation_at = NOW(),
+          updated_at = NOW()
+        WHERE channel_id = $1`,
+        [channelId]
+      )
+
+      console.error('[CHANNEL_CLOSE_VALIDATION_FAILED]', {
+        channelId,
+        txHash,
+        error: validationResult.error,
+        validated: validationResult.validated,
+        channelRemoved: validationResult.channelRemoved,
+        timestamp: new Date().toISOString()
+      })
+
+      // ============================================
+      // STEP 5: CREATE NOTIFICATION FOR VALIDATION FAILURE
+      // ============================================
+
+      try {
+        // Get worker details for notification
+        const workerResult = await query(
+          `SELECT e.employee_wallet_address, e.name, pc.job_name
+          FROM employees e
+          JOIN payment_channels pc ON e.id = pc.employee_id
+          WHERE pc.channel_id = $1`,
+          [channelId]
+        )
+
+        if (workerResult.rows.length > 0) {
+          const worker = workerResult.rows[0]
+          const notificationMessage = `CHANNEL CLOSURE VALIDATION FAILED FOR ${worker.job_name || 'PAYMENT CHANNEL'}. CHANNEL AUTOMATICALLY ROLLED BACK TO ACTIVE STATE.`
+
+          await query(
+            `INSERT INTO ngo_notifications (
+              organization_id,
+              notification_type,
+              worker_wallet_address,
+              worker_name,
+              message,
+              metadata,
+              is_read,
+              created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+            [
+              channel.organization_id,
+              'channel_closure_failed',
+              worker.employee_wallet_address,
+              worker.name,
+              notificationMessage,
+              JSON.stringify({
+                channelId,
+                txHash,
+                error: validationResult.error,
+                validated: validationResult.validated,
+                channelRemoved: validationResult.channelRemoved,
+                jobName: worker.job_name
+              }),
+              false
+            ]
+          )
+
+          console.log('[NOTIFICATION_CREATED] Validation failure notification sent to organization', {
+            organizationId: channel.organization_id,
+            channelId
+          })
+        }
+      } catch (notifError) {
+        // Don't fail the request if notification creation fails
+        console.error('[NOTIFICATION_ERROR] Failed to create validation failure notification', notifError)
+      }
+
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'CHANNEL CLOSURE VALIDATION FAILED',
+          details: validationResult.error,
+          validated: validationResult.validated,
+          channelRemoved: validationResult.channelRemoved
+        }
+      })
+    }
   } catch (error) {
     console.error('[CHANNEL_CLOSE_CONFIRM_ERROR]', {
       error: error.message,
