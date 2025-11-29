@@ -73,10 +73,11 @@ export interface PaymentChannel {
   escrowBalance: number            // Remaining escrow (funded - accumulated)
   hourlyRate: number               // Payment rate in XAH per hour
   hoursAccumulated: number         // Total hours tracked for this channel
-  status: string                   // Channel status: 'active' | 'closed'
+  status: string                   // Channel status: 'active' | 'closing' | 'closed'
   lastUpdate: string               // Human-readable time since last update
   balanceUpdateFrequency: string   // How often claims are generated: 'Hourly' | 'Every 30 Minutes' | etc.
   hasInvalidChannelId?: boolean    // Flag indicating channel_id is missing or invalid format
+  expirationTime?: string          // Scheduled expiration time (ISO format) for channels in 'closing' status
 }
 
 /**

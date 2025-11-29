@@ -527,17 +527,28 @@ router.post('/:channelId/close/confirm', async (req, res) => {
     // STEP 3: VERIFY CHANNEL CLOSURE ON LEDGER
     // ============================================
 
+    // Determine if this is source (NGO) or destination (Worker) closure
+    const isSourceClosure = isNGO
+    const isDestinationClosure = isWorker
+
     const client = new Client(getNetworkUrl())
     let validationResult = {
       success: false,
       validated: false,
       channelRemoved: false,
+      scheduledClosure: false,
+      expirationTime: null,
       error: null
     }
 
     try {
       await client.connect()
-      console.log('[VERIFY_CLOSURE] Connected to Xahau', { channelId, txHash })
+      console.log('[VERIFY_CLOSURE] Connected to Xahau', {
+        channelId,
+        txHash,
+        isSourceClosure,
+        isDestinationClosure
+      })
 
       // STEP 3.1: Verify transaction was validated
       let transactionValidated = false
@@ -571,31 +582,82 @@ router.post('/:channelId/close/confirm', async (req, res) => {
         validationResult.error = `FAILED TO QUERY TRANSACTION: ${txError.message}`
       }
 
-      // STEP 3.2: Verify channel no longer exists on ledger
+      // STEP 3.2: Verify channel state based on closure type
       if (validationResult.validated && !validationResult.error) {
-        try {
-          await client.request({
-            command: 'ledger_entry',
-            payment_channel: channelId
-          })
+        if (isSourceClosure) {
+          // SOURCE CLOSURE (NGO): Verify scheduled closure or immediate closure (if no XRP)
+          try {
+            const channelResponse = await client.request({
+              command: 'ledger_entry',
+              payment_channel: channelId
+            })
 
-          // Channel still exists - validation failed
-          console.warn('[VERIFY_CLOSURE] Channel still exists on ledger', { channelId, txHash })
-          validationResult.error = 'CHANNEL STILL EXISTS ON LEDGER'
-          validationResult.channelRemoved = false
-        } catch (channelError) {
-          // Expected error: channel not found (successfully removed)
-          if (channelError.data?.error === 'entryNotFound' ||
-              channelError.message?.includes('not found')) {
-            console.log('[VERIFY_CLOSURE] ✅ Channel successfully removed from ledger', {
+            const ledgerChannel = channelResponse.result.node
+
+            // Verify Expiration field was set
+            if (!ledgerChannel.Expiration) {
+              validationResult.error = 'SCHEDULED CLOSURE FAILED: EXPIRATION NOT SET'
+              validationResult.validated = true
+            } else {
+              // SUCCESS: Channel scheduled for closure
+              validationResult.success = true
+              validationResult.validated = true
+              validationResult.channelRemoved = false
+              validationResult.scheduledClosure = true
+              validationResult.expirationTime = ledgerChannel.Expiration
+
+              console.log('[VERIFY_CLOSURE] ✅ Channel scheduled for closure', {
+                channelId,
+                expiration: ledgerChannel.Expiration,
+                settleDelay: ledgerChannel.SettleDelay
+              })
+            }
+          } catch (channelError) {
+            if (channelError.data?.error === 'entryNotFound' ||
+                channelError.message?.includes('not found')) {
+              // Channel closed immediately (no XRP remaining)
+              console.log('[VERIFY_CLOSURE] ✅ Channel closed immediately (no XRP remaining)', {
+                channelId,
+                txHash
+              })
+              validationResult.success = true
+              validationResult.validated = true
+              validationResult.channelRemoved = true
+              validationResult.scheduledClosure = false
+            } else {
+              validationResult.error = `FAILED TO VERIFY SCHEDULED CLOSURE: ${channelError.message}`
+            }
+          }
+        } else {
+          // DESTINATION CLOSURE (WORKER): Verify immediate removal
+          try {
+            await client.request({
+              command: 'ledger_entry',
+              payment_channel: channelId
+            })
+
+            // Channel still exists - validation failed
+            console.warn('[VERIFY_CLOSURE] Channel still exists after destination closure', {
               channelId,
               txHash
             })
-            validationResult.channelRemoved = true
-            validationResult.success = true
-          } else {
-            console.error('[VERIFY_CLOSURE] Unexpected error querying channel', channelError)
-            validationResult.error = `FAILED TO VERIFY CHANNEL REMOVAL: ${channelError.message}`
+            validationResult.error = 'CHANNEL STILL EXISTS AFTER DESTINATION CLOSURE'
+            validationResult.channelRemoved = false
+          } catch (channelError) {
+            // Expected error: channel not found (successfully removed)
+            if (channelError.data?.error === 'entryNotFound' ||
+                channelError.message?.includes('not found')) {
+              console.log('[VERIFY_CLOSURE] ✅ Channel immediately removed by destination', {
+                channelId,
+                txHash
+              })
+              validationResult.channelRemoved = true
+              validationResult.success = true
+              validationResult.scheduledClosure = false
+            } else {
+              console.error('[VERIFY_CLOSURE] Unexpected error querying channel', channelError)
+              validationResult.error = `FAILED TO VERIFY CHANNEL REMOVAL: ${channelError.message}`
+            }
           }
         }
       }
@@ -612,30 +674,65 @@ router.post('/:channelId/close/confirm', async (req, res) => {
     // ============================================
 
     if (validationResult.success) {
-      // SUCCESS: Transaction validated AND channel removed from ledger
-      const updateResult = await query(
-        `UPDATE payment_channels
-        SET
-          status = 'closed',
-          closure_tx_hash = $1,
-          closed_at = NOW(),
-          updated_at = NOW()
-        WHERE channel_id = $2
-        RETURNING *`,
-        [txHash, channelId]
-      )
+      if (validationResult.scheduledClosure) {
+        // SOURCE CLOSURE: Update to 'closing' state with expiration time
+        // Convert XRPL Ripple time (946684800 epoch offset) to Unix timestamp
+        const expirationTimestamp = validationResult.expirationTime + 946684800
 
-      console.log('[CHANNEL_CLOSE_SUCCESS]', {
-        channelId,
-        txHash,
-        organizationWallet: organizationWalletAddress,
-        timestamp: new Date().toISOString()
-      })
+        const updateResult = await query(
+          `UPDATE payment_channels
+          SET
+            status = 'closing',
+            closure_tx_hash = $1,
+            expiration_time = to_timestamp($2),
+            last_validation_at = NOW(),
+            updated_at = NOW()
+          WHERE channel_id = $3
+          RETURNING *`,
+          [txHash, expirationTimestamp, channelId]
+        )
 
-      res.json({
-        success: true,
-        data: { channel: updateResult.rows[0] }
-      })
+        console.log('[CHANNEL_SCHEDULED_CLOSURE]', {
+          channelId,
+          txHash,
+          expirationTime: new Date(expirationTimestamp * 1000).toISOString(),
+          organizationWallet: organizationWalletAddress,
+          timestamp: new Date().toISOString()
+        })
+
+        res.json({
+          success: true,
+          scheduledClosure: true,
+          expirationTime: validationResult.expirationTime,
+          data: { channel: updateResult.rows[0] }
+        })
+      } else {
+        // IMMEDIATE CLOSURE: Update to 'closed' state
+        const updateResult = await query(
+          `UPDATE payment_channels
+          SET
+            status = 'closed',
+            closure_tx_hash = $1,
+            closed_at = NOW(),
+            updated_at = NOW()
+          WHERE channel_id = $2
+          RETURNING *`,
+          [txHash, channelId]
+        )
+
+        console.log('[CHANNEL_CLOSE_SUCCESS]', {
+          channelId,
+          txHash,
+          organizationWallet: organizationWalletAddress,
+          timestamp: new Date().toISOString()
+        })
+
+        res.json({
+          success: true,
+          scheduledClosure: false,
+          data: { channel: updateResult.rows[0] }
+        })
+      }
     } else {
       // FAILURE: Validation failed, rollback to 'active' state
       await query(
@@ -733,6 +830,209 @@ router.post('/:channelId/close/confirm', async (req, res) => {
     res.status(500).json({
       success: false,
       error: { message: 'FAILED TO CONFIRM CHANNEL CLOSURE', details: error.message }
+    })
+  }
+})
+
+/**
+ * POST /api/payment-channels/:channelId/request-worker-closure
+ * NGO requests immediate closure from worker
+ *
+ * This endpoint allows NGOs to notify workers about closure requests,
+ * enabling immediate closure when the NGO wants to close immediately
+ * rather than waiting for the scheduled closure period (SettleDelay).
+ *
+ * Flow:
+ * 1. NGO requests worker closure
+ * 2. Notification created for worker
+ * 3. Worker approves and closes channel from their dashboard
+ * 4. Worker receives accumulated balance, escrow returns to NGO
+ */
+router.post('/:channelId/request-worker-closure', async (req, res) => {
+  try {
+    const { channelId } = req.params
+    const { organizationWalletAddress, message } = req.body
+
+    // ============================================
+    // STEP 1: INPUT VALIDATION
+    // ============================================
+
+    if (!organizationWalletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'ORGANIZATION WALLET ADDRESS IS REQUIRED' }
+      })
+    }
+
+    if (!channelId) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'CHANNEL ID IS REQUIRED' }
+      })
+    }
+
+    // Validate formats
+    if (!isValidXahauAddress(organizationWalletAddress)) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'INVALID WALLET ADDRESS FORMAT' }
+      })
+    }
+
+    if (!isValidChannelId(channelId)) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'INVALID CHANNEL ID FORMAT' }
+      })
+    }
+
+    // ============================================
+    // STEP 2: FETCH CHANNEL AND VERIFY AUTHORIZATION
+    // ============================================
+
+    const channelResult = await query(
+      `SELECT
+        pc.*,
+        o.escrow_wallet_address,
+        o.organization_name,
+        e.employee_wallet_address,
+        e.full_name as employee_name
+      FROM payment_channels pc
+      JOIN organizations o ON pc.organization_id = o.id
+      JOIN employees e ON pc.employee_id = e.id
+      WHERE pc.channel_id = $1`,
+      [channelId]
+    )
+
+    if (channelResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: { message: 'PAYMENT CHANNEL NOT FOUND' }
+      })
+    }
+
+    const channel = channelResult.rows[0]
+
+    // Verify NGO authorization
+    if (channel.escrow_wallet_address !== organizationWalletAddress) {
+      return res.status(403).json({
+        success: false,
+        error: { message: 'UNAUTHORIZED: ONLY THE CHANNEL OWNER CAN REQUEST WORKER CLOSURE' }
+      })
+    }
+
+    // ============================================
+    // STEP 3: VALIDATE CHANNEL STATE
+    // ============================================
+
+    if (channel.status === 'closed') {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'CHANNEL IS ALREADY CLOSED' }
+      })
+    }
+
+    if (channel.status === 'closing') {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'CHANNEL IS ALREADY IN CLOSING STATE' }
+      })
+    }
+
+    // ============================================
+    // STEP 4: CHECK FOR EXISTING CLOSURE REQUEST
+    // ============================================
+
+    const existingRequestResult = await query(
+      `SELECT * FROM worker_notifications
+       WHERE channel_id = $1
+       AND type = 'closure_request'
+       AND closure_approved = FALSE
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [channelId]
+    )
+
+    if (existingRequestResult.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'CLOSURE REQUEST ALREADY PENDING FOR THIS CHANNEL',
+          notificationId: existingRequestResult.rows[0].id
+        }
+      })
+    }
+
+    // ============================================
+    // STEP 5: CREATE WORKER NOTIFICATION
+    // ============================================
+
+    const defaultMessage = message ||
+      `${channel.organization_name} HAS REQUESTED IMMEDIATE CLOSURE OF PAYMENT CHANNEL FOR ${channel.job_name || 'YOUR JOB'}. ` +
+      `PLEASE REVIEW AND APPROVE TO CLOSE THE CHANNEL AND RECEIVE YOUR ACCUMULATED BALANCE OF ${parseFloat(channel.accumulated_balance).toFixed(2)} XAH.`
+
+    const notificationResult = await query(
+      `INSERT INTO worker_notifications (
+        worker_wallet_address,
+        type,
+        channel_id,
+        message,
+        is_read,
+        closure_approved,
+        ngo_wallet_address,
+        job_name,
+        created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+      RETURNING *`,
+      [
+        channel.employee_wallet_address,
+        'closure_request',
+        channelId,
+        defaultMessage,
+        false, // is_read
+        false, // closure_approved
+        organizationWalletAddress,
+        channel.job_name
+      ]
+    )
+
+    const notification = notificationResult.rows[0]
+
+    console.log('[CLOSURE_REQUEST_CREATED]', {
+      channelId,
+      organizationWallet: organizationWalletAddress,
+      workerWallet: channel.employee_wallet_address,
+      notificationId: notification.id,
+      timestamp: new Date().toISOString()
+    })
+
+    res.json({
+      success: true,
+      data: {
+        notification: {
+          id: notification.id,
+          workerWalletAddress: notification.worker_wallet_address,
+          channelId: notification.channel_id,
+          message: notification.message,
+          createdAt: notification.created_at
+        },
+        channel: {
+          channelId: channel.channel_id,
+          jobName: channel.job_name,
+          workerName: channel.employee_name,
+          accumulatedBalance: parseFloat(channel.accumulated_balance)
+        }
+      }
+    })
+  } catch (error) {
+    console.error('[REQUEST_WORKER_CLOSURE_ERROR]', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    })
+    res.status(500).json({
+      success: false,
+      error: { message: 'FAILED TO REQUEST WORKER CLOSURE', details: error.message }
     })
   }
 })

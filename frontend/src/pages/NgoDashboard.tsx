@@ -152,7 +152,7 @@ const NgoDashboard: React.FC = () => {
 
       // Step 3: Confirm closure in database
       console.log('[CANCEL_FLOW] Step 3: Confirming closure in database')
-      await paymentChannelApi.confirmChannelClosure(
+      const confirmResponse = await paymentChannelApi.confirmChannelClosure(
         selectedChannel.channelId,
         txResult.hash,
         walletAddress,
@@ -161,13 +161,46 @@ const NgoDashboard: React.FC = () => {
 
       console.log('[CANCEL_FLOW] Step 3 complete. Channel closed successfully')
 
-      // Success feedback
-      alert(
-        `✅ PAYMENT CHANNEL CANCELED SUCCESSFULLY!\n\n` +
-        `ESCROW RETURNED: ${channel.escrowReturn} XAH\n` +
-        `WORKER PAYMENT: ${channel.accumulatedBalance} XAH\n` +
-        `TRANSACTION: ${txResult.hash}`
-      )
+      // Enhanced success messaging based on closure type
+      const isScheduledClosure = confirmResponse.scheduledClosure || false
+      const escrowReturn = parseFloat(channel.escrowReturn || '0')
+      const workerPayment = parseFloat(channel.accumulatedBalance || '0')
+
+      if (isScheduledClosure) {
+        // Scheduled closure (XRP remaining in channel)
+        const expirationTime = confirmResponse.expirationTime
+        const expirationDate = expirationTime
+          ? new Date((expirationTime + 946684800) * 1000).toLocaleString()
+          : 'PENDING CONFIRMATION'
+
+        alert(
+          `⏳ PAYMENT CHANNEL CLOSURE SCHEDULED!\n\n` +
+          `⚠️ CHANNEL WILL CLOSE AFTER SETTLE DELAY PERIOD\n\n` +
+          `SCHEDULED CLOSURE: ${expirationDate}\n` +
+          `ESCROW TO BE RETURNED: ${escrowReturn.toFixed(2)} XAH\n` +
+          `WORKER PAYMENT: ${workerPayment.toFixed(2)} XAH\n\n` +
+          `TRANSACTION: ${txResult.hash}\n\n` +
+          `NOTE: AFTER THE SETTLE DELAY PERIOD EXPIRES, THE ESCROW WILL BE AUTOMATICALLY RETURNED TO YOUR WALLET.`
+        )
+      } else if (escrowReturn === 0 && workerPayment > 0) {
+        // Immediate closure - worker earned all funds (zero XRP remaining)
+        alert(
+          `✅ PAYMENT CHANNEL CLOSED IMMEDIATELY!\n\n` +
+          `💚 WORKER EARNED ALL FUNDED AMOUNT\n\n` +
+          `ESCROW RETURNED: 0 XAH (ALL PAID TO WORKER)\n` +
+          `WORKER EARNED: ${workerPayment.toFixed(2)} XAH\n\n` +
+          `TRANSACTION: ${txResult.hash}\n\n` +
+          `NOTE: CHANNEL CLOSED IMMEDIATELY BECAUSE NO XRP REMAINED IN ESCROW. THE WORKER EARNED THE FULL AMOUNT!`
+        )
+      } else {
+        // Standard immediate closure
+        alert(
+          `✅ PAYMENT CHANNEL CLOSED SUCCESSFULLY!\n\n` +
+          `ESCROW RETURNED: ${escrowReturn.toFixed(2)} XAH\n` +
+          `WORKER PAYMENT: ${workerPayment.toFixed(2)} XAH\n\n` +
+          `TRANSACTION: ${txResult.hash}`
+        )
+      }
 
       // Refresh data
       await refreshData()
@@ -191,6 +224,42 @@ const NgoDashboard: React.FC = () => {
    */
   const handleForceClose = async () => {
     await handleCancelConfirm(true)
+  }
+
+  /**
+   * Handle request immediate closure from worker
+   * NGO requests worker to close the channel immediately
+   */
+  const handleRequestWorkerClosure = async (channel: any) => {
+    if (!walletAddress) {
+      alert('WALLET ADDRESS NOT FOUND')
+      return
+    }
+
+    try {
+      console.log('[REQUEST_WORKER_CLOSURE] Requesting closure for channel:', channel.channelId)
+
+      const response = await paymentChannelApi.requestWorkerClosure(
+        channel.channelId,
+        walletAddress
+      )
+
+      if (response.success) {
+        alert(
+          `✅ CLOSURE REQUEST SENT TO WORKER!\n\n` +
+          `WORKER: ${channel.worker}\n` +
+          `JOB: ${channel.jobName}\n\n` +
+          `THE WORKER WILL BE NOTIFIED AND CAN APPROVE THE REQUEST FROM THEIR DASHBOARD.`
+        )
+
+        console.log('[REQUEST_WORKER_CLOSURE] Success:', response.data)
+      } else {
+        throw new Error(response.error?.message || 'FAILED TO SEND REQUEST')
+      }
+    } catch (error: any) {
+      console.error('[REQUEST_WORKER_CLOSURE_ERROR]', error)
+      alert(`❌ FAILED TO REQUEST WORKER CLOSURE:\n\n${error.message}`)
+    }
   }
 
   return (
@@ -453,6 +522,14 @@ const NgoDashboard: React.FC = () => {
                           <button className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded text-[10px] uppercase tracking-wide transition-colors">
                             View Details
                           </button>
+                          {channel.status === 'active' && (
+                            <button
+                              onClick={() => handleRequestWorkerClosure(channel)}
+                              className="px-3 py-1 bg-yellow-500 hover:bg-yellow-600 text-white font-bold rounded text-[10px] uppercase tracking-wide transition-colors"
+                            >
+                              Request Closure
+                            </button>
+                          )}
                           <button
                             onClick={() => handleCancelClick(channel)}
                             disabled={cancelingChannel === channel.channelId || channel.status === 'closing'}

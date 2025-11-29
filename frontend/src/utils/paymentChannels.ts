@@ -343,10 +343,13 @@ export interface ChannelClosureValidation {
   success: boolean
   validated: boolean
   channelRemoved: boolean
+  scheduledClosure?: boolean // true if channel scheduled for closure (source address with XRP remaining)
+  expirationTime?: number // XRPL Ripple time when channel will close (if scheduledClosure=true)
   error?: string
   details?: {
     transactionResult?: string
     channelStillExists?: boolean
+    scheduledExpiration?: number
     validationAttempt?: number
   }
 }
@@ -354,7 +357,8 @@ export interface ChannelClosureValidation {
 export const verifyChannelClosure = async (
   channelId: string,
   txHash: string,
-  network: string
+  network: string,
+  isSourceClosure: boolean = false // NEW: Determines validation behavior
 ): Promise<ChannelClosureValidation> => {
   const client = new Client(getNetworkUrl(network))
 
@@ -363,7 +367,8 @@ export const verifyChannelClosure = async (
     console.log('[VERIFY_CLOSURE] Connected to Xahau, verifying closure', {
       channelId,
       txHash,
-      network
+      network,
+      isSourceClosure
     })
 
     // STEP 1: Verify transaction was validated on ledger
@@ -427,41 +432,141 @@ export const verifyChannelClosure = async (
       }
     }
 
-    // STEP 2: Verify channel no longer exists on ledger
-    try {
-      await client.request({
-        command: 'ledger_entry',
-        payment_channel: channelId
-      })
+    // STEP 2: Verify channel state based on closure type
+    if (isSourceClosure) {
+      // SOURCE CLOSURE (NGO): Channel scheduled for closure, should still exist with Expiration set
+      try {
+        const channelResponse = await client.request({
+          command: 'ledger_entry',
+          payment_channel: channelId
+        })
 
-      // If we get here, channel still exists
-      console.warn('[VERIFY_CLOSURE] ⚠️ Channel still exists on ledger', {
-        channelId,
-        txHash
-      })
+        const channel = channelResponse.result.node as any
 
-      await client.disconnect()
-      return {
-        success: false,
-        validated: true,
-        channelRemoved: false,
-        error: 'CHANNEL STILL EXISTS ON LEDGER AFTER CLOSURE TRANSACTION',
-        details: {
-          transactionResult: 'tesSUCCESS',
-          channelStillExists: true,
-          validationAttempt: 1
+        // Verify Expiration was set (scheduled closure)
+        if (!channel.Expiration) {
+          await client.disconnect()
+          return {
+            success: false,
+            validated: true,
+            channelRemoved: false,
+            error: 'EXPIRATION NOT SET - SCHEDULED CLOSURE FAILED',
+            details: {
+              transactionResult: 'tesSUCCESS',
+              channelStillExists: true,
+              validationAttempt: 1
+            }
+          }
+        }
+
+        // SUCCESS: Channel scheduled for closure
+        console.log('[VERIFY_CLOSURE] ✅ Channel scheduled for closure', {
+          channelId,
+          expiration: channel.Expiration,
+          settleDelay: channel.SettleDelay
+        })
+
+        await client.disconnect()
+        return {
+          success: true,
+          validated: true,
+          channelRemoved: false, // Still exists (scheduled)
+          scheduledClosure: true,
+          expirationTime: channel.Expiration,
+          details: {
+            transactionResult: 'tesSUCCESS',
+            channelStillExists: true, // Expected for source closure
+            scheduledExpiration: channel.Expiration,
+            validationAttempt: 1
+          }
+        }
+      } catch (channelError: any) {
+        // Channel not found - means it had no XRP remaining and closed immediately
+        if (channelError.data?.error === 'entryNotFound' ||
+            channelError.message?.includes('not found')) {
+          console.log('[VERIFY_CLOSURE] ✅ Channel closed immediately (no XRP remaining)', {
+            channelId,
+            txHash
+          })
+
+          await client.disconnect()
+          return {
+            success: true,
+            validated: true,
+            channelRemoved: true,
+            scheduledClosure: false,
+            details: {
+              transactionResult: 'tesSUCCESS',
+              channelStillExists: false,
+              validationAttempt: 1
+            }
+          }
+        }
+
+        // Unexpected error
+        console.error('[VERIFY_CLOSURE] Unexpected error querying channel', channelError)
+        await client.disconnect()
+        return {
+          success: false,
+          validated: true,
+          channelRemoved: false,
+          error: `FAILED TO QUERY CHANNEL: ${channelError.message}`,
+          details: {
+            transactionResult: 'tesSUCCESS',
+            validationAttempt: 1
+          }
         }
       }
-    } catch (channelError: any) {
-      // Expected error: channel not found (successfully removed)
-      if (channelError.data?.error === 'entryNotFound' ||
-          channelError.message?.includes('not found')) {
-        console.log('[VERIFY_CLOSURE] ✅ Channel successfully removed from ledger', {
+    } else {
+      // DESTINATION CLOSURE (WORKER): Channel should be immediately removed
+      try {
+        await client.request({
+          command: 'ledger_entry',
+          payment_channel: channelId
+        })
+
+        // Channel still exists - validation failed for destination closure
+        console.warn('[VERIFY_CLOSURE] ⚠️ Channel still exists after destination closure', {
           channelId,
           txHash
         })
-      } else {
-        // Unexpected error querying channel
+
+        await client.disconnect()
+        return {
+          success: false,
+          validated: true,
+          channelRemoved: false,
+          error: 'CHANNEL STILL EXISTS AFTER DESTINATION CLOSURE',
+          details: {
+            transactionResult: 'tesSUCCESS',
+            channelStillExists: true,
+            validationAttempt: 1
+          }
+        }
+      } catch (channelError: any) {
+        // Expected error: channel removed
+        if (channelError.data?.error === 'entryNotFound' ||
+            channelError.message?.includes('not found')) {
+          console.log('[VERIFY_CLOSURE] ✅ Channel immediately removed by destination', {
+            channelId,
+            txHash
+          })
+
+          await client.disconnect()
+          return {
+            success: true,
+            validated: true,
+            channelRemoved: true,
+            scheduledClosure: false,
+            details: {
+              transactionResult: 'tesSUCCESS',
+              channelStillExists: false,
+              validationAttempt: 1
+            }
+          }
+        }
+
+        // Unexpected error
         console.error('[VERIFY_CLOSURE] Unexpected error querying channel', channelError)
         await client.disconnect()
         return {
@@ -474,20 +579,6 @@ export const verifyChannelClosure = async (
             validationAttempt: 1
           }
         }
-      }
-    }
-
-    await client.disconnect()
-
-    // SUCCESS: Transaction validated AND channel removed
-    return {
-      success: true,
-      validated: true,
-      channelRemoved: true,
-      details: {
-        transactionResult: 'tesSUCCESS',
-        channelStillExists: false,
-        validationAttempt: 1
       }
     }
   } catch (error: any) {
@@ -513,8 +604,11 @@ export interface CloseChannelParams {
   channelId: string
   balance: string // Amount owed to worker (in drops)
   escrowReturn?: string // DEPRECATED: Escrow returns automatically, no longer used
-  account: string // NGO wallet address (channel owner)
+  account: string // Wallet address initiating closure (NGO or Worker)
   publicKey?: string
+  isSourceClosure: boolean // true if NGO (source) is closing, false if Worker (destination)
+  sourceAddress?: string // NGO wallet address (for determining closure type)
+  destinationAddress?: string // Worker wallet address (for determining closure type)
 }
 
 /**

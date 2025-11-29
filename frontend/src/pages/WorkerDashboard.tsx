@@ -6,7 +6,7 @@ import { useData } from '../contexts/DataContext'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import UnclaimedBalanceWarningModal from '../components/UnclaimedBalanceWarningModal'
-import { paymentChannelApi, workerApi } from '../services/api'
+import { paymentChannelApi, workerApi, workerNotificationsApi } from '../services/api'
 import { closePaymentChannel } from '../utils/paymentChannels'
 
 const WorkerDashboard: React.FC = () => {
@@ -21,6 +21,11 @@ const WorkerDashboard: React.FC = () => {
   const [unclaimedBalanceData, setUnclaimedBalanceData] = useState<any>(null)
   const [selectedChannel, setSelectedChannel] = useState<any>(null)
   const [cancelingChannel, setCancelingChannel] = useState<string | null>(null)
+
+  // Notification state
+  const [notifications, setNotifications] = useState<any[]>([])
+  const [unreadCount, setUnreadCount] = useState<number>(0)
+  const [showNotifications, setShowNotifications] = useState(false)
 
   // Check if currently working based on active work session
   const activeSession = workSessions.find(session => !session.clockOut)
@@ -44,6 +49,30 @@ const WorkerDashboard: React.FC = () => {
     }
 
     fetchWorkerChannels()
+  }, [walletAddress])
+
+  // Fetch worker notifications
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      if (!walletAddress) return
+
+      try {
+        console.log('[WORKER_NOTIFICATIONS] Fetching notifications for:', walletAddress)
+        const data = await workerNotificationsApi.getNotifications(walletAddress)
+        setNotifications(data.notifications)
+        setUnreadCount(data.unreadCount)
+        console.log('[WORKER_NOTIFICATIONS] Fetched:', data.notifications.length, 'notifications, unread:', data.unreadCount)
+      } catch (error) {
+        console.error('[WORKER_NOTIFICATIONS_ERROR] Failed to fetch notifications:', error)
+        // Don't show alert - just log error
+      }
+    }
+
+    fetchNotifications()
+
+    // Poll for new notifications every 30 seconds
+    const interval = setInterval(fetchNotifications, 30000)
+    return () => clearInterval(interval)
   }, [walletAddress])
 
   // Use data from context with fallback defaults
@@ -264,14 +293,27 @@ const WorkerDashboard: React.FC = () => {
             </Link>
           </div>
 
-          {/* Settings Button */}
-          <div className="mt-6">
+          {/* Settings and Notifications Buttons */}
+          <div className="mt-6 flex items-center gap-3">
             <Link
               to="/worker/settings"
               className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-sm"
             >
               ⚙️ ACCOUNT SETTINGS
             </Link>
+
+            {/* Notifications Button with Badge */}
+            <button
+              onClick={() => setShowNotifications(!showNotifications)}
+              className="relative inline-flex items-center gap-2 bg-blue-100 hover:bg-blue-200 text-blue-700 font-bold py-3 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-sm"
+            >
+              🔔 NOTIFICATIONS
+              {unreadCount > 0 && (
+                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full h-6 w-6 flex items-center justify-center shadow-lg">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
           </div>
         </div>
       </div>
@@ -492,6 +534,144 @@ const WorkerDashboard: React.FC = () => {
           )}
         </div>
       </section>
+
+      {/* Notifications Dropdown */}
+      {showNotifications && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-start justify-center z-50 p-4 pt-24">
+          <div className="bg-white rounded-xl max-w-2xl w-full shadow-2xl max-h-[80vh] overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 flex items-center justify-between">
+              <h3 className="text-xl font-extrabold uppercase tracking-tight">
+                🔔 NOTIFICATIONS
+              </h3>
+              <button
+                onClick={() => setShowNotifications(false)}
+                className="text-white hover:bg-white/20 rounded-full p-2 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Notifications List */}
+            <div className="overflow-y-auto max-h-[calc(80vh-80px)]">
+              {notifications.length === 0 ? (
+                <div className="p-12 text-center">
+                  <div className="text-6xl mb-4">📭</div>
+                  <p className="text-gray-500 uppercase tracking-wide font-semibold">NO NOTIFICATIONS</p>
+                  <p className="text-sm text-gray-400 mt-2">YOU'RE ALL CAUGHT UP!</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-200">
+                  {notifications.map((notif) => (
+                    <div
+                      key={notif.id}
+                      className={`p-4 transition-colors ${
+                        notif.isRead ? 'bg-white' : 'bg-blue-50'
+                      } hover:bg-gray-50`}
+                    >
+                      {/* Notification Header */}
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">
+                            {notif.type === 'closure_request' ? '⚠️' : '📢'}
+                          </span>
+                          <span className={`text-xs font-bold uppercase tracking-wide px-2 py-1 rounded ${
+                            notif.type === 'closure_request'
+                              ? 'bg-yellow-100 text-yellow-700'
+                              : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {notif.type === 'closure_request' ? 'CLOSURE REQUEST' : 'INFO'}
+                          </span>
+                          {!notif.isRead && (
+                            <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                          )}
+                        </div>
+                        <span className="text-xs text-gray-400 uppercase tracking-wide">
+                          {new Date(notif.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+
+                      {/* Message */}
+                      <p className="text-sm text-gray-700 mb-3 uppercase tracking-wide">
+                        {notif.message}
+                      </p>
+
+                      {/* Channel Info */}
+                      {notif.jobName && (
+                        <div className="text-xs text-gray-500 uppercase tracking-wide mb-3">
+                          JOB: {notif.jobName}
+                        </div>
+                      )}
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-2">
+                        {notif.type === 'closure_request' && !notif.closureApproved && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                console.log('[APPROVE_CLOSURE] Approving notification:', notif.id)
+                                const response = await workerNotificationsApi.approveClosure(notif.id, walletAddress!)
+
+                                // Find the channel
+                                const channel = paymentChannels.find(ch => ch.channelId === response.data.channelId)
+                                if (channel) {
+                                  // Open the close confirmation modal
+                                  setSelectedChannel(channel)
+                                  setShowCancelConfirm(true)
+                                  setShowNotifications(false)
+                                } else {
+                                  alert('✅ CLOSURE APPROVED. PLEASE CLOSE THE CHANNEL FROM THE PAYMENT CHANNELS SECTION.')
+                                  // Refresh notifications
+                                  const data = await workerNotificationsApi.getNotifications(walletAddress!)
+                                  setNotifications(data.notifications)
+                                  setUnreadCount(data.unreadCount)
+                                }
+                              } catch (error: any) {
+                                console.error('[APPROVE_CLOSURE_ERROR]', error)
+                                alert(`❌ FAILED TO APPROVE CLOSURE: ${error.message}`)
+                              }
+                            }}
+                            className="px-3 py-1 bg-green-500 hover:bg-green-600 text-white font-bold rounded text-xs uppercase tracking-wide transition-colors"
+                          >
+                            APPROVE & CLOSE
+                          </button>
+                        )}
+
+                        {notif.closureApproved && (
+                          <span className="text-xs text-green-600 font-bold uppercase">
+                            ✅ APPROVED
+                          </span>
+                        )}
+
+                        {!notif.isRead && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                await workerNotificationsApi.markAsRead(notif.id, walletAddress!)
+                                // Refresh notifications
+                                const data = await workerNotificationsApi.getNotifications(walletAddress!)
+                                setNotifications(data.notifications)
+                                setUnreadCount(data.unreadCount)
+                              } catch (error) {
+                                console.error('[MARK_READ_ERROR]', error)
+                              }
+                            }}
+                            className="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded text-xs uppercase tracking-wide transition-colors"
+                          >
+                            MARK AS READ
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <Footer />
 

@@ -436,6 +436,38 @@ export const paymentChannelApi = {
 
     return response
   },
+
+  /**
+   * NGO requests immediate closure from worker
+   * Creates notification for worker to approve and close channel
+   */
+  async requestWorkerClosure(
+    channelId: string,
+    organizationWalletAddress: string,
+    message?: string
+  ): Promise<ApiResponse<{
+    notification: any
+    channel: any
+  }>> {
+    const response = await apiFetch<ApiResponse<{
+      notification: any
+      channel: any
+    }>>(
+      `/api/payment-channels/${channelId}/request-worker-closure`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ organizationWalletAddress, message }),
+      }
+    )
+
+    if (!response.success || !response.data) {
+      throw new ApiError(
+        response.error?.message || 'FAILED TO REQUEST WORKER CLOSURE'
+      )
+    }
+
+    return response
+  },
 }
 
 /**
@@ -631,6 +663,101 @@ export const notificationApi = {
     })
 
     return response.pagination.total
+  },
+}
+
+/**
+ * Worker Notifications API calls
+ * Handles worker notifications including closure requests from NGOs
+ */
+export const workerNotificationsApi = {
+  /**
+   * Get all notifications for a worker
+   */
+  async getNotifications(walletAddress: string, unreadOnly?: boolean): Promise<{
+    notifications: any[]
+    unreadCount: number
+  }> {
+    const url = `/api/worker-notifications/${walletAddress}${unreadOnly ? '?unreadOnly=true' : ''}`
+    const response = await apiFetch<ApiResponse<{
+      notifications: any[]
+      unreadCount: number
+    }>>(url)
+
+    if (!response.success || !response.data) {
+      throw new ApiError('FAILED TO FETCH WORKER NOTIFICATIONS')
+    }
+
+    return response.data
+  },
+
+  /**
+   * Get unread notification count for badge display
+   */
+  async getUnreadCount(walletAddress: string): Promise<number> {
+    const response = await apiFetch<ApiResponse<{ unreadCount: number }>>(
+      `/api/worker-notifications/unread-count/${walletAddress}`
+    )
+
+    if (!response.success || !response.data) {
+      throw new ApiError('FAILED TO GET UNREAD COUNT')
+    }
+
+    return response.data.unreadCount
+  },
+
+  /**
+   * Mark notification as read
+   */
+  async markAsRead(notificationId: number, walletAddress: string): Promise<ApiResponse<{ notification: any }>> {
+    const response = await apiFetch<ApiResponse<{ notification: any }>>(
+      `/api/worker-notifications/${notificationId}/read`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ walletAddress }),
+      }
+    )
+
+    if (!response.success || !response.data) {
+      throw new ApiError('FAILED TO MARK NOTIFICATION AS READ')
+    }
+
+    return response
+  },
+
+  /**
+   * Worker approves closure request and gets channel details for closure
+   */
+  async approveClosure(notificationId: number, walletAddress: string): Promise<ApiResponse<{
+    channelId: string
+    balance: number
+    escrowBalance: number
+    jobName: string
+    organizationName: string
+    message: string
+  }>> {
+    const response = await apiFetch<ApiResponse<{
+      channelId: string
+      balance: number
+      escrowBalance: number
+      jobName: string
+      organizationName: string
+      message: string
+    }>>(
+      `/api/worker-notifications/${notificationId}/approve-closure`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ walletAddress }),
+      }
+    )
+
+    if (!response.success || !response.data) {
+      throw new ApiError(
+        response.error?.message || 'FAILED TO APPROVE CLOSURE REQUEST'
+      )
+    }
+
+    return response
   },
 }
 

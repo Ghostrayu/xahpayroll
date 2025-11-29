@@ -11,6 +11,7 @@ const usersRoutes = require('./routes/users')
 const organizationsRoutes = require('./routes/organizations')
 const paymentChannelsRoutes = require('./routes/paymentChannels')
 const workersRoutes = require('./routes/workers')
+const workerNotificationsRoutes = require('./routes/workerNotifications')
 
 // Import scheduled jobs
 const { startHardDeleteJob } = require('./jobs/hardDelete')
@@ -50,6 +51,7 @@ app.use('/api/users', usersRoutes)
 app.use('/api/organizations', organizationsRoutes)
 app.use('/api/payment-channels', paymentChannelsRoutes)
 app.use('/api/workers', workersRoutes)
+app.use('/api/worker-notifications', workerNotificationsRoutes)
 
 // Error handling middleware
 app.use((err, req, res, next) => {
