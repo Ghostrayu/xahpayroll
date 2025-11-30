@@ -75,7 +75,6 @@
 - Unpaid Balance: $50.25
 
 ### Steps
-1. create channel for worker and then delete said channel - debugging channel deletion 11.28 3:34am
 create channel for worker then try deleting profile as worker with live channel
 [ ] Log in as Test Worker B
 2. [ ] Navigate to Employee Settings

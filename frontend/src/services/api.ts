@@ -762,6 +762,152 @@ export const workerNotificationsApi = {
 }
 
 /**
+ * Work Sessions API
+ * Endpoints for clock-in/out and work session management
+ */
+export const workSessionsApi = {
+  /**
+   * Clock in to a payment channel (start work session)
+   */
+  async clockIn(
+    workerWalletAddress: string,
+    paymentChannelId: number,
+    notes?: string
+  ): Promise<ApiResponse<{
+    workSession: {
+      id: number
+      paymentChannelId: number
+      employeeId: number
+      organizationId: number
+      clockIn: string
+      clockOut: string | null
+      hoursWorked: number | null
+      hourlyRate: number
+      totalAmount: number | null
+      sessionStatus: 'active' | 'completed'
+      maxDailyHours: number
+      hoursWorkedToday: number
+      createdAt: string
+    }
+    message: string
+  }>> {
+    return apiFetch('/api/work-sessions/clock-in', {
+      method: 'POST',
+      body: JSON.stringify({
+        workerWalletAddress,
+        paymentChannelId,
+        notes,
+      }),
+    })
+  },
+
+  /**
+   * Clock out of a work session (end work session)
+   */
+  async clockOut(
+    workerWalletAddress: string,
+    workSessionId: number,
+    notes?: string
+  ): Promise<ApiResponse<{
+    workSession: {
+      id: number
+      paymentChannelId: number
+      clockIn: string
+      clockOut: string
+      hoursWorked: number
+      hourlyRate: number
+      totalAmount: number
+      sessionStatus: 'completed'
+      createdAt: string
+      updatedAt: string
+    }
+    paymentChannelUpdate: {
+      id: number
+      accumulatedBalance: number
+      hoursAccumulated: number
+    }
+    message: string
+  }>> {
+    return apiFetch('/api/work-sessions/clock-out', {
+      method: 'POST',
+      body: JSON.stringify({
+        workerWalletAddress,
+        workSessionId,
+        notes,
+      }),
+    })
+  },
+
+  /**
+   * Get all active work sessions for a worker (for timer restoration)
+   */
+  async getActiveSessions(
+    workerWalletAddress: string
+  ): Promise<ApiResponse<{
+    activeSessions: Array<{
+      id: number
+      paymentChannelId: number
+      paymentChannel: {
+        id: number
+        jobName: string
+        organizationName: string
+        hourlyRate: number
+        maxDailyHours: number
+        escrowFundedAmount: number
+        accumulatedBalance: number
+      }
+      clockIn: string
+      hourlyRate: number
+      sessionStatus: 'active'
+      elapsedSeconds: number
+      currentEarnings: number
+    }>
+  }>> {
+    return apiFetch(
+      `/api/work-sessions/active?workerWalletAddress=${encodeURIComponent(
+        workerWalletAddress
+      )}`
+    )
+  },
+
+  /**
+   * Get all active work sessions for an NGO (for NGO dashboard)
+   */
+  async getNGOActiveSessions(
+    organizationWalletAddress: string
+  ): Promise<ApiResponse<{
+    activeSessions: Array<{
+      id: number
+      worker: {
+        walletAddress: string
+        fullName: string
+      }
+      paymentChannel: {
+        id: number
+        jobName: string
+        hourlyRate: number
+      }
+      clockIn: string
+      elapsedSeconds: number
+      elapsedFormatted: string
+      currentEarnings: number
+      sessionStatus: 'active'
+    }>
+    summary: {
+      totalActiveWorkers: number
+      totalActiveHours: number
+      totalCurrentEarnings: number
+    }
+  }>> {
+    return apiFetch(
+      `/api/work-sessions/ngo-active?organizationWalletAddress=${encodeURIComponent(
+        organizationWalletAddress
+      )}`
+    )
+  },
+}
+
+/**
  * Export ApiError for error handling in components
  */
 export { ApiError }

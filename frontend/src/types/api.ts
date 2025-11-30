@@ -73,6 +73,7 @@ export interface PaymentChannel {
   escrowBalance: number            // Remaining escrow (funded - accumulated)
   hourlyRate: number               // Payment rate in XAH per hour
   hoursAccumulated: number         // Total hours tracked for this channel
+  maxDailyHours?: number           // Maximum hours worker can work per day for this channel (default: 8.00)
   status: string                   // Channel status: 'active' | 'closing' | 'closed'
   lastUpdate: string               // Human-readable time since last update
   balanceUpdateFrequency: string   // How often claims are generated: 'Hourly' | 'Every 30 Minutes' | etc.

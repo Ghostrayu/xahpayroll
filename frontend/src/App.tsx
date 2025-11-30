@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import { WalletProvider } from './contexts/WalletContext'
 import { DataProvider } from './contexts/DataContext'
+import { ActiveSessionsProvider } from './contexts/ActiveSessionsContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import DashboardRedirect from './components/DashboardRedirect'
 import HomePage from './pages/HomePage'
@@ -20,10 +21,11 @@ const App: React.FC = () => {
     <AuthProvider>
       <WalletProvider>
         <DataProvider>
-          <Router>
-            <ScrollToTop />
-            <div className="App">
-              <Routes>
+          <ActiveSessionsProvider>
+            <Router>
+              <ScrollToTop />
+              <div className="App">
+                <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/terms" element={<TermsOfService />} />
                 <Route path="/dashboard" element={<DashboardRedirect />} />
@@ -64,6 +66,7 @@ const App: React.FC = () => {
               </Routes>
             </div>
           </Router>
+          </ActiveSessionsProvider>
         </DataProvider>
       </WalletProvider>
     </AuthProvider>

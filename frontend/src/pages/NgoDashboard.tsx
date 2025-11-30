@@ -9,6 +9,7 @@ import CreatePaymentChannelModal from '../components/CreatePaymentChannelModal'
 import AddWorkerModal from '../components/AddWorkerModal'
 import NGONotifications from '../components/NGONotifications'
 import UnclaimedBalanceWarningModal from '../components/UnclaimedBalanceWarningModal'
+import { ActiveWorkersSection } from '../components/ActiveWorkersSection'
 import { paymentChannelApi, organizationApi, notificationApi } from '../services/api'
 import { closePaymentChannel } from '../utils/paymentChannels'
 
@@ -563,6 +564,11 @@ const NgoDashboard: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Active Work Sessions Section */}
+          {walletAddress && (
+            <ActiveWorkersSection organizationWalletAddress={walletAddress} />
+          )}
 
           {/* Recent Activity and Workers Grid */}
           <div className="mt-12 grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -6,6 +6,7 @@ import { useData } from '../contexts/DataContext'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import UnclaimedBalanceWarningModal from '../components/UnclaimedBalanceWarningModal'
+import { WorkSessionTimer } from '../components/WorkSessionTimer'
 import { paymentChannelApi, workerApi, workerNotificationsApi } from '../services/api'
 import { closePaymentChannel } from '../utils/paymentChannels'
 
@@ -522,7 +523,16 @@ const WorkerDashboard: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="flex justify-end">
+                    {/* Work Session Timer - Clock In/Out */}
+                    <WorkSessionTimer
+                      paymentChannelId={channel.id}
+                      hourlyRate={channel.hourlyRate || 0}
+                      maxDailyHours={channel.maxDailyHours || 8}
+                      escrowBalance={channel.escrowBalance || 0}
+                      channelStatus={channel.status}
+                    />
+
+                    <div className="flex justify-end mt-4">
                       <button
                         onClick={() => handleCloseClick(channel)}
                         disabled={cancelingChannel === channel.channelId || channel.status === 'closing'}

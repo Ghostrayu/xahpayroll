@@ -802,6 +802,7 @@ router.get('/:walletAddress/payment-channels', async (req, res) => {
         pc.accumulated_balance,
         pc.hours_accumulated,
         pc.escrow_funded_amount,
+        pc.max_daily_hours,
         o.organization_name as employer
        FROM payment_channels pc
        JOIN organizations o ON pc.organization_id = o.id
@@ -838,6 +839,7 @@ router.get('/:walletAddress/payment-channels', async (req, res) => {
         escrowBalance: escrowBalance,
         hourlyRate: parseFloat(c.hourly_rate || 0),
         hoursAccumulated: parseFloat(c.hours_accumulated || 0),
+        maxDailyHours: parseFloat(c.max_daily_hours || 8.00),
         status: c.status,
         lastUpdate,
         balanceUpdateFrequency: c.balance_update_frequency || 'Hourly'

@@ -28,7 +28,8 @@ router.post('/create', async (req, res) => {
       channelId,
       settleDelay,
       expiration,
-      balanceUpdateFrequency
+      balanceUpdateFrequency,
+      maxHoursPerDay
     } = req.body
 
     // Validate required fields
@@ -37,6 +38,17 @@ router.post('/create', async (req, res) => {
         success: false,
         error: { message: 'MISSING REQUIRED FIELDS' }
       })
+    }
+
+    // Validate max hours per day (optional field, but must be valid if provided)
+    if (maxHoursPerDay !== undefined && maxHoursPerDay !== null) {
+      const maxHours = parseFloat(maxHoursPerDay)
+      if (isNaN(maxHours) || maxHours <= 0 || maxHours > 24) {
+        return res.status(400).json({
+          success: false,
+          error: { message: 'INVALID MAX HOURS PER DAY. MUST BE BETWEEN 0 AND 24.' }
+        })
+      }
     }
 
     // CRITICAL LOOKUP: Find organization by escrow_wallet_address
@@ -122,8 +134,9 @@ router.post('/create', async (req, res) => {
         escrow_funded_amount,
         accumulated_balance,
         hours_accumulated,
+        max_daily_hours,
         status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, 'active')
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, $8, 'active')
       RETURNING *`,
       [
         organization.id,
@@ -132,7 +145,8 @@ router.post('/create', async (req, res) => {
         jobName || 'Unnamed Job',
         hourlyRate,
         balanceUpdateFrequency || 'Hourly',
-        fundingAmount
+        fundingAmount,
+        parseFloat(maxHoursPerDay) || 8.00
       ]
     )
 
@@ -150,6 +164,7 @@ router.post('/create', async (req, res) => {
           hourlyRate: parseFloat(channel.hourly_rate),
           escrowFundedAmount: parseFloat(channel.escrow_funded_amount),
           balanceUpdateFrequency: channel.balance_update_frequency,
+          maxDailyHours: parseFloat(channel.max_daily_hours),
           status: channel.status
         }
       }
