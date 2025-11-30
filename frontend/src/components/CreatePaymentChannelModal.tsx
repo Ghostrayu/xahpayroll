@@ -330,39 +330,117 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
       )
       console.log('Channel ID retrieved:', channelId)
 
-      // Step 4: Save payment channel to database
+      // Step 4: Save payment channel to database with retry logic
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
-      const response = await fetch(`${backendUrl}/api/payment-channels/create`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          organizationWalletAddress: walletAddress,
-          workerWalletAddress: config.workerAddress,
-          workerName: config.workerName,
-          jobName: config.jobName,
-          hourlyRate: parseFloat(config.hourlyRate),
-          fundingAmount: parseFloat(fundingAmountXah),
-          channelId: channelId,
-          settleDelay: settleDelaySeconds,
-          expiration: expirationTime,
-          balanceUpdateFrequency: config.paymentFrequency === 'hourly' ? 'Hourly' :
-                                   config.paymentFrequency === 'every-30min' ? 'Every 30 Minutes' :
-                                   config.paymentFrequency === 'every-15min' ? 'Every 15 Minutes' : 'Continuous'
-        })
-      })
+      const maxRetries = 3
+      const retryDelays = [2000, 4000, 8000] // Exponential backoff: 2s, 4s, 8s
+      let lastError: Error | null = null
+      let dbSaveSuccess = false
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error?.message || 'Failed to save payment channel')
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          if (attempt > 0) {
+            console.log(`[DB_SAVE] Retry attempt ${attempt}/${maxRetries}...`)
+            setStatus(`RETRYING DATABASE SAVE (ATTEMPT ${attempt}/${maxRetries})...`)
+            await new Promise(resolve => setTimeout(resolve, retryDelays[attempt - 1]))
+          }
+
+          const response = await fetch(`${backendUrl}/api/payment-channels/create`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              organizationWalletAddress: walletAddress,
+              workerWalletAddress: config.workerAddress,
+              workerName: config.workerName,
+              jobName: config.jobName,
+              hourlyRate: parseFloat(config.hourlyRate),
+              fundingAmount: parseFloat(fundingAmountXah),
+              channelId: channelId,
+              settleDelay: settleDelaySeconds,
+              expiration: expirationTime,
+              balanceUpdateFrequency: config.paymentFrequency === 'hourly' ? 'Hourly' :
+                                       config.paymentFrequency === 'every-30min' ? 'Every 30 Minutes' :
+                                       config.paymentFrequency === 'every-15min' ? 'Every 15 Minutes' : 'Continuous'
+            })
+          })
+
+          if (!response.ok) {
+            const errorData = await response.json()
+            throw new Error(errorData.error?.message || 'Failed to save payment channel')
+          }
+
+          const data = await response.json()
+          console.log('[DB_SAVE] Payment channel saved successfully:', data)
+          dbSaveSuccess = true
+          break // Success! Exit retry loop
+        } catch (err: any) {
+          console.error(`[DB_SAVE] Attempt ${attempt + 1} failed:`, err.message)
+          lastError = err
+
+          // Don't retry on last attempt
+          if (attempt === maxRetries) {
+            console.error('[DB_SAVE] All retry attempts exhausted')
+          }
+        }
       }
 
-      const data = await response.json()
-      console.log('Payment channel created successfully:', data)
+      // If all retries failed, try ledger sync as fallback
+      if (!dbSaveSuccess) {
+        console.log('[DB_SAVE] Attempting ledger sync fallback...')
+        setStatus('DATABASE SAVE FAILED. ATTEMPTING LEDGER SYNC...')
+
+        try {
+          const syncResponse = await fetch(`${backendUrl}/api/payment-channels/sync-from-ledger`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              channelId: channelId,
+              organizationWalletAddress: walletAddress,
+              workerWalletAddress: config.workerAddress
+            })
+          })
+
+          if (syncResponse.ok) {
+            const syncData = await syncResponse.json()
+            console.log('[LEDGER_SYNC] Channel synced from ledger:', syncData)
+            dbSaveSuccess = true
+          } else {
+            const syncError = await syncResponse.json()
+            console.error('[LEDGER_SYNC] Failed:', syncError)
+          }
+        } catch (syncErr: any) {
+          console.error('[LEDGER_SYNC] Exception:', syncErr.message)
+        }
+      }
+
+      // Final handling
+      if (!dbSaveSuccess) {
+        // Complete failure - log orphan channel for admin
+        console.error('[ORPHAN_CHANNEL] Channel created on ledger but not saved to database:', {
+          channelId,
+          organizationWallet: walletAddress,
+          workerWallet: config.workerAddress,
+          workerName: config.workerName,
+          fundingAmount: fundingAmountXah,
+          timestamp: new Date().toISOString()
+        })
+
+        throw new Error(
+          `PAYMENT CHANNEL CREATED ON LEDGER BUT DATABASE SYNC FAILED.\n\n` +
+          `CHANNEL ID: ${channelId}\n` +
+          `FUNDING: ${fundingAmountXah} XAH\n\n` +
+          `THE CHANNEL EXISTS ON THE BLOCKCHAIN BUT IS NOT IN YOUR DASHBOARD.\n` +
+          `CONTACT SUPPORT WITH THIS CHANNEL ID TO MANUALLY SYNC.\n\n` +
+          `LAST ERROR: ${lastError?.message || 'Unknown error'}`
+        )
+      }
 
       // Success! Close modal and refresh dashboard
-      alert(`✅ Payment Channel Created!\n\nChannel ID: ${channelId}\nFunding: ${fundingAmountXah} XAH\nWorker: ${config.workerName}`)
+      alert(`✅ PAYMENT CHANNEL CREATED!\n\nCHANNEL ID: ${channelId}\nFUNDING: ${fundingAmountXah} XAH\nWORKER: ${config.workerName}`)
       onClose()
       
       // Call onSuccess callback if provided, otherwise reload page

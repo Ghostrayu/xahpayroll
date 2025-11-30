@@ -188,6 +188,227 @@ const isValidChannelId = (channelId) => {
 }
 
 /**
+ * POST /api/payment-channels/sync-from-ledger
+ * Sync a payment channel from the Xahau ledger to the database
+ *
+ * This endpoint queries the ledger for channel details and creates/updates
+ * the database record to match the ledger state. Used as a fallback when
+ * the initial database save fails after channel creation.
+ *
+ * @param {string} channelId - 64-character hex channel ID from ledger
+ * @param {string} organizationWalletAddress - NGO/employer wallet address
+ * @param {string} workerWalletAddress - Worker wallet address
+ */
+router.post('/sync-from-ledger', async (req, res) => {
+  try {
+    const { channelId, organizationWalletAddress, workerWalletAddress } = req.body
+
+    // Validate required fields
+    if (!channelId || !organizationWalletAddress || !workerWalletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'MISSING REQUIRED FIELDS: channelId, organizationWalletAddress, workerWalletAddress' }
+      })
+    }
+
+    // Validate channel ID format
+    if (!isValidChannelId(channelId)) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'INVALID CHANNEL ID FORMAT. EXPECTED 64-CHARACTER HEX STRING' }
+      })
+    }
+
+    console.log(`[LEDGER_SYNC] Starting sync for channel ${channelId}`)
+
+    // Step 1: Query Xahau ledger for channel details
+    const client = new Client(getNetworkUrl())
+    await client.connect()
+
+    let ledgerChannel
+    try {
+      const channelResponse = await client.request({
+        command: 'ledger_entry',
+        payment_channel: channelId
+      })
+      ledgerChannel = channelResponse.result.node
+      console.log('[LEDGER_SYNC] Channel found on ledger:', ledgerChannel)
+    } catch (ledgerErr) {
+      await client.disconnect()
+      console.error('[LEDGER_SYNC] Channel not found on ledger:', ledgerErr.message)
+      return res.status(404).json({
+        success: false,
+        error: { message: 'CHANNEL NOT FOUND ON LEDGER. MAY HAVE BEEN CLOSED.' }
+      })
+    }
+
+    await client.disconnect()
+
+    // Step 2: Verify channel participants match request
+    if (ledgerChannel.Account !== organizationWalletAddress ||
+        ledgerChannel.Destination !== workerWalletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'CHANNEL PARTICIPANT MISMATCH. LEDGER PARTICIPANTS DO NOT MATCH REQUEST.',
+          ledgerAccount: ledgerChannel.Account,
+          ledgerDestination: ledgerChannel.Destination,
+          requestedAccount: organizationWalletAddress,
+          requestedDestination: workerWalletAddress
+        }
+      })
+    }
+
+    // Step 3: Find or create organization record
+    let orgResult = await query(
+      `SELECT id, organization_name, escrow_wallet_address
+       FROM organizations
+       WHERE escrow_wallet_address = $1`,
+      [organizationWalletAddress]
+    )
+
+    if (orgResult.rows.length === 0) {
+      console.log('[LEDGER_SYNC] Organization not found, creating new record...')
+      // Create organization if it doesn't exist
+      orgResult = await query(
+        `INSERT INTO organizations (organization_name, escrow_wallet_address)
+         VALUES ($1, $2)
+         RETURNING id, organization_name, escrow_wallet_address`,
+        [`Organization ${organizationWalletAddress.substring(0, 8)}`, organizationWalletAddress]
+      )
+    }
+
+    const organization = orgResult.rows[0]
+    console.log('[LEDGER_SYNC] Organization:', organization)
+
+    // Step 4: Find or create employee record
+    let employeeResult = await query(
+      `SELECT id, employee_wallet_address, full_name
+       FROM employees
+       WHERE employee_wallet_address = $1 AND organization_id = $2`,
+      [workerWalletAddress, organization.id]
+    )
+
+    if (employeeResult.rows.length === 0) {
+      console.log('[LEDGER_SYNC] Employee not found, creating new record...')
+      // Create employee if doesn't exist
+      employeeResult = await query(
+        `INSERT INTO employees (full_name, employee_wallet_address, organization_id, hourly_rate)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, employee_wallet_address, full_name`,
+        [
+          `Worker ${workerWalletAddress.substring(0, 8)}`,
+          workerWalletAddress,
+          organization.id,
+          20.00 // Default hourly rate
+        ]
+      )
+    }
+
+    const employee = employeeResult.rows[0]
+    console.log('[LEDGER_SYNC] Employee:', employee)
+
+    // Step 5: Check for existing closed channels and remove if blocking UNIQUE constraint
+    const existingChannels = await query(
+      `SELECT channel_id, status, closure_reason, closed_at
+       FROM payment_channels
+       WHERE organization_id = $1 AND employee_id = $2`,
+      [organization.id, employee.id]
+    )
+
+    if (existingChannels.rows.length > 0) {
+      console.log('[LEDGER_SYNC] Found existing channels:', existingChannels.rows)
+
+      // Delete old closed channels to avoid UNIQUE constraint violation
+      const closedChannels = existingChannels.rows.filter(ch => ch.status === 'closed')
+      if (closedChannels.length > 0) {
+        console.log(`[LEDGER_SYNC] Deleting ${closedChannels.length} old closed channels...`)
+        await query(
+          `DELETE FROM payment_channels
+           WHERE organization_id = $1 AND employee_id = $2 AND status = 'closed'`,
+          [organization.id, employee.id]
+        )
+      }
+
+      // Check if the exact channel already exists
+      const exactMatch = existingChannels.rows.find(ch => ch.channel_id === channelId)
+      if (exactMatch) {
+        console.log('[LEDGER_SYNC] Channel already exists in database:', exactMatch)
+        return res.json({
+          success: true,
+          data: {
+            message: 'CHANNEL ALREADY EXISTS IN DATABASE',
+            channel: exactMatch
+          }
+        })
+      }
+    }
+
+    // Step 6: Convert ledger amounts from drops to XAH
+    const escrowAmountXAH = parseInt(ledgerChannel.Amount) / 1000000
+    const balanceXAH = ledgerChannel.Balance ? parseInt(ledgerChannel.Balance) / 1000000 : 0
+
+    // Step 7: Insert channel from ledger data
+    const channelResult = await query(
+      `INSERT INTO payment_channels (
+        organization_id,
+        employee_id,
+        channel_id,
+        job_name,
+        hourly_rate,
+        balance_update_frequency,
+        accumulated_balance,
+        hours_accumulated,
+        status,
+        escrow_funded_amount,
+        created_at,
+        updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+      RETURNING *`,
+      [
+        organization.id,
+        employee.id,
+        channelId,
+        'PAYMENT CHANNEL', // Default job name
+        20.00, // Default hourly rate
+        'Hourly', // Default update frequency
+        balanceXAH,
+        0, // Default hours
+        'active',
+        escrowAmountXAH
+      ]
+    )
+
+    console.log('[LEDGER_SYNC] Channel synced successfully:', channelResult.rows[0])
+
+    return res.json({
+      success: true,
+      data: {
+        message: 'CHANNEL SYNCED FROM LEDGER SUCCESSFULLY',
+        channel: channelResult.rows[0],
+        ledgerData: {
+          account: ledgerChannel.Account,
+          destination: ledgerChannel.Destination,
+          amount: escrowAmountXAH,
+          balance: balanceXAH,
+          settleDelay: ledgerChannel.SettleDelay,
+          publicKey: ledgerChannel.PublicKey
+        }
+      }
+    })
+  } catch (err) {
+    console.error('[LEDGER_SYNC] Error syncing channel:', err)
+    return res.status(500).json({
+      success: false,
+      error: {
+        message: 'FAILED TO SYNC CHANNEL FROM LEDGER',
+        details: err.message
+      }
+    })
+  }
+})
+
+/**
  * POST /api/payment-channels/:channelId/close
  * Initiate payment channel closure - returns XRPL transaction details
  *

@@ -427,7 +427,11 @@ const WorkerDashboard: React.FC = () => {
                       <div className="text-right">
                         <p className="text-xs text-green-600 uppercase tracking-wide font-semibold">{payment.status}</p>
                         <a
-                          href={`https://testnet.xrpl.org/transactions/${payment.txHash}`}
+                          href={
+                            network === 'mainnet'
+                              ? `https://explorer.xahau.network/tx/${payment.txHash}`
+                              : `https://explorer.xahau-test.net/tx/${payment.txHash}`
+                          }
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs text-xah-blue hover:underline"
