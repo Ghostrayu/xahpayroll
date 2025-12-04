@@ -213,10 +213,20 @@ const isValidChannelId = (channelId) => {
  * @param {string} channelId - 64-character hex channel ID from ledger
  * @param {string} organizationWalletAddress - NGO/employer wallet address
  * @param {string} workerWalletAddress - Worker wallet address
+ * @param {string} [jobName] - Optional job name (defaults to 'PAYMENT CHANNEL')
+ * @param {number} [hourlyRate] - Optional hourly rate (defaults to 20.00)
+ * @param {string} [balanceUpdateFrequency] - Optional update frequency (defaults to 'Hourly')
  */
 router.post('/sync-from-ledger', async (req, res) => {
   try {
-    const { channelId, organizationWalletAddress, workerWalletAddress } = req.body
+    const {
+      channelId,
+      organizationWalletAddress,
+      workerWalletAddress,
+      jobName,
+      hourlyRate,
+      balanceUpdateFrequency
+    } = req.body
 
     // Validate required fields
     if (!channelId || !organizationWalletAddress || !workerWalletAddress) {
@@ -384,9 +394,9 @@ router.post('/sync-from-ledger', async (req, res) => {
         organization.id,
         employee.id,
         channelId,
-        'PAYMENT CHANNEL', // Default job name
-        20.00, // Default hourly rate
-        'Hourly', // Default update frequency
+        jobName || 'PAYMENT CHANNEL', // Use provided job name or default
+        hourlyRate || 20.00, // Use provided hourly rate or default
+        balanceUpdateFrequency || 'Hourly', // Use provided frequency or default
         balanceXAH,
         0, // Default hours
         'active',
@@ -555,7 +565,7 @@ router.post('/:channelId/close', async (req, res) => {
     // Check if there's an unclaimed balance
     if (unpaidBalance > 0 && !forceClose) {
       const warningMessage = isWorker
-        ? `WARNING: YOU HAVE ${unpaidBalance.toFixed(2)} XAH IN UNCLAIMED WAGES. CLAIM BEFORE CLOSING OR FORFEIT YOUR EARNINGS.`
+        ? `YOU HAVE ${unpaidBalance.toFixed(2)} XAH IN ACCUMULATED WAGES. CLOSING THE CHANNEL WILL AUTOMATICALLY TRANSFER THIS AMOUNT TO YOUR WALLET. PROCEED WITH CLOSURE?`
         : `WARNING: WORKER HAS ${unpaidBalance.toFixed(2)} XAH IN UNCLAIMED WAGES. ENSURE PAYMENT BEFORE CLOSING.`
 
       return res.status(400).json({
@@ -1204,8 +1214,8 @@ router.post('/:channelId/request-worker-closure', async (req, res) => {
     // ============================================
 
     const defaultMessage = message ||
-      `${channel.organization_name} HAS REQUESTED IMMEDIATE CLOSURE OF PAYMENT CHANNEL FOR ${channel.job_name || 'YOUR JOB'}. ` +
-      `PLEASE REVIEW AND APPROVE TO CLOSE THE CHANNEL AND RECEIVE YOUR ACCUMULATED BALANCE OF ${parseFloat(channel.accumulated_balance).toFixed(2)} XAH.`
+      `[${channel.organization_name}] HAS REQUESTED IMMEDIATE CLOSURE OF PAYMENT CHANNEL [${channel.job_name || 'YOUR JOB'}]. ` +
+      `PLEASE REVIEW AND APPROVE TO CLOSE THE CHANNEL AND RECEIVE YOUR ACCUMULATED BALANCE OF [${parseFloat(channel.accumulated_balance).toFixed(2)} XAH].`
 
     const notificationResult = await query(
       `INSERT INTO worker_notifications (

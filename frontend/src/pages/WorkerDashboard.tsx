@@ -13,7 +13,7 @@ import { closePaymentChannel } from '../utils/paymentChannels'
 const WorkerDashboard: React.FC = () => {
   const { userName } = useAuth()
   const { balance, reserve, isConnected, walletAddress, network, provider } = useWallet()
-  const { earnings, workSessions, clockIn, clockOut, isLoading, refreshData } = useData()
+  const { earnings, workSessions, isLoading, refreshData } = useData()
 
   // Payment channel state
   const [paymentChannels, setPaymentChannels] = useState<any[]>([])
@@ -27,10 +27,6 @@ const WorkerDashboard: React.FC = () => {
   const [notifications, setNotifications] = useState<any[]>([])
   const [unreadCount, setUnreadCount] = useState<number>(0)
   const [showNotifications, setShowNotifications] = useState(false)
-
-  // Check if currently working based on active work session
-  const activeSession = workSessions.find(session => !session.clockOut)
-  const isWorking = !!activeSession
 
   // Fetch worker payment channels
   useEffect(() => {
@@ -99,19 +95,6 @@ const WorkerDashboard: React.FC = () => {
       status: 'Completed',
       txHash: `0x${session.id.toString().padStart(6, '0')}`
     }))
-
-  const handleClockInOut = async () => {
-    try {
-      if (isWorking) {
-        await clockOut()
-      } else {
-        await clockIn()
-      }
-    } catch (error) {
-      console.error('Error clocking in/out:', error)
-      alert('FAILED TO CLOCK IN/OUT. PLEASE TRY AGAIN.')
-    }
-  }
 
   /**
    * Handle close channel button click - opens confirmation modal
@@ -210,11 +193,19 @@ const WorkerDashboard: React.FC = () => {
       )
 
       // Refresh data (work sessions and earnings)
+      console.log('[WORKER_CLOSE_FLOW] Refreshing work sessions and earnings...')
       await refreshData()
 
       // Refresh payment channels
+      console.log('[WORKER_CLOSE_FLOW] Refreshing payment channels list...')
       const updatedChannels = await workerApi.getPaymentChannels(walletAddress)
       setPaymentChannels(updatedChannels)
+      console.log('[WORKER_CLOSE_FLOW] Payment channels updated. New count:', updatedChannels.length)
+
+      // Refresh notifications to update closure status
+      const notifData = await workerNotificationsApi.getNotifications(walletAddress)
+      setNotifications(notifData.notifications)
+      setUnreadCount(notifData.unreadCount)
 
       // Close modals
       setShowCancelConfirm(false)
@@ -322,34 +313,6 @@ const WorkerDashboard: React.FC = () => {
       {/* Dashboard Content */}
       <section className="py-12 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          
-          {/* Clock In/Out Section */}
-          <div className="mb-12 bg-gradient-to-br from-xah-blue to-primary-700 rounded-2xl shadow-2xl p-8 text-white">
-            <div className="text-center">
-              <h2 className="text-2xl font-extrabold uppercase tracking-tight mb-4">
-                {isWorking ? 'CURRENTLY WORKING' : 'READY TO START'}
-              </h2>
-              <div className="text-6xl font-extrabold mb-6">
-                --
-              </div>
-              <button
-                onClick={handleClockInOut}
-                disabled={isLoading}
-                className={`px-12 py-4 rounded-xl font-bold text-lg uppercase tracking-wide transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed ${
-                  isWorking
-                    ? 'bg-red-500 hover:bg-red-600 shadow-[0_0_30px_rgba(239,68,68,0.6)]'
-                    : 'bg-secondary-500 hover:bg-secondary-600 shadow-[0_0_30px_rgba(153,255,159,0.6)]'
-                }`}
-              >
-                {isLoading ? '⏳ PROCESSING...' : isWorking ? '⏹ CLOCK OUT' : '▶️ CLOCK IN'}
-              </button>
-              {isWorking && (
-                <p className="mt-4 text-sm uppercase tracking-wide">
-                  Earning {workerData.hourlyRate} XAH per hour
-                </p>
-              )}
-            </div>
-          </div>
 
           {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
@@ -386,27 +349,47 @@ const WorkerDashboard: React.FC = () => {
 
           {/* Two Column Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Employment Info */}
+            {/* Employment Info - NGO Specific (Compact) */}
             <div className="bg-white rounded-2xl shadow-xl p-6 border-2 border-xah-blue/30">
-              <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-6">Employment Info</h3>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
-                  <span className="text-sm text-gray-600 uppercase tracking-wide font-semibold">Employer</span>
-                  <span className="font-bold text-gray-900 uppercase text-sm">{workerData.employer}</span>
+              <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-6">
+                Employment Info ({paymentChannels.length})
+              </h3>
+              {paymentChannels.length > 0 ? (
+                <div className="space-y-2">
+                  {paymentChannels.map((channel) => (
+                    <div
+                      key={channel.id}
+                      className="p-3 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg border border-blue-200 hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-bold text-gray-900 uppercase text-sm truncate flex-1 mr-2">
+                          {channel.employer}
+                        </span>
+                        <span className="px-2 py-0.5 bg-green-500 text-white rounded-full text-xs font-bold whitespace-nowrap">
+                          {channel.status?.toUpperCase() || 'ACTIVE'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <div className="flex items-center space-x-4">
+                          <div>
+                            <span className="text-gray-600 uppercase font-semibold">Rate:</span>
+                            <span className="ml-1 font-bold text-xah-blue">{channel.hourlyRate?.toFixed(2) || '0'} XAH</span>
+                          </div>
+                          <div className="text-gray-600">
+                            <span className="uppercase font-semibold">Freq:</span>
+                            <span className="ml-1 font-bold text-gray-900">{channel.balanceUpdateFrequency?.toUpperCase() || 'HOURLY'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
-                  <span className="text-sm text-gray-600 uppercase tracking-wide font-semibold">Hourly Rate</span>
-                  <span className="font-bold text-xah-blue text-lg">{workerData.hourlyRate} XAH</span>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <p className="text-sm uppercase tracking-wide">NO ACTIVE EMPLOYMENT</p>
+                  <p className="text-xs mt-2">NO PAYMENT CHANNELS AVAILABLE</p>
                 </div>
-                <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
-                  <span className="text-sm text-gray-600 uppercase tracking-wide font-semibold">Status</span>
-                  <span className="px-3 py-1 bg-green-500 text-white rounded-full text-xs font-bold">ACTIVE</span>
-                </div>
-                <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
-                  <span className="text-sm text-gray-600 uppercase tracking-wide font-semibold">Payment Frequency</span>
-                  <span className="font-bold text-gray-900 uppercase text-sm">HOURLY</span>
-                </div>
-              </div>
+              )}
             </div>
 
             {/* Recent Payments */}
@@ -491,15 +474,24 @@ const WorkerDashboard: React.FC = () => {
                     className="bg-gradient-to-br from-green-50 to-blue-50 rounded-lg p-4 border-2 border-green-200"
                   >
                     <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <p className="font-bold text-gray-900 text-sm uppercase tracking-wide">
-                          {channel.jobName}
-                        </p>
-                        <p className="text-xs text-gray-600 uppercase tracking-wide">
+                      <div className="flex-1 mr-2">
+                        <div className="mb-1">
+                          <span className="text-xs text-gray-600 uppercase tracking-wide font-semibold">EMPLOYER: </span>
+                          <span className="font-bold text-xah-blue text-sm uppercase tracking-wide">
+                            {channel.employer}
+                          </span>
+                        </div>
+                        <div className="mb-1">
+                          <span className="text-xs text-gray-600 uppercase tracking-wide font-semibold">JOB NAME: </span>
+                          <span className="font-bold text-gray-900 text-xs uppercase tracking-wide">
+                            {channel.jobName}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 uppercase tracking-wide mt-1 truncate">
                           {channel.channelId}
                         </p>
                       </div>
-                      <span className="inline-flex items-center px-2 py-0.5 bg-green-500 text-white rounded-full text-xs font-bold">
+                      <span className="inline-flex items-center px-2 py-0.5 bg-green-500 text-white rounded-full text-xs font-bold whitespace-nowrap">
                         ● ACTIVE
                       </span>
                     </div>
@@ -612,13 +604,6 @@ const WorkerDashboard: React.FC = () => {
                         {notif.message}
                       </p>
 
-                      {/* Channel Info */}
-                      {notif.jobName && (
-                        <div className="text-xs text-gray-500 uppercase tracking-wide mb-3">
-                          JOB: {notif.jobName}
-                        </div>
-                      )}
-
                       {/* Actions */}
                       <div className="flex items-center gap-2">
                         {notif.type === 'closure_request' && !notif.closureApproved && (
@@ -627,21 +612,40 @@ const WorkerDashboard: React.FC = () => {
                               try {
                                 console.log('[APPROVE_CLOSURE] Approving notification:', notif.id)
                                 const response = await workerNotificationsApi.approveClosure(notif.id, walletAddress!)
+                                console.log('[APPROVE_CLOSURE] Response:', response.data)
 
-                                // Find the channel
-                                const channel = paymentChannels.find(ch => ch.channelId === response.data.channelId)
-                                if (channel) {
-                                  // Open the close confirmation modal
-                                  setSelectedChannel(channel)
-                                  setShowCancelConfirm(true)
-                                  setShowNotifications(false)
-                                } else {
-                                  alert('✅ CLOSURE APPROVED. PLEASE CLOSE THE CHANNEL FROM THE PAYMENT CHANNELS SECTION.')
-                                  // Refresh notifications
-                                  const data = await workerNotificationsApi.getNotifications(walletAddress!)
-                                  setNotifications(data.notifications)
-                                  setUnreadCount(data.unreadCount)
+                                // Try to find the channel in current state
+                                let channel = paymentChannels.find(ch => ch.channelId === response.data.channelId)
+
+                                // If channel not in state, fetch fresh data or construct from response
+                                if (!channel) {
+                                  console.log('[APPROVE_CLOSURE] Channel not in state, refreshing payment channels...')
+                                  const freshChannels = await workerApi.getPaymentChannels(walletAddress!)
+                                  setPaymentChannels(freshChannels)
+                                  channel = freshChannels.find(ch => ch.channelId === response.data.channelId)
+
+                                  // If still not found, construct minimal channel object from response
+                                  if (!channel) {
+                                    console.log('[APPROVE_CLOSURE] Constructing channel from response data')
+                                    channel = {
+                                      id: notif.id, // Use notification ID temporarily
+                                      channelId: response.data.channelId,
+                                      jobName: response.data.jobName,
+                                      balance: response.data.balance,
+                                      escrowBalance: response.data.escrowBalance,
+                                      employer: response.data.organizationName,
+                                      status: 'active',
+                                      hourlyRate: 0, // Will be fetched from backend
+                                      hoursAccumulated: 0
+                                    }
+                                  }
                                 }
+
+                                console.log('[APPROVE_CLOSURE] Opening close confirmation modal')
+                                setSelectedChannel(channel)
+                                setShowCancelConfirm(true)
+                                setShowNotifications(false)
+
                               } catch (error: any) {
                                 console.error('[APPROVE_CLOSURE_ERROR]', error)
                                 alert(`❌ FAILED TO APPROVE CLOSURE: ${error.message}`)

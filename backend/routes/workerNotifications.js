@@ -175,7 +175,7 @@ router.post('/:id/approve-closure', async (req, res) => {
         pc.*,
         e.employee_wallet_address,
         o.escrow_wallet_address,
-        o.name as organization_name
+        o.organization_name
        FROM payment_channels pc
        JOIN employees e ON pc.employee_id = e.id
        JOIN organizations o ON pc.organization_id = o.id

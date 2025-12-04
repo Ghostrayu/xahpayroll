@@ -400,7 +400,10 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
             body: JSON.stringify({
               channelId: channelId,
               organizationWalletAddress: walletAddress,
-              workerWalletAddress: config.workerAddress
+              workerWalletAddress: config.workerAddress,
+              jobName: config.jobName,
+              hourlyRate: config.hourlyRate,
+              balanceUpdateFrequency: config.balanceUpdateFrequency
             })
           })
 
