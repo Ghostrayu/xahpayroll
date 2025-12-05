@@ -3,6 +3,7 @@ import { useLocation, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useWallet } from '../contexts/WalletContext'
 import footerImage from '../assets/images/IMG_4027.png'
+import WalletSelectionModal from './WalletSelectionModal'
 
 const Navbar: React.FC = () => {
   const { isLoggedIn, userName, userType, logout } = useAuth()
@@ -10,6 +11,7 @@ const Navbar: React.FC = () => {
   const location = useLocation()
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false)
   const [showDropdown, setShowDropdown] = useState<boolean>(false)
+  const [showWalletModal, setShowWalletModal] = useState<boolean>(false)
   
   const handleLogout = () => {
     setShowDropdown(false)
@@ -133,9 +135,12 @@ const Navbar: React.FC = () => {
               </div>
             ) : (
               shouldShowLoginButton() && (
-                <a href="#login-cards" className="btn-primary uppercase">
+                <button
+                  onClick={() => setShowWalletModal(true)}
+                  className="btn-primary uppercase"
+                >
                   LOGIN
-                </a>
+                </button>
               )
             )}
           </div>
@@ -248,14 +253,26 @@ const Navbar: React.FC = () => {
               </div>
             ) : (
               shouldShowLoginButton() && (
-                <a href="#login-cards" className="block w-full mt-2 btn-primary uppercase text-center">
+                <button
+                  onClick={() => {
+                    setIsMenuOpen(false)
+                    setShowWalletModal(true)
+                  }}
+                  className="block w-full mt-2 btn-primary uppercase text-center"
+                >
                   LOGIN
-                </a>
+                </button>
               )
             )}
           </div>
         </div>
       )}
+
+      {/* Wallet Selection Modal */}
+      <WalletSelectionModal
+        isOpen={showWalletModal}
+        onClose={() => setShowWalletModal(false)}
+      />
     </nav>
   )
 }

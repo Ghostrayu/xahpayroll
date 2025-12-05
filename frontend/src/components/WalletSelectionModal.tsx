@@ -10,7 +10,7 @@ import { isInstalled as gemWalletIsInstalled } from '@gemwallet/api'
 interface WalletSelectionModalProps {
   isOpen: boolean
   onClose: () => void
-  userType: UserType
+  userType?: UserType
 }
 
 interface WalletOption {
