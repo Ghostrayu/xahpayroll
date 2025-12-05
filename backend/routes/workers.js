@@ -803,7 +803,8 @@ router.get('/:walletAddress/payment-channels', async (req, res) => {
         pc.hours_accumulated,
         pc.escrow_funded_amount,
         pc.max_daily_hours,
-        o.organization_name as employer
+        o.organization_name as employer,
+        o.escrow_wallet_address as ngo_wallet
        FROM payment_channels pc
        JOIN organizations o ON pc.organization_id = o.id
        JOIN employees e ON pc.employee_id = e.id
@@ -833,6 +834,7 @@ router.get('/:walletAddress/payment-channels', async (req, res) => {
       return {
         id: c.id,
         employer: c.employer,
+        ngoWalletAddress: c.ngo_wallet,
         jobName: c.job_name || 'Unnamed Job',
         channelId: c.channel_id || `CH-${new Date().getFullYear()}-${String(c.id).padStart(3, '0')}`,
         balance: parseFloat(c.accumulated_balance || 0),

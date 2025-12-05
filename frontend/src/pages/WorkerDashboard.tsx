@@ -28,7 +28,7 @@ const WorkerDashboard: React.FC = () => {
   const [unreadCount, setUnreadCount] = useState<number>(0)
   const [showNotifications, setShowNotifications] = useState(false)
 
-  // Fetch worker payment channels
+  // Fetch worker payment channels with auto-refresh polling
   useEffect(() => {
     const fetchWorkerChannels = async () => {
       if (!walletAddress) return
@@ -37,7 +37,10 @@ const WorkerDashboard: React.FC = () => {
         console.log('[WORKER_CHANNELS] Fetching channels for worker:', walletAddress)
         const channels = await workerApi.getPaymentChannels(walletAddress)
         console.log('[WORKER_CHANNELS] Fetched channels:', channels.length)
-        setPaymentChannels(channels)
+
+        // Filter out closed channels (defense in depth - backend already filters)
+        const activeChannels = channels.filter(ch => ch.status !== 'closed' && ch.status !== 'closing')
+        setPaymentChannels(activeChannels)
       } catch (error) {
         console.error('[WORKER_CHANNELS_ERROR] Failed to fetch worker payment channels:', error)
         // Don't show alert for this - just log the error
@@ -45,7 +48,14 @@ const WorkerDashboard: React.FC = () => {
       }
     }
 
+    // Initial fetch
     fetchWorkerChannels()
+
+    // Poll for updates every 30 seconds to catch NGO-initiated closures
+    const pollInterval = setInterval(fetchWorkerChannels, 30000)
+
+    // Cleanup interval on unmount
+    return () => clearInterval(pollInterval)
   }, [walletAddress])
 
   // Fetch worker notifications
@@ -161,7 +171,11 @@ const WorkerDashboard: React.FC = () => {
           balance: xrplTransaction.Balance,
           escrowReturn: xrplTransaction.Amount,
           account: walletAddress,
-          publicKey: xrplTransaction.Public
+          publicKey: xrplTransaction.Public,
+          // CRITICAL: Specify closure type for validation
+          isSourceClosure: false, // Worker closure = destination closure
+          sourceAddress: selectedChannel.ngoWalletAddress, // NGO wallet (from initial fetch)
+          destinationAddress: walletAddress // Worker wallet
         },
         provider,
         network
@@ -347,6 +361,84 @@ const WorkerDashboard: React.FC = () => {
             </div>
           </div>
 
+          {/* Payment Channels Section - Positioned first for primary visibility */}
+          {paymentChannels.length > 0 && (
+            <div className="mb-12 bg-white rounded-2xl shadow-xl p-6 border-2 border-xah-blue/30">
+              <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-6">
+                MY PAYMENT CHANNELS
+              </h3>
+              <div className="space-y-3">
+                {paymentChannels.map((channel) => (
+                  <div
+                    key={channel.id}
+                    className="bg-gradient-to-br from-green-50 to-blue-50 rounded-lg p-4 border-2 border-green-200"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1 mr-2">
+                        <div className="mb-1">
+                          <span className="text-xs text-gray-600 uppercase tracking-wide font-semibold">EMPLOYER: </span>
+                          <span className="font-bold text-xah-blue text-sm uppercase tracking-wide">
+                            {channel.employer}
+                          </span>
+                        </div>
+                        <div className="mb-1">
+                          <span className="text-xs text-gray-600 uppercase tracking-wide font-semibold">JOB NAME: </span>
+                          <span className="font-bold text-gray-900 text-xs uppercase tracking-wide">
+                            {channel.jobName}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 uppercase tracking-wide mt-1 truncate">
+                          {channel.channelId}
+                        </p>
+                      </div>
+                      <span className="inline-flex items-center px-2 py-0.5 bg-green-500 text-white rounded-full text-xs font-bold whitespace-nowrap">
+                        ● ACTIVE
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      <div className="bg-white/60 rounded-lg p-2 border border-green-200">
+                        <p className="text-xs text-gray-600 uppercase tracking-wide font-semibold mb-0.5">
+                          ACCUMULATED
+                        </p>
+                        <p className="text-base font-extrabold text-green-600">
+                          {channel.balance?.toLocaleString() || '0'} XAH
+                        </p>
+                      </div>
+                      <div className="bg-white/60 rounded-lg p-2 border border-blue-200">
+                        <p className="text-xs text-gray-600 uppercase tracking-wide font-semibold mb-0.5">
+                          HOURLY RATE
+                        </p>
+                        <p className="text-base font-extrabold text-xah-blue">
+                          {channel.hourlyRate?.toFixed(2) || '0'} XAH
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Work Session Timer - Clock In/Out */}
+                    <WorkSessionTimer
+                      paymentChannelId={channel.id}
+                      hourlyRate={channel.hourlyRate || 0}
+                      maxDailyHours={channel.maxDailyHours || 8}
+                      escrowBalance={channel.escrowBalance || 0}
+                      channelStatus={channel.status}
+                    />
+
+                    <div className="flex justify-end mt-4">
+                      <button
+                        onClick={() => handleCloseClick(channel)}
+                        disabled={cancelingChannel === channel.channelId || channel.status === 'closing'}
+                        className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white font-bold rounded text-xs uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {cancelingChannel === channel.channelId || channel.status === 'closing' ? 'CLOSING...' : 'CLOSE CHANNEL'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Two Column Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Employment Info - NGO Specific (Compact) */}
@@ -437,107 +529,6 @@ const WorkerDashboard: React.FC = () => {
               </button>
             </div>
           </div>
-
-          {/* Quick Stats */}
-          <div className="mt-12 bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl shadow-lg p-8 border-2 border-gray-200">
-            <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-6 text-center">QUICK STATS</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              <div className="text-center">
-                <p className="text-3xl font-extrabold text-xah-blue mb-2">{workerData.hourlyRate}</p>
-                <p className="text-xs text-gray-600 uppercase tracking-wide">XAH/Hour</p>
-              </div>
-              <div className="text-center">
-                <p className="text-3xl font-extrabold text-xah-blue mb-2">{recentPayments.length}</p>
-                <p className="text-xs text-gray-600 uppercase tracking-wide">Payments Today</p>
-              </div>
-              <div className="text-center">
-                <p className="text-3xl font-extrabold text-xah-blue mb-2">$0.001</p>
-                <p className="text-xs text-gray-600 uppercase tracking-wide">Avg Fee</p>
-              </div>
-              <div className="text-center">
-                <p className="text-3xl font-extrabold text-xah-blue mb-2">100%</p>
-                <p className="text-xs text-gray-600 uppercase tracking-wide">On-Time</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Payment Channels Section (when API is ready) */}
-          {paymentChannels.length > 0 && (
-            <div className="mt-12 bg-white rounded-2xl shadow-xl p-6 border-2 border-xah-blue/30">
-              <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-6">
-                MY PAYMENT CHANNELS
-              </h3>
-              <div className="space-y-3">
-                {paymentChannels.map((channel) => (
-                  <div
-                    key={channel.id}
-                    className="bg-gradient-to-br from-green-50 to-blue-50 rounded-lg p-4 border-2 border-green-200"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1 mr-2">
-                        <div className="mb-1">
-                          <span className="text-xs text-gray-600 uppercase tracking-wide font-semibold">EMPLOYER: </span>
-                          <span className="font-bold text-xah-blue text-sm uppercase tracking-wide">
-                            {channel.employer}
-                          </span>
-                        </div>
-                        <div className="mb-1">
-                          <span className="text-xs text-gray-600 uppercase tracking-wide font-semibold">JOB NAME: </span>
-                          <span className="font-bold text-gray-900 text-xs uppercase tracking-wide">
-                            {channel.jobName}
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-500 uppercase tracking-wide mt-1 truncate">
-                          {channel.channelId}
-                        </p>
-                      </div>
-                      <span className="inline-flex items-center px-2 py-0.5 bg-green-500 text-white rounded-full text-xs font-bold whitespace-nowrap">
-                        ● ACTIVE
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 mb-3">
-                      <div className="bg-white/60 rounded-lg p-2 border border-green-200">
-                        <p className="text-xs text-gray-600 uppercase tracking-wide font-semibold mb-0.5">
-                          ACCUMULATED
-                        </p>
-                        <p className="text-base font-extrabold text-green-600">
-                          {channel.balance?.toLocaleString() || '0'} XAH
-                        </p>
-                      </div>
-                      <div className="bg-white/60 rounded-lg p-2 border border-blue-200">
-                        <p className="text-xs text-gray-600 uppercase tracking-wide font-semibold mb-0.5">
-                          HOURLY RATE
-                        </p>
-                        <p className="text-base font-extrabold text-xah-blue">
-                          {channel.hourlyRate?.toFixed(2) || '0'} XAH
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Work Session Timer - Clock In/Out */}
-                    <WorkSessionTimer
-                      paymentChannelId={channel.id}
-                      hourlyRate={channel.hourlyRate || 0}
-                      maxDailyHours={channel.maxDailyHours || 8}
-                      escrowBalance={channel.escrowBalance || 0}
-                      channelStatus={channel.status}
-                    />
-
-                    <div className="flex justify-end mt-4">
-                      <button
-                        onClick={() => handleCloseClick(channel)}
-                        disabled={cancelingChannel === channel.channelId || channel.status === 'closing'}
-                        className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white font-bold rounded text-xs uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {cancelingChannel === channel.channelId || channel.status === 'closing' ? 'CLOSING...' : 'CLOSE CHANNEL'}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </section>
 

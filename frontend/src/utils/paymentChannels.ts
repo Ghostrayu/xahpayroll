@@ -629,6 +629,95 @@ export interface CloseChannelResult {
  * @param network - Network ('testnet' or 'mainnet')
  * @returns Result with transaction hash or error
  */
+/**
+ * Claim accumulated balance from payment channel WITHOUT closing it
+ * Uses PaymentChannelClaim with Balance field but NO tfClose flag
+ * Channel remains open after worker receives payment
+ */
+export const claimChannelBalance = async (
+  params: {
+    channelId: string
+    balance: string // In drops - amount worker will receive
+    account: string // Worker wallet address
+    publicKey?: string
+  },
+  provider: WalletProvider | null,
+  network: string
+): Promise<CloseChannelResult> => {
+  if (!provider) {
+    return { success: false, error: 'No wallet connected' }
+  }
+
+  try {
+    // Build PaymentChannelClaim transaction WITHOUT close flag
+    // This claims the balance for the worker but keeps channel open
+    const transaction: PaymentChannelClaim = {
+      TransactionType: 'PaymentChannelClaim',
+      Account: params.account, // Worker wallet address (destination)
+      Channel: params.channelId,
+      Balance: params.balance, // Total amount worker receives (in drops)
+      // NO tfClose flag - channel stays open
+    }
+
+    // Add public key if available
+    if (params.publicKey) {
+      transaction.PublicKey = params.publicKey
+    }
+
+    console.log('[CLAIM_BALANCE] Submitting PaymentChannelClaim (no close)', {
+      channelId: params.channelId,
+      balance: params.balance,
+      worker: params.account,
+      provider,
+      network
+    })
+
+    // Sign and submit via multi-wallet abstraction
+    const result = await submitTransactionWithWallet(
+      transaction,
+      provider,
+      network
+    )
+
+    if (result.success && result.hash) {
+      console.log('[CLAIM_BALANCE_SUCCESS]', {
+        hash: result.hash,
+        channelId: params.channelId,
+        balanceClaimed: params.balance
+      })
+
+      return {
+        success: true,
+        hash: result.hash
+      }
+    }
+
+    console.error('[CLAIM_BALANCE_FAILED]', {
+      error: result.error,
+      channelId: params.channelId
+    })
+
+    return {
+      success: false,
+      error: result.error || 'Transaction failed'
+    }
+  } catch (error: any) {
+    console.error('[CLAIM_BALANCE_ERROR]', {
+      error: error.message,
+      channelId: params.channelId
+    })
+
+    return {
+      success: false,
+      error: error.message || 'Failed to claim balance'
+    }
+  }
+}
+
+/**
+ * Close payment channel (optionally with final balance claim)
+ * Uses PaymentChannelClaim with tfClose flag
+ */
 export const closePaymentChannel = async (
   params: CloseChannelParams,
   provider: WalletProvider | null,
@@ -644,9 +733,9 @@ export const closePaymentChannel = async (
     // DO NOT use Amount field - that's for sending additional XAH from Account's balance
     const transaction: PaymentChannelClaim = {
       TransactionType: 'PaymentChannelClaim',
-      Account: params.account, // NGO wallet address (channel owner)
+      Account: params.account, // Wallet address (NGO or Worker)
       Channel: params.channelId,
-      Flags: 0x00010000, // tfClose flag (closes channel)
+      Flags: 0x00020000, // tfClose flag (131072 decimal) - closes channel
     }
 
     // CRITICAL: Balance field handling for channel closure

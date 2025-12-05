@@ -270,6 +270,23 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
     }
   }, [walletAddress, userType])
 
+  /**
+   * Auto-refresh data every 30 seconds for live UI updates
+   * Catches channel closures initiated by other parties
+   */
+  useEffect(() => {
+    if (!walletAddress || !userType) return
+
+    // Poll for updates every 30 seconds
+    const pollInterval = setInterval(() => {
+      console.log('[DATACONTEXT_POLL] Auto-refreshing data for live updates')
+      refreshData()
+    }, 30000)
+
+    // Cleanup interval on unmount
+    return () => clearInterval(pollInterval)
+  }, [walletAddress, userType])
+
   const value: DataContextType = {
     // NGO Data
     orgStats,

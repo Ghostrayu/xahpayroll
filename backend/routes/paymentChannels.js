@@ -434,6 +434,156 @@ router.post('/sync-from-ledger', async (req, res) => {
 })
 
 /**
+ * POST /api/payment-channels/:channelId/claim
+ * Claim accumulated balance WITHOUT closing channel
+ *
+ * Worker can claim their accumulated wages while keeping channel open.
+ * Uses PaymentChannelClaim with Balance field but NO tfClose flag.
+ *
+ * Security: Only worker (destination) can claim balance
+ */
+router.post('/:channelId/claim', async (req, res) => {
+  try {
+    const { channelId } = req.params
+    const { workerWalletAddress } = req.body
+
+    // ============================================
+    // STEP 1: VALIDATE INPUT
+    // ============================================
+
+    if (!workerWalletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'WORKER WALLET ADDRESS REQUIRED' }
+      })
+    }
+
+    // Validate channel ID format (64-character hex string)
+    if (!/^[A-F0-9]{64}$/i.test(channelId)) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'INVALID CHANNEL ID FORMAT' }
+      })
+    }
+
+    console.log('[CLAIM_BALANCE_INIT]', {
+      channelId,
+      workerWallet: workerWalletAddress,
+      timestamp: new Date().toISOString()
+    })
+
+    // ============================================
+    // STEP 2: VERIFY CHANNEL EXISTS AND IS ACTIVE
+    // ============================================
+
+    const channelResult = await query(
+      `SELECT
+        pc.channel_id,
+        pc.organization_wallet_address,
+        pc.employee_wallet_address,
+        pc.accumulated_balance,
+        pc.escrow_funded_amount,
+        pc.status,
+        pc.job_name,
+        o.organization_name
+       FROM payment_channels pc
+       LEFT JOIN organizations o ON pc.organization_wallet_address = o.escrow_wallet_address
+       WHERE pc.channel_id = $1`,
+      [channelId]
+    )
+
+    if (channelResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: { message: 'PAYMENT CHANNEL NOT FOUND' }
+      })
+    }
+
+    const channel = channelResult.rows[0]
+
+    // Verify channel is active
+    if (channel.status !== 'active') {
+      return res.status(400).json({
+        success: false,
+        error: { message: `CHANNEL IS ${channel.status.toUpperCase()}, CANNOT CLAIM BALANCE` }
+      })
+    }
+
+    // ============================================
+    // STEP 3: VERIFY AUTHORIZATION
+    // ============================================
+
+    // Only worker (destination) can claim balance
+    if (workerWalletAddress !== channel.employee_wallet_address) {
+      return res.status(403).json({
+        success: false,
+        error: { message: 'UNAUTHORIZED: ONLY WORKER CAN CLAIM BALANCE' }
+      })
+    }
+
+    // ============================================
+    // STEP 4: CHECK BALANCE AVAILABILITY
+    // ============================================
+
+    const accumulatedBalance = parseFloat(channel.accumulated_balance) || 0
+
+    if (accumulatedBalance <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'NO_BALANCE',
+          message: 'NO ACCUMULATED BALANCE TO CLAIM',
+          currentBalance: accumulatedBalance
+        }
+      })
+    }
+
+    // ============================================
+    // STEP 5: RETURN XRPL TRANSACTION DETAILS
+    // ============================================
+
+    // Convert XAH to drops (1 XAH = 1,000,000 drops)
+    const balanceDrops = Math.floor(accumulatedBalance * 1000000).toString()
+
+    console.log('[CLAIM_BALANCE_PREPARE]', {
+      channelId,
+      workerWallet: workerWalletAddress,
+      accumulatedBalance,
+      balanceDrops,
+      timestamp: new Date().toISOString()
+    })
+
+    // Return XRPL transaction parameters for frontend to execute
+    // Frontend will sign with worker's wallet
+    return res.status(200).json({
+      success: true,
+      data: {
+        channel: {
+          channelId: channel.channel_id,
+          accumulatedBalance: accumulatedBalance,
+          jobName: channel.job_name || 'N/A',
+          employer: channel.organization_name || 'Unknown'
+        },
+        xrplTransaction: {
+          TransactionType: 'PaymentChannelClaim',
+          Account: workerWalletAddress, // Worker wallet
+          Channel: channelId,
+          Balance: balanceDrops, // Amount worker will receive (in drops)
+          // NO tfClose flag - channel stays open
+        }
+      }
+    })
+
+  } catch (error) {
+    console.error('[CLAIM_BALANCE_ERROR]', error)
+    return res.status(500).json({
+      success: false,
+      error: { message: 'INTERNAL SERVER ERROR DURING BALANCE CLAIM PREPARATION' }
+    })
+  }
+})
+
+/**
  * POST /api/payment-channels/:channelId/close
  * Initiate payment channel closure - returns XRPL transaction details
  *
@@ -557,16 +707,22 @@ router.post('/:channelId/close', async (req, res) => {
     }
 
     // ============================================
-    // STEP 4.5: UNCLAIMED BALANCE WARNING
+    // STEP 4.5: UNCLAIMED BALANCE WARNING (NGO ONLY)
     // ============================================
 
     const unpaidBalance = parseFloat(channel.accumulated_balance) || 0
 
-    // Check if there's an unclaimed balance
-    if (unpaidBalance > 0 && !forceClose) {
-      const warningMessage = isWorker
-        ? `YOU HAVE ${unpaidBalance.toFixed(2)} XAH IN ACCUMULATED WAGES. CLOSING THE CHANNEL WILL AUTOMATICALLY TRANSFER THIS AMOUNT TO YOUR WALLET. PROCEED WITH CLOSURE?`
-        : `WARNING: WORKER HAS ${unpaidBalance.toFixed(2)} XAH IN UNCLAIMED WAGES. ENSURE PAYMENT BEFORE CLOSING.`
+    // CRITICAL: Only warn for NGO/Source closures
+    // Worker/Destination closures claim the balance IN THE SAME TRANSACTION
+    // via the Balance field in PaymentChannelClaim with tfClose flag
+    //
+    // XRPL Behavior:
+    // - Source (NGO) closure with balance > 0: Sets Expiration (delayed closure)
+    //   Worker must claim balance before channel expires or loses wages
+    // - Destination (Worker) closure: ALWAYS immediate, Balance transferred in same tx
+    //   Worker CANNOT close without receiving owed balance (enforced by XRPL)
+    if (unpaidBalance > 0 && !forceClose && !isWorker) {
+      const warningMessage = `WARNING: WORKER HAS ${unpaidBalance.toFixed(2)} XAH IN UNCLAIMED WAGES. ENSURE PAYMENT BEFORE CLOSING.`
 
       return res.status(400).json({
         success: false,
@@ -575,10 +731,13 @@ router.post('/:channelId/close', async (req, res) => {
           message: warningMessage,
           unpaidBalance: unpaidBalance,
           requiresForceClose: true,
-          callerType: isWorker ? 'worker' : 'ngo'
+          callerType: 'ngo'
         }
       })
     }
+
+    // For worker closures, proceed directly to transaction preparation
+    // The Balance field ensures worker receives accumulated wages atomically
 
     // ============================================
     // STEP 5: CALCULATE ESCROW RETURN

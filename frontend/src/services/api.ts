@@ -386,20 +386,43 @@ export const paymentChannelApi = {
       body.workerWalletAddress = walletAddress
     }
 
-    const response = await apiFetch<ApiResponse<{
-      channel: any
-      xrplTransaction: any
-    }>>(
-      `/api/payment-channels/${channelId}/close`,
-      {
-        method: 'POST',
-        body: JSON.stringify(body),
-      }
-    )
+    try {
+      const response = await apiFetch<ApiResponse<{
+        channel: any
+        xrplTransaction: any
+      }>>(
+        `/api/payment-channels/${channelId}/close`,
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+        }
+      )
 
-    // Return response as-is (including error cases for UNCLAIMED_BALANCE warning)
-    // Frontend will handle the error appropriately
-    return response
+      // Return response as-is for successful calls
+      return response
+    } catch (error) {
+      // Handle 400 Bad Request with UNCLAIMED_BALANCE gracefully
+      // This is a warning, not an error - let frontend handle it
+      if (error instanceof ApiError && error.status === 400) {
+        // Fetch the actual response body to get the UNCLAIMED_BALANCE details
+        const url = `${getBackendUrl()}/api/payment-channels/${channelId}/close`
+        const rawResponse = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        const data = await rawResponse.json()
+
+        // Return as ApiResponse format so frontend can handle the warning
+        return {
+          success: false,
+          error: data.error || { message: error.message }
+        } as ApiResponse<any>
+      }
+
+      // For other errors, re-throw
+      throw error
+    }
   },
 
   /**
