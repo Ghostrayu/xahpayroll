@@ -156,12 +156,12 @@ router.get('/list/:ngoWalletAddress', async (req, res) => {
   try {
     const { ngoWalletAddress } = req.params
 
-    // Get organization
+    // Get organization by escrow wallet address (matches /api/organizations/workers strategy)
+    // CRITICAL: organizations.escrow_wallet_address = user's wallet_address (1:1 mapping)
     const orgResult = await query(
-      `SELECT o.id
-       FROM organizations o
-       JOIN users u ON o.user_id = u.id
-       WHERE u.wallet_address = $1`,
+      `SELECT id
+       FROM organizations
+       WHERE escrow_wallet_address = $1`,
       [ngoWalletAddress]
     )
 
@@ -803,6 +803,7 @@ router.get('/:walletAddress/payment-channels', async (req, res) => {
         pc.hours_accumulated,
         pc.escrow_funded_amount,
         pc.max_daily_hours,
+        pc.last_ledger_sync,
         o.organization_name as employer,
         o.escrow_wallet_address as ngo_wallet
        FROM payment_channels pc
@@ -844,7 +845,8 @@ router.get('/:walletAddress/payment-channels', async (req, res) => {
         maxDailyHours: parseFloat(c.max_daily_hours || 8.00),
         status: c.status,
         lastUpdate,
-        balanceUpdateFrequency: c.balance_update_frequency || 'Hourly'
+        balanceUpdateFrequency: c.balance_update_frequency || 'Hourly',
+        lastLedgerSync: c.last_ledger_sync
       }
     })
 

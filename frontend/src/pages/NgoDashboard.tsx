@@ -26,6 +26,8 @@ const NgoDashboard: React.FC = () => {
   const [unclaimedBalanceData, setUnclaimedBalanceData] = useState<any>(null)
   const [selectedChannel, setSelectedChannel] = useState<any>(null)
   const [cancelingChannel, setCancelingChannel] = useState<string | null>(null)
+  const [syncingChannels, setSyncingChannels] = useState<Set<string>>(new Set())
+  const [syncingAllChannels, setSyncingAllChannels] = useState(false)
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview')
   const [organizationId, setOrganizationId] = useState<number | null>(null)
   const [unreadCount, setUnreadCount] = useState<number>(0)
@@ -263,6 +265,147 @@ const NgoDashboard: React.FC = () => {
     }
   }
 
+  /**
+   * Helper: Check if channel was recently synced (within last 60 seconds)
+   */
+  const wasRecentlySynced = (lastLedgerSync: string | null): boolean => {
+    if (!lastLedgerSync) return false
+
+    const lastSync = new Date(lastLedgerSync).getTime()
+    const now = Date.now()
+    const secondsSinceSync = (now - lastSync) / 1000
+
+    return secondsSinceSync < 60
+  }
+
+  /**
+   * Handle sync channel balance with ledger
+   * Calls backend endpoint to query Xahau ledger and update database
+   */
+  const handleSyncChannel = async (channel: any) => {
+    if (!channel.channelId) {
+      alert('CANNOT SYNC: INVALID CHANNEL ID')
+      return
+    }
+
+    // Check if already recently synced (rate limiting)
+    if (wasRecentlySynced(channel.lastLedgerSync)) {
+      const lastSync = new Date(channel.lastLedgerSync).toLocaleString()
+      alert(`CHANNEL WAS RECENTLY SYNCED\n\nLAST SYNC: ${lastSync}\n\nPLEASE WAIT AT LEAST 1 MINUTE BETWEEN SYNCS.`)
+      return
+    }
+
+    // Add to syncing set
+    setSyncingChannels(prev => new Set(prev).add(channel.channelId))
+
+    try {
+      console.log('[LEDGER_SYNC] Syncing channel:', channel.channelId)
+
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
+      const response = await fetch(`${backendUrl}/api/payment-channels/${channel.channelId}/sync-balance`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error?.message || 'FAILED TO SYNC CHANNEL BALANCE')
+      }
+
+      console.log('[LEDGER_SYNC] Success:', data)
+
+      if (data.synced) {
+        alert(
+          `✅ CHANNEL SYNCED WITH LEDGER!\n\n` +
+          `ESCROW BALANCE: ${data.channel.escrowBalance.toLocaleString()} XAH\n` +
+          `ACCUMULATED BALANCE: ${data.channel.accumulatedBalance.toLocaleString()} XAH\n` +
+          `LAST SYNC: ${new Date(data.channel.lastLedgerSync).toLocaleString()}`
+        )
+
+        // Refresh dashboard data
+        await refreshData()
+      } else if (data.recentlySynced) {
+        alert(
+          `ℹ️ CHANNEL WAS RECENTLY SYNCED\n\n` +
+          `SYNCED ${data.secondsSinceSync} SECONDS AGO\n\n` +
+          `PLEASE WAIT BEFORE SYNCING AGAIN.`
+        )
+      }
+    } catch (error: any) {
+      console.error('[LEDGER_SYNC_ERROR]', error)
+      alert(`❌ FAILED TO SYNC CHANNEL:\n\n${error.message}`)
+    } finally {
+      // Remove from syncing set
+      setSyncingChannels(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(channel.channelId)
+        return newSet
+      })
+    }
+  }
+
+  const handleSyncAllChannels = async () => {
+    if (!walletAddress) {
+      alert('WALLET ADDRESS NOT AVAILABLE')
+      return
+    }
+
+    setSyncingAllChannels(true)
+
+    try {
+      console.log('[SYNC_ALL_CHANNELS] Starting full ledger sync for wallet:', walletAddress)
+
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
+      const response = await fetch(`${backendUrl}/api/organizations/${walletAddress}/sync-all-channels`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error?.message || 'FAILED TO SYNC CHANNELS FROM LEDGER')
+      }
+
+      console.log('[SYNC_ALL_CHANNELS] Success:', data)
+
+      // Show results to user
+      const { results } = data
+      const message =
+        `✅ LEDGER SYNC COMPLETE!\n\n` +
+        `TOTAL CHANNELS ON LEDGER: ${results.total}\n` +
+        `NEW CHANNELS IMPORTED: ${results.imported}\n` +
+        `EXISTING CHANNELS UPDATED: ${results.updated}\n` +
+        `CHANNELS SKIPPED: ${results.skipped}\n\n` +
+        (results.imported > 0
+          ? `ℹ️ IMPORTANT: IMPORTED CHANNELS HAVE PLACEHOLDER DATA\n` +
+            `- Job names show "[IMPORTED - EDIT JOB NAME]"\n` +
+            `- Hourly rates set to 0 (must be edited)\n` +
+            `- Please update these fields manually\n\n`
+          : '') +
+        (results.errors.length > 0
+          ? `⚠️ SOME CHANNELS COULD NOT BE SYNCED:\n${results.errors.map((e: any) => `- ${e.reason}: ${e.destinationAddress || e.channelId}`).join('\n')}\n\n`
+          : '') +
+        `DASHBOARD WILL NOW REFRESH...`
+
+      alert(message)
+
+      // Refresh dashboard data to show newly imported channels
+      await refreshData()
+
+    } catch (error: any) {
+      console.error('[SYNC_ALL_CHANNELS_ERROR]', error)
+      alert(`❌ FAILED TO SYNC CHANNELS FROM LEDGER:\n\n${error.message}`)
+    } finally {
+      setSyncingAllChannels(false)
+    }
+  }
+
   return (
     <div className="min-h-screen x-pattern-bg-light">
       <Navbar />
@@ -430,14 +573,23 @@ const NgoDashboard: React.FC = () => {
                   <div className="text-6xl mb-4">⚡</div>
                   <h4 className="text-lg font-bold text-gray-900 uppercase mb-2">No Active Payment Channels</h4>
                   <p className="text-sm text-gray-600 uppercase tracking-wide mb-6">
-                    Create a payment channel to start paying workers
+                    Create a payment channel to start paying workers OR sync from ledger if channels already exist
                   </p>
-                  <button 
-                    onClick={() => setShowEscrowModal(true)}
-                    className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg text-sm uppercase tracking-wide transition-colors"
-                  >
-                    ⚡ Open Payment Channel
-                  </button>
+                  <div className="flex gap-4 justify-center">
+                    <button
+                      onClick={() => setShowEscrowModal(true)}
+                      className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg text-sm uppercase tracking-wide transition-colors"
+                    >
+                      ⚡ Open Payment Channel
+                    </button>
+                    <button
+                      onClick={handleSyncAllChannels}
+                      disabled={syncingAllChannels}
+                      className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 px-6 rounded-lg text-sm uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {syncingAllChannels ? '🔄 SYNCING...' : '🔄 SYNC WITH LEDGER'}
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -522,6 +674,23 @@ const NgoDashboard: React.FC = () => {
                         <div className="flex gap-2">
                           <button className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded text-[10px] uppercase tracking-wide transition-colors">
                             View Details
+                          </button>
+                          <button
+                            onClick={() => handleSyncChannel(channel)}
+                            disabled={syncingChannels.has(channel.channelId) || wasRecentlySynced(channel.lastLedgerSync) || !channel.channelId}
+                            className={`px-3 py-1 text-white font-bold rounded text-[10px] uppercase tracking-wide transition-colors disabled:cursor-not-allowed ${
+                              wasRecentlySynced(channel.lastLedgerSync)
+                                ? 'bg-green-600'
+                                : 'bg-purple-500 hover:bg-purple-600 disabled:opacity-50'
+                            }`}
+                          >
+                            {syncingChannels.has(channel.channelId) ? (
+                              'SYNCING...'
+                            ) : wasRecentlySynced(channel.lastLedgerSync) ? (
+                              'SYNCED ✓'
+                            ) : (
+                              'SYNC WITH LEDGER'
+                            )}
                           </button>
                           {channel.status === 'active' && (
                             <button

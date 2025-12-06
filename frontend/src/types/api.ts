@@ -77,6 +77,7 @@ export interface PaymentChannel {
   status: string                   // Channel status: 'active' | 'closing' | 'closed'
   lastUpdate: string               // Human-readable time since last update
   balanceUpdateFrequency: string   // How often claims are generated: 'Hourly' | 'Every 30 Minutes' | etc.
+  lastLedgerSync?: string | null   // Timestamp when channel was last synced from XAH Ledger (ISO format) or null if never synced
   hasInvalidChannelId?: boolean    // Flag indicating channel_id is missing or invalid format
   expirationTime?: string          // Scheduled expiration time (ISO format) for channels in 'closing' status
 }

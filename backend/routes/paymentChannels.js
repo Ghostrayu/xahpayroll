@@ -1442,4 +1442,205 @@ router.post('/:channelId/request-worker-closure', async (req, res) => {
   }
 })
 
+/**
+ * POST /api/payment-channels/:channelId/sync-balance
+ * Sync payment channel balance from XAH Ledger
+ *
+ * Rate Limited: Only allows sync if last_ledger_sync is NULL or >1 minute ago
+ *
+ * Process:
+ * 1. Query ledger via account_channels command
+ * 2. Find channel by channelId
+ * 3. Update database with live balance/amount
+ * 4. Update last_ledger_sync timestamp
+ *
+ * Returns:
+ * - synced: true if sync executed
+ * - recentlysynced: true if rate limited (synced <1 min ago)
+ * - channel: updated channel data
+ */
+router.post('/:channelId/sync-balance', async (req, res) => {
+  try {
+    const { channelId } = req.params
+
+    console.log('[LEDGER_SYNC] Sync request for channel:', channelId)
+
+    // Validate channelId format (64-char hex)
+    if (!channelId || channelId.length !== 64 || !/^[0-9A-F]+$/i.test(channelId)) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'INVALID CHANNEL ID FORMAT. MUST BE 64-CHARACTER HEXADECIMAL STRING.' }
+      })
+    }
+
+    // Get channel from database
+    const channelResult = await query(
+      `SELECT
+        pc.id,
+        pc.channel_id,
+        pc.organization_id,
+        pc.employee_id,
+        pc.status,
+        pc.last_ledger_sync,
+        o.escrow_wallet_address as org_wallet,
+        e.employee_wallet_address as worker_wallet
+       FROM payment_channels pc
+       JOIN organizations o ON pc.organization_id = o.id
+       JOIN employees e ON pc.employee_id = e.id
+       WHERE pc.channel_id = $1`,
+      [channelId]
+    )
+
+    if (channelResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: { message: 'PAYMENT CHANNEL NOT FOUND IN DATABASE' }
+      })
+    }
+
+    const channel = channelResult.rows[0]
+
+    // Rate limiting: Check if synced within last 60 seconds
+    if (channel.last_ledger_sync) {
+      const lastSyncTime = new Date(channel.last_ledger_sync).getTime()
+      const now = Date.now()
+      const timeSinceSync = now - lastSyncTime
+
+      if (timeSinceSync < 60000) { // 60 seconds = 60,000 milliseconds
+        console.log('[LEDGER_SYNC] Rate limited - synced', Math.floor(timeSinceSync / 1000), 'seconds ago')
+
+        return res.json({
+          success: true,
+          synced: false,
+          recentlySynced: true,
+          secondsSinceSync: Math.floor(timeSinceSync / 1000),
+          message: 'CHANNEL WAS SYNCED RECENTLY. PLEASE WAIT BEFORE SYNCING AGAIN.',
+          channel: {
+            id: channel.id,
+            channelId: channel.channel_id,
+            lastLedgerSync: channel.last_ledger_sync
+          }
+        })
+      }
+    }
+
+    // Connect to Xahau and query channel data
+    const client = new Client(getNetworkUrl())
+
+    try {
+      await client.connect()
+      console.log('[LEDGER_SYNC] Connected to Xahau network:', getNetworkUrl())
+
+      // Query account_channels for the organization wallet
+      const channelsResponse = await client.request({
+        command: 'account_channels',
+        account: channel.org_wallet,
+        ledger_index: 'validated'
+      })
+
+      console.log('[LEDGER_SYNC] account_channels response:', {
+        account: channel.org_wallet,
+        channelCount: channelsResponse.result?.channels?.length || 0
+      })
+
+      // Find the specific channel by channel_id
+      const ledgerChannels = channelsResponse.result?.channels || []
+      const ledgerChannel = ledgerChannels.find(ch => ch.channel_id === channelId)
+
+      if (!ledgerChannel) {
+        await client.disconnect()
+
+        // Channel not found on ledger - might be closed or expired
+        console.warn('[LEDGER_SYNC] Channel not found on ledger:', channelId)
+
+        return res.status(404).json({
+          success: false,
+          error: {
+            message: 'CHANNEL NOT FOUND ON LEDGER. IT MAY HAVE BEEN CLOSED OR EXPIRED.',
+            channelId: channelId
+          }
+        })
+      }
+
+      console.log('[LEDGER_SYNC] Found channel on ledger:', {
+        channelId: ledgerChannel.channel_id,
+        amount: ledgerChannel.amount,
+        balance: ledgerChannel.balance,
+        destination: ledgerChannel.destination_account
+      })
+
+      // Convert drops to XAH (1 XAH = 1,000,000 drops)
+      const escrowAmountXah = parseFloat(ledgerChannel.amount || '0') / 1_000_000
+      const balanceXah = parseFloat(ledgerChannel.balance || '0') / 1_000_000
+
+      // Update database with live ledger data
+      const updateResult = await query(
+        `UPDATE payment_channels
+         SET
+           escrow_funded_amount = $1,
+           accumulated_balance = $2,
+           last_ledger_sync = NOW(),
+           updated_at = NOW()
+         WHERE channel_id = $3
+         RETURNING
+           id,
+           channel_id,
+           escrow_funded_amount,
+           accumulated_balance,
+           last_ledger_sync,
+           status`,
+        [escrowAmountXah, balanceXah, channelId]
+      )
+
+      await client.disconnect()
+
+      const updatedChannel = updateResult.rows[0]
+
+      console.log('[LEDGER_SYNC] ✅ Database updated successfully:', {
+        channelId: updatedChannel.channel_id,
+        escrowFundedAmount: updatedChannel.escrow_funded_amount,
+        accumulatedBalance: updatedChannel.accumulated_balance,
+        lastLedgerSync: updatedChannel.last_ledger_sync
+      })
+
+      res.json({
+        success: true,
+        synced: true,
+        recentlySynced: false,
+        message: 'CHANNEL BALANCE SYNCED FROM LEDGER',
+        channel: {
+          id: updatedChannel.id,
+          channelId: updatedChannel.channel_id,
+          escrowFundedAmount: parseFloat(updatedChannel.escrow_funded_amount),
+          accumulatedBalance: parseFloat(updatedChannel.accumulated_balance),
+          escrowBalance: parseFloat(updatedChannel.escrow_funded_amount) - parseFloat(updatedChannel.accumulated_balance),
+          lastLedgerSync: updatedChannel.last_ledger_sync,
+          status: updatedChannel.status
+        }
+      })
+
+    } catch (ledgerError) {
+      console.error('[LEDGER_SYNC] Ledger query failed:', ledgerError)
+
+      // Disconnect client on error
+      await client.disconnect().catch(() => {})
+
+      return res.status(500).json({
+        success: false,
+        error: {
+          message: 'FAILED TO QUERY XAHAU LEDGER',
+          details: ledgerError.message
+        }
+      })
+    }
+
+  } catch (error) {
+    console.error('[LEDGER_SYNC] Error syncing channel balance:', error)
+    res.status(500).json({
+      success: false,
+      error: { message: 'FAILED TO SYNC CHANNEL BALANCE', details: error.message }
+    })
+  }
+})
+
 module.exports = router

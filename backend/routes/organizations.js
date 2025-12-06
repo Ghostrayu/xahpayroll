@@ -1,6 +1,15 @@
 const express = require('express')
 const router = express.Router()
 const { query } = require('../database/db')
+const { Client } = require('xrpl')
+
+/**
+ * Helper function to get Xahau network URL based on environment
+ */
+function getNetworkUrl() {
+  const network = process.env.XRPL_NETWORK || 'testnet'
+  return network === 'mainnet' ? 'wss://xahau.network' : 'wss://xahau-test.net'
+}
 
 /**
  * POST /api/organizations
@@ -67,16 +76,33 @@ router.post('/', async (req, res) => {
       })
     }
 
-    // Create organization with simplified schema
+    // CRITICAL: Validate that user exists for this wallet address
+    // This ensures organizations are always linked to valid users
+    const userResult = await query(
+      'SELECT id FROM users WHERE wallet_address = $1',
+      [escrowWalletAddress]
+    )
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: { message: 'USER NOT FOUND FOR THIS WALLET ADDRESS. PLEASE SIGN IN FIRST.' }
+      })
+    }
+
+    const userId = userResult.rows[0].id
+
+    // Create organization with user_id populated
     const result = await query(
       `INSERT INTO organizations (
         organization_name, escrow_wallet_address,
-        website, description, created_at
-      ) VALUES ($1, $2, $3, $4, NOW())
+        user_id, website, description, created_at
+      ) VALUES ($1, $2, $3, $4, $5, NOW())
       RETURNING *`,
       [
         organizationName,
         escrowWalletAddress,
+        userId,
         website || null,
         description || null
       ]
@@ -85,6 +111,7 @@ router.post('/', async (req, res) => {
     console.log('[ORG_CREATE_SUCCESS]', {
       organizationId: result.rows[0].id,
       walletAddress: escrowWalletAddress,
+      userId: userId,
       // Log for payment channel mapping verification
       mapping: 'escrow_wallet_address matches user wallet_address'
     })
@@ -255,8 +282,7 @@ router.get('/workers/:walletAddress', async (req, res) => {
        LEFT JOIN work_sessions ws ON e.id = ws.employee_id AND ws.clock_out IS NULL AND ws.session_status = 'active'
        WHERE e.organization_id = $1
        AND e.employment_status = 'active'
-       ORDER BY ws.clock_in DESC NULLS LAST
-       LIMIT 10`,
+       ORDER BY ws.clock_in DESC NULLS LAST`,
       [organization.id]
     )
 
@@ -416,7 +442,7 @@ router.get('/payment-channels/:walletAddress', async (req, res) => {
 
     // Get payment channels
     const channelsResult = await query(
-      `SELECT 
+      `SELECT
         pc.id,
         e.full_name as worker,
         pc.channel_id,
@@ -427,7 +453,8 @@ router.get('/payment-channels/:walletAddress', async (req, res) => {
         pc.updated_at,
         pc.accumulated_balance,
         pc.hours_accumulated,
-        pc.escrow_funded_amount
+        pc.escrow_funded_amount,
+        pc.last_ledger_sync
        FROM payment_channels pc
        JOIN employees e ON pc.employee_id = e.id
        WHERE pc.organization_id = $1 AND pc.status = 'active'
@@ -469,6 +496,7 @@ router.get('/payment-channels/:walletAddress', async (req, res) => {
         status: c.status,
         lastUpdate,
         balanceUpdateFrequency: c.balance_update_frequency || 'Hourly',
+        lastLedgerSync: c.last_ledger_sync,
         hasInvalidChannelId: !channelId || (channelId.length !== 64 || !/^[0-9A-F]+$/i.test(channelId)) // Flag for frontend to display warning
       }
     })
@@ -718,6 +746,209 @@ router.get('/:walletAddress', async (req, res) => {
       success: false,
       error: {
         message: 'FAILED TO FETCH ORGANIZATION'
+      }
+    })
+  }
+})
+
+/**
+ * POST /api/organizations/:walletAddress/sync-all-channels
+ * Sync all active payment channels from Xahau ledger into database
+ * This is used when dashboard shows 0 channels but ledger has active channels
+ */
+router.post('/:walletAddress/sync-all-channels', async (req, res) => {
+  try {
+    const { walletAddress } = req.params
+
+    console.log('[SYNC_ALL_CHANNELS] Starting full ledger sync for wallet:', walletAddress)
+
+    // Validate XRPL address format
+    const xrplAddressPattern = /^r[1-9A-HJ-NP-Za-km-z]{25,34}$/
+    if (!xrplAddressPattern.test(walletAddress)) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'INVALID XRPL WALLET ADDRESS FORMAT' }
+      })
+    }
+
+    // Get organization from database
+    const orgResult = await query(
+      'SELECT id, organization_name, escrow_wallet_address FROM organizations WHERE escrow_wallet_address = $1',
+      [walletAddress]
+    )
+
+    if (orgResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: { message: 'ORGANIZATION NOT FOUND FOR WALLET ADDRESS' }
+      })
+    }
+
+    const organization = orgResult.rows[0]
+    console.log('[SYNC_ALL_CHANNELS] Found organization:', organization.organization_name)
+
+    // Get all employees for this organization
+    const employeesResult = await query(
+      'SELECT id, employee_wallet_address, full_name FROM employees WHERE organization_id = $1 AND employment_status = $2',
+      [organization.id, 'active']
+    )
+
+    console.log('[SYNC_ALL_CHANNELS] Found', employeesResult.rows.length, 'active employees')
+
+    // Create employee wallet address map for quick lookup
+    const employeeMap = {}
+    employeesResult.rows.forEach(emp => {
+      employeeMap[emp.employee_wallet_address] = emp
+    })
+
+    // Connect to Xahau and query all payment channels
+    const client = new Client(getNetworkUrl())
+    let ledgerChannels = []
+
+    try {
+      await client.connect()
+      console.log('[SYNC_ALL_CHANNELS] Connected to Xahau network:', getNetworkUrl())
+
+      const channelsResponse = await client.request({
+        command: 'account_channels',
+        account: walletAddress,
+        ledger_index: 'validated'
+      })
+
+      ledgerChannels = channelsResponse.result?.channels || []
+      console.log('[SYNC_ALL_CHANNELS] Found', ledgerChannels.length, 'channels on ledger')
+
+      await client.disconnect()
+    } catch (ledgerError) {
+      await client.disconnect().catch(() => {})
+      console.error('[SYNC_ALL_CHANNELS_LEDGER_ERROR]', ledgerError)
+      return res.status(500).json({
+        success: false,
+        error: {
+          message: 'FAILED TO QUERY XAHAU LEDGER',
+          details: ledgerError.message
+        }
+      })
+    }
+
+    // Process each ledger channel
+    const syncResults = {
+      total: ledgerChannels.length,
+      imported: 0,
+      updated: 0,
+      skipped: 0,
+      errors: []
+    }
+
+    for (const ledgerChannel of ledgerChannels) {
+      try {
+        const channelId = ledgerChannel.channel_id
+        const destinationAddress = ledgerChannel.destination_account
+        const escrowAmountXah = parseFloat(ledgerChannel.amount || '0') / 1_000_000
+        const balanceXah = parseFloat(ledgerChannel.balance || '0') / 1_000_000
+
+        console.log('[SYNC_ALL_CHANNELS] Processing channel:', channelId, 'to', destinationAddress)
+
+        // Check if employee exists for this destination address
+        const employee = employeeMap[destinationAddress]
+        if (!employee) {
+          console.log('[SYNC_ALL_CHANNELS] Skipping channel - worker not in organization:', destinationAddress)
+          syncResults.skipped++
+          syncResults.errors.push({
+            channelId,
+            reason: 'WORKER_NOT_FOUND',
+            destinationAddress
+          })
+          continue
+        }
+
+        // Check if channel already exists in database
+        const existingChannelResult = await query(
+          'SELECT id, status FROM payment_channels WHERE channel_id = $1',
+          [channelId]
+        )
+
+        if (existingChannelResult.rows.length > 0) {
+          const existingChannel = existingChannelResult.rows[0]
+
+          // Update existing channel if it's still active
+          if (existingChannel.status === 'active') {
+            await query(
+              `UPDATE payment_channels
+               SET
+                 escrow_funded_amount = $1,
+                 accumulated_balance = $2,
+                 last_ledger_sync = NOW(),
+                 updated_at = NOW()
+               WHERE channel_id = $3`,
+              [escrowAmountXah, balanceXah, channelId]
+            )
+            console.log('[SYNC_ALL_CHANNELS] Updated existing channel:', channelId)
+            syncResults.updated++
+          } else {
+            console.log('[SYNC_ALL_CHANNELS] Skipping closed/closing channel:', channelId)
+            syncResults.skipped++
+          }
+        } else {
+          // Import new channel from ledger
+          // NOTE: Xahau ledger does not store job names, hourly rates, or other metadata.
+          // These must be set manually after import or during normal channel creation via UI.
+          await query(
+            `INSERT INTO payment_channels (
+              channel_id,
+              organization_id,
+              employee_id,
+              job_name,
+              hourly_rate,
+              max_daily_hours,
+              escrow_funded_amount,
+              accumulated_balance,
+              balance_update_frequency,
+              status,
+              last_ledger_sync,
+              created_at,
+              updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW(), NOW())`,
+            [
+              channelId,
+              organization.id,
+              employee.id,
+              `[IMPORTED - EDIT JOB NAME]`, // Placeholder - NGO must edit
+              0, // Default hourly rate - NGO must edit
+              8, // Default max daily hours
+              escrowAmountXah,
+              balanceXah,
+              'Hourly', // Default frequency
+              'active'
+            ]
+          )
+          console.log('[SYNC_ALL_CHANNELS] Imported new channel:', channelId)
+          syncResults.imported++
+        }
+      } catch (channelError) {
+        console.error('[SYNC_ALL_CHANNELS_CHANNEL_ERROR]', channelError)
+        syncResults.errors.push({
+          channelId: ledgerChannel.channel_id,
+          reason: 'PROCESSING_ERROR',
+          error: channelError.message
+        })
+      }
+    }
+
+    console.log('[SYNC_ALL_CHANNELS] Sync complete:', syncResults)
+
+    res.json({
+      success: true,
+      message: 'LEDGER SYNC COMPLETE',
+      results: syncResults
+    })
+  } catch (error) {
+    console.error('[SYNC_ALL_CHANNELS_ERROR]', error)
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'FAILED TO SYNC CHANNELS FROM LEDGER',
+        details: error.message
       }
     })
   }

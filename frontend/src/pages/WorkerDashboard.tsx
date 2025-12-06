@@ -22,6 +22,7 @@ const WorkerDashboard: React.FC = () => {
   const [unclaimedBalanceData, setUnclaimedBalanceData] = useState<any>(null)
   const [selectedChannel, setSelectedChannel] = useState<any>(null)
   const [cancelingChannel, setCancelingChannel] = useState<string | null>(null)
+  const [syncingChannels, setSyncingChannels] = useState<Set<string>>(new Set())
 
   // Notification state
   const [notifications, setNotifications] = useState<any[]>([])
@@ -242,6 +243,89 @@ const WorkerDashboard: React.FC = () => {
     await handleCloseConfirm(true)
   }
 
+  /**
+   * Helper: Check if channel was recently synced (within last 60 seconds)
+   */
+  const wasRecentlySynced = (lastLedgerSync: string | null): boolean => {
+    if (!lastLedgerSync) return false
+
+    const lastSync = new Date(lastLedgerSync).getTime()
+    const now = Date.now()
+    const secondsSinceSync = (now - lastSync) / 1000
+
+    return secondsSinceSync < 60
+  }
+
+  /**
+   * Handle sync channel balance with ledger
+   * Calls backend endpoint to query Xahau ledger and update database
+   */
+  const handleSyncChannel = async (channel: any) => {
+    if (!channel.channelId) {
+      alert('CANNOT SYNC: INVALID CHANNEL ID')
+      return
+    }
+
+    // Check if already recently synced (rate limiting)
+    if (wasRecentlySynced(channel.lastLedgerSync)) {
+      const lastSync = new Date(channel.lastLedgerSync).toLocaleString()
+      alert(`CHANNEL WAS RECENTLY SYNCED\n\nLAST SYNC: ${lastSync}\n\nPLEASE WAIT AT LEAST 1 MINUTE BETWEEN SYNCS.`)
+      return
+    }
+
+    // Add to syncing set
+    setSyncingChannels(prev => new Set(prev).add(channel.channelId))
+
+    try {
+      console.log('[LEDGER_SYNC] Syncing channel:', channel.channelId)
+
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
+      const response = await fetch(`${backendUrl}/api/payment-channels/${channel.channelId}/sync-balance`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error?.message || 'FAILED TO SYNC CHANNEL BALANCE')
+      }
+
+      console.log('[LEDGER_SYNC] Success:', data)
+
+      if (data.synced) {
+        alert(
+          `✅ CHANNEL SYNCED WITH LEDGER!\n\n` +
+          `ESCROW BALANCE: ${data.channel.escrowBalance.toLocaleString()} XAH\n` +
+          `ACCUMULATED BALANCE: ${data.channel.accumulatedBalance.toLocaleString()} XAH\n` +
+          `LAST SYNC: ${new Date(data.channel.lastLedgerSync).toLocaleString()}`
+        )
+
+        // Refresh payment channels
+        const updatedChannels = await workerApi.getPaymentChannels(walletAddress!)
+        setPaymentChannels(updatedChannels)
+      } else if (data.recentlySynced) {
+        alert(
+          `ℹ️ CHANNEL WAS RECENTLY SYNCED\n\n` +
+          `SYNCED ${data.secondsSinceSync} SECONDS AGO\n\n` +
+          `PLEASE WAIT BEFORE SYNCING AGAIN.`
+        )
+      }
+    } catch (error: any) {
+      console.error('[LEDGER_SYNC_ERROR]', error)
+      alert(`❌ FAILED TO SYNC CHANNEL:\n\n${error.message}`)
+    } finally {
+      // Remove from syncing set
+      setSyncingChannels(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(channel.channelId)
+        return newSet
+      })
+    }
+  }
+
   return (
     <div className="min-h-screen x-pattern-bg-light">
       <Navbar />
@@ -424,7 +508,25 @@ const WorkerDashboard: React.FC = () => {
                       channelStatus={channel.status}
                     />
 
-                    <div className="flex justify-end mt-4">
+                    <div className="flex justify-end gap-2 mt-4">
+                      <button
+                        onClick={() => handleSyncChannel(channel)}
+                        disabled={syncingChannels.has(channel.channelId) || wasRecentlySynced(channel.lastLedgerSync) || !channel.channelId}
+                        className={`px-3 py-1 text-white font-bold rounded text-[10px] uppercase tracking-wide transition-colors disabled:cursor-not-allowed ${
+                          wasRecentlySynced(channel.lastLedgerSync)
+                            ? 'bg-green-600'
+                            : 'bg-purple-500 hover:bg-purple-600 disabled:opacity-50'
+                        }`}
+                      >
+                        {syncingChannels.has(channel.channelId) ? (
+                          'SYNCING...'
+                        ) : wasRecentlySynced(channel.lastLedgerSync) ? (
+                          'SYNCED ✓'
+                        ) : (
+                          'SYNC WITH LEDGER'
+                        )}
+                      </button>
+
                       <button
                         onClick={() => handleCloseClick(channel)}
                         disabled={cancelingChannel === channel.channelId || channel.status === 'closing'}

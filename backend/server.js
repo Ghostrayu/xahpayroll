@@ -33,7 +33,19 @@ app.use(cors({
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  max: 100, // limit each IP to 100 requests per windowMs
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  // Return JSON error response instead of plain text
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: {
+        message: 'TOO MANY REQUESTS. PLEASE TRY AGAIN LATER.',
+        retryAfter: Math.ceil((req.rateLimit.resetTime - Date.now()) / 1000)
+      }
+    })
+  }
 })
 app.use(limiter)
 
