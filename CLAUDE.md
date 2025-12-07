@@ -333,6 +333,59 @@ Payment channels use native XRPL `PaymentChannelCreate` transactions.
 - **Prevention**: Eliminates scenarios where database shows 'closed' but ledger still has active channel
 - **User Experience**: "Closing..." state provides visibility during validation period
 
+**Critical Fix #5 (2025-12-06)** - Auto-Clear Stale Balance on Closure:
+- **Problem**: Payment channel closure confirmation did NOT clear `accumulated_balance` in database, even though worker received payment via XRPL transaction
+  - Channel closed successfully on ledger → Worker paid via PaymentChannelClaim
+  - Database still showed old `accumulated_balance` (e.g., 0.29 XAH)
+  - `last_ledger_sync = NULL` indicated database was never synced after closure
+  - Stale balance blocked worker profile deletion (deletion eligibility checks for `accumulated_balance > 0`)
+- **XRPL Transaction Flow**:
+  - PaymentChannelClaim with Balance field → Worker receives accumulated balance
+  - Channel removed from ledger upon closure
+  - Frontend calls `/close/confirm` with transaction hash
+  - Backend updates status='closed' but never cleared accumulated_balance ❌
+- **Investigation**:
+  - Created verification script to query Xahau ledger for Channel 4
+  - Transaction `ABA67907...` confirmed: Worker received 0.294444 XAH ✅
+  - Channel query: Channel removed from ledger ✅
+  - Database query: `accumulated_balance = 0.29444444` (stale!) ❌
+- **Root Cause**: Missing auto-clear logic in `/close/confirm` endpoint
+- **Fix Implementation**:
+  - **Immediate Closure Path** (`backend/routes/paymentChannels.js:1120-1132`):
+    ```javascript
+    UPDATE payment_channels
+    SET
+      status = 'closed',
+      closure_tx_hash = $1,
+      closed_at = NOW(),
+      accumulated_balance = 0,      ← AUTO-CLEAR
+      last_ledger_sync = NOW(),      ← RECORD SYNC
+      updated_at = NOW()
+    WHERE channel_id = $2
+    ```
+  - **Scheduled Closure Path** (`backend/routes/paymentChannels.js:1087-1100`):
+    ```javascript
+    UPDATE payment_channels
+    SET
+      status = 'closing',
+      closure_tx_hash = $1,
+      expiration_time = to_timestamp($2),
+      accumulated_balance = 0,       ← AUTO-CLEAR
+      last_ledger_sync = NOW(),       ← RECORD SYNC
+      last_validation_at = NOW(),
+      updated_at = NOW()
+    WHERE channel_id = $3
+    ```
+- **Benefits**:
+  - Prevents stale balance data in database
+  - Worker profile deletion no longer blocked by closed channels with cleared balances
+  - Database state accurately reflects ledger state after channel closure
+  - `last_ledger_sync` provides audit trail of synchronization
+- **Documentation**: See `backend/claudedocs/STALE_BALANCE_FIX_2025_12_06.md` for complete analysis and verification commands
+- **Verification Tools**:
+  - `backend/scripts/verify-channel-balance.js` - Query Xahau ledger to verify channel state
+  - `backend/scripts/clear-stale-channel-balances.sql` - Manually fix stale balances for old channels (pre-fix)
+
 See `PAYMENT_CHANNEL_TESTING.md` for detailed testing guide.
 
 ## Important Files

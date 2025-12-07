@@ -210,9 +210,9 @@ const DeleteProfileModal: React.FC<DeleteProfileModalProps> = ({ isOpen, onClose
                         {reason.organization}
                       </h5>
                       <div className="space-y-1 text-xs text-gray-700">
-                        <p>• Channel: {reason.channelId}</p>
-                        <p>• Status: {reason.status.toUpperCase()}</p>
-                        <p>• Unpaid Balance: {reason.unpaidBalance.toFixed(2)} XAH</p>
+                        <p>• CHANNEL: {reason.channelId}</p>
+                        <p>• STATUS: {reason.status.toUpperCase()}</p>
+                        <p>• UNPAID BALANCE: {reason.unpaidBalance.toFixed(2)} XAH</p>
                       </div>
                     </div>
                   </div>

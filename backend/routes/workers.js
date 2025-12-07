@@ -230,6 +230,9 @@ router.get('/deletion-eligibility', async (req, res) => {
     }
 
     // Check for active channels
+    // FIXED (2025-12-06): Only block deletion for truly active/timeout channels
+    // Channels with status='closed' should NOT block deletion, even if closure_tx_hash IS NULL
+    // (e.g., channels auto-closed via ledger_not_found have no tx hash but are legitimately closed)
     const activeChannels = await query(`
       SELECT
         pc.*,
@@ -238,11 +241,7 @@ router.get('/deletion-eligibility', async (req, res) => {
       JOIN organizations o ON pc.organization_id = o.id
       JOIN employees e ON pc.employee_id = e.id
       WHERE e.employee_wallet_address = $1
-      AND (
-        pc.status = 'active'
-        OR pc.status = 'timeout'
-        OR pc.closure_tx_hash IS NULL
-      )
+      AND pc.status IN ('active', 'timeout', 'closing')
     `, [walletAddress])
 
     // Check for unpaid balances
@@ -331,6 +330,8 @@ router.post('/delete-profile', async (req, res) => {
     }
 
     // Check deletion eligibility
+    // FIXED (2025-12-06): Only block deletion for truly active channels with unpaid balances
+    // Closed channels should NOT block deletion, even if closure_tx_hash IS NULL
     const eligibility = await query(`
       SELECT
         COUNT(*) as blocking_count
@@ -338,9 +339,8 @@ router.post('/delete-profile', async (req, res) => {
       JOIN employees e ON pc.employee_id = e.id
       WHERE e.employee_wallet_address = $1
       AND (
-        pc.status = 'active'
+        pc.status IN ('active', 'timeout', 'closing')
         OR pc.accumulated_balance > 0
-        OR pc.closure_tx_hash IS NULL
       )
     `, [walletAddress])
 
@@ -810,7 +810,7 @@ router.get('/:walletAddress/payment-channels', async (req, res) => {
        JOIN organizations o ON pc.organization_id = o.id
        JOIN employees e ON pc.employee_id = e.id
        WHERE e.employee_wallet_address = $1
-       AND pc.status = 'active'
+       AND pc.status NOT IN ('closed', 'closing')
        ORDER BY pc.created_at DESC`,
       [walletAddress]
     )

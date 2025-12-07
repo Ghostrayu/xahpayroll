@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
 import { useAuth } from './AuthContext'
 import { useWallet } from './WalletContext'
 import { organizationApi, workerApi, ApiError } from '../services/api'
@@ -74,7 +74,7 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
   /**
    * Fetch NGO/Organization data
    */
-  const fetchNgoData = async () => {
+  const fetchNgoData = useCallback(async () => {
     if (!walletAddress) {
       console.log('No wallet address available for fetching NGO data')
       return
@@ -133,12 +133,12 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [walletAddress])
 
   /**
    * Fetch Worker data
    */
-  const fetchWorkerData = async () => {
+  const fetchWorkerData = useCallback(async () => {
     if (!walletAddress) {
       console.log('No wallet address available for fetching worker data')
       return
@@ -179,12 +179,13 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [walletAddress])
 
   /**
    * Refresh data based on user type
+   * Wrapped in useCallback to stabilize reference for useEffect dependencies
    */
-  const refreshData = async () => {
+  const refreshData = useCallback(async () => {
     if (!walletAddress) return
 
     if (userType === 'ngo' || userType === 'employer') {
@@ -192,7 +193,7 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
     } else if (userType === 'employee') {
       await fetchWorkerData()
     }
-  }
+  }, [walletAddress, userType, fetchNgoData, fetchWorkerData])
 
   /**
    * Clear all data (used on logout)
@@ -271,21 +272,24 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
   }, [walletAddress, userType])
 
   /**
-   * Auto-refresh data every 30 seconds for live UI updates
-   * Catches channel closures initiated by other parties
+   * POLLING REMOVED (2025-12-06)
+   *
+   * Background polling eliminated to reduce API load (was 240-480 calls/hour).
+   * Users now have explicit control via:
+   * 1. Manual dashboard refresh button
+   * 2. Individual "Sync with Ledger" buttons per channel
+   * 3. Global "Sync All Channels" button
+   *
+   * Rationale:
+   * - Payment channels are long-running (hours/days)
+   * - External changes (closures) are rare events
+   * - Manual refresh provides better UX and control
+   * - Eliminates unnecessary background load
+   *
+   * Performance Impact:
+   * - Idle users: 480 → 0 API calls/hour (100% reduction)
+   * - Active users: 240 → 0 API calls/hour (100% reduction)
    */
-  useEffect(() => {
-    if (!walletAddress || !userType) return
-
-    // Poll for updates every 30 seconds
-    const pollInterval = setInterval(() => {
-      console.log('[DATACONTEXT_POLL] Auto-refreshing data for live updates')
-      refreshData()
-    }, 30000)
-
-    // Cleanup interval on unmount
-    return () => clearInterval(pollInterval)
-  }, [walletAddress, userType])
 
   const value: DataContextType = {
     // NGO Data

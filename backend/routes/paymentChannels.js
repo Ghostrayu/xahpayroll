@@ -1090,6 +1090,8 @@ router.post('/:channelId/close/confirm', async (req, res) => {
             status = 'closing',
             closure_tx_hash = $1,
             expiration_time = to_timestamp($2),
+            accumulated_balance = 0,
+            last_ledger_sync = NOW(),
             last_validation_at = NOW(),
             updated_at = NOW()
           WHERE channel_id = $3
@@ -1113,12 +1115,16 @@ router.post('/:channelId/close/confirm', async (req, res) => {
         })
       } else {
         // IMMEDIATE CLOSURE: Update to 'closed' state
+        // AUTO-CLEAR BALANCE: Worker received payment via XRPL transaction
+        // Clear accumulated_balance to prevent stale data (Fix 2025-12-06)
         const updateResult = await query(
           `UPDATE payment_channels
           SET
             status = 'closed',
             closure_tx_hash = $1,
             closed_at = NOW(),
+            accumulated_balance = 0,
+            last_ledger_sync = NOW(),
             updated_at = NOW()
           WHERE channel_id = $2
           RETURNING *`,
@@ -1550,13 +1556,30 @@ router.post('/:channelId/sync-balance', async (req, res) => {
       if (!ledgerChannel) {
         await client.disconnect()
 
-        // Channel not found on ledger - might be closed or expired
-        console.warn('[LEDGER_SYNC] Channel not found on ledger:', channelId)
+        // Channel not found on ledger - automatically mark as closed in database
+        console.warn('[LEDGER_SYNC] Channel not found on ledger - marking as closed:', channelId)
+
+        // Update channel status to 'closed' with closure reason
+        await query(
+          `UPDATE payment_channels
+           SET
+             status = 'closed',
+             closed_at = NOW(),
+             closure_reason = 'ledger_not_found',
+             last_ledger_sync = NOW(),
+             updated_at = NOW()
+           WHERE channel_id = $1
+           AND status NOT IN ('closed', 'closing')`,
+          [channelId]
+        )
+
+        console.log('[LEDGER_SYNC] Channel marked as closed in database')
 
         return res.status(404).json({
           success: false,
+          channelClosed: true,
           error: {
-            message: 'CHANNEL NOT FOUND ON LEDGER. IT MAY HAVE BEEN CLOSED OR EXPIRED.',
+            message: 'CHANNEL NOT FOUND ON LEDGER. IT HAS BEEN CLOSED OR EXPIRED. DATABASE STATUS UPDATED TO CLOSED.',
             channelId: channelId
           }
         })

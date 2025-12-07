@@ -23,13 +23,34 @@ const WorkerDashboard: React.FC = () => {
   const [selectedChannel, setSelectedChannel] = useState<any>(null)
   const [cancelingChannel, setCancelingChannel] = useState<string | null>(null)
   const [syncingChannels, setSyncingChannels] = useState<Set<string>>(new Set())
+  const [syncingAllChannels, setSyncingAllChannels] = useState(false)
 
   // Notification state
   const [notifications, setNotifications] = useState<any[]>([])
   const [unreadCount, setUnreadCount] = useState<number>(0)
   const [showNotifications, setShowNotifications] = useState(false)
 
-  // Fetch worker payment channels with auto-refresh polling
+  /**
+   * Fetch worker payment channels
+   *
+   * POLLING REMOVED (2025-12-06)
+   *
+   * Background polling eliminated to reduce API load (was 240 calls/hour).
+   * Workers now have explicit control via:
+   * 1. Manual browser refresh for full dashboard update
+   * 2. Individual "Sync with Ledger" buttons per channel
+   * 3. Global "Sync All Channels" button for batch updates
+   *
+   * Rationale:
+   * - Payment channels are long-running (hours/days)
+   * - External NGO-initiated changes (closures) are rare events
+   * - Manual refresh provides better UX and control
+   * - Eliminates unnecessary background load
+   *
+   * Performance Impact:
+   * - Idle workers: 240 → 0 API calls/hour (100% reduction)
+   * - Active workers: 120 → 0 API calls/hour (100% reduction)
+   */
   useEffect(() => {
     const fetchWorkerChannels = async () => {
       if (!walletAddress) return
@@ -49,14 +70,8 @@ const WorkerDashboard: React.FC = () => {
       }
     }
 
-    // Initial fetch
+    // Initial fetch only (no polling)
     fetchWorkerChannels()
-
-    // Poll for updates every 30 seconds to catch NGO-initiated closures
-    const pollInterval = setInterval(fetchWorkerChannels, 30000)
-
-    // Cleanup interval on unmount
-    return () => clearInterval(pollInterval)
   }, [walletAddress])
 
   // Fetch worker notifications
@@ -290,28 +305,43 @@ const WorkerDashboard: React.FC = () => {
       const data = await response.json()
 
       if (!response.ok || !data.success) {
-        throw new Error(data.error?.message || 'FAILED TO SYNC CHANNEL BALANCE')
-      }
+        // Check if channel was automatically closed
+        if (data.channelClosed) {
+          console.log('[LEDGER_SYNC] Channel was closed - refreshing channel list')
 
-      console.log('[LEDGER_SYNC] Success:', data)
+          alert(
+            `⚠️ CHANNEL NO LONGER EXISTS ON LEDGER\n\n` +
+            `THIS CHANNEL HAS BEEN AUTOMATICALLY MARKED AS CLOSED.\n\n` +
+            `REASON: ${data.error?.message || 'CHANNEL NOT FOUND ON LEDGER'}`
+          )
 
-      if (data.synced) {
-        alert(
-          `✅ CHANNEL SYNCED WITH LEDGER!\n\n` +
-          `ESCROW BALANCE: ${data.channel.escrowBalance.toLocaleString()} XAH\n` +
-          `ACCUMULATED BALANCE: ${data.channel.accumulatedBalance.toLocaleString()} XAH\n` +
-          `LAST SYNC: ${new Date(data.channel.lastLedgerSync).toLocaleString()}`
-        )
+          // Refresh payment channels to remove closed channel from UI
+          const updatedChannels = await workerApi.getPaymentChannels(walletAddress!)
+          setPaymentChannels(updatedChannels)
+        } else {
+          throw new Error(data.error?.message || 'FAILED TO SYNC CHANNEL BALANCE')
+        }
+      } else {
+        console.log('[LEDGER_SYNC] Success:', data)
 
-        // Refresh payment channels
-        const updatedChannels = await workerApi.getPaymentChannels(walletAddress!)
-        setPaymentChannels(updatedChannels)
-      } else if (data.recentlySynced) {
-        alert(
-          `ℹ️ CHANNEL WAS RECENTLY SYNCED\n\n` +
-          `SYNCED ${data.secondsSinceSync} SECONDS AGO\n\n` +
-          `PLEASE WAIT BEFORE SYNCING AGAIN.`
-        )
+        if (data.synced) {
+          alert(
+            `✅ CHANNEL SYNCED WITH LEDGER!\n\n` +
+            `ESCROW BALANCE: ${data.channel.escrowBalance.toLocaleString()} XAH\n` +
+            `ACCUMULATED BALANCE: ${data.channel.accumulatedBalance.toLocaleString()} XAH\n` +
+            `LAST SYNC: ${new Date(data.channel.lastLedgerSync).toLocaleString()}`
+          )
+
+          // Refresh payment channels
+          const updatedChannels = await workerApi.getPaymentChannels(walletAddress!)
+          setPaymentChannels(updatedChannels)
+        } else if (data.recentlySynced) {
+          alert(
+            `ℹ️ CHANNEL WAS RECENTLY SYNCED\n\n` +
+            `SYNCED ${data.secondsSinceSync} SECONDS AGO\n\n` +
+            `PLEASE WAIT BEFORE SYNCING AGAIN.`
+          )
+        }
       }
     } catch (error: any) {
       console.error('[LEDGER_SYNC_ERROR]', error)
@@ -323,6 +353,79 @@ const WorkerDashboard: React.FC = () => {
         newSet.delete(channel.channelId)
         return newSet
       })
+    }
+  }
+
+  /**
+   * Handle sync all channels with ledger
+   * Batch syncs all payment channels to reduce API calls
+   */
+  const handleSyncAllChannels = async () => {
+    if (paymentChannels.length === 0) {
+      alert('NO PAYMENT CHANNELS TO SYNC')
+      return
+    }
+
+    setSyncingAllChannels(true)
+
+    try {
+      console.log('[SYNC_ALL] Syncing all channels:', paymentChannels.length)
+
+      // Sync all channels in parallel
+      const syncPromises = paymentChannels.map(async (channel) => {
+        try {
+          const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
+          const response = await fetch(`${backendUrl}/api/payment-channels/${channel.channelId}/sync-balance`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          })
+
+          const data = await response.json()
+
+          if (!response.ok || !data.success) {
+            console.error(`[SYNC_ALL] Failed to sync ${channel.channelId}:`, data.error?.message)
+            return { channelId: channel.channelId, success: false, error: data.error?.message }
+          }
+
+          console.log(`[SYNC_ALL] Synced ${channel.channelId}`)
+          return { channelId: channel.channelId, success: true }
+        } catch (error: any) {
+          console.error(`[SYNC_ALL] Error syncing ${channel.channelId}:`, error)
+          return { channelId: channel.channelId, success: false, error: error.message }
+        }
+      })
+
+      const results = await Promise.all(syncPromises)
+
+      const successCount = results.filter(r => r.success).length
+      const failureCount = results.filter(r => !r.success).length
+
+      console.log('[SYNC_ALL] Complete:', { successCount, failureCount })
+
+      if (failureCount > 0) {
+        alert(
+          `⚠️ SYNC PARTIALLY COMPLETE\n\n` +
+          `SYNCED: ${successCount} CHANNELS\n` +
+          `FAILED: ${failureCount} CHANNELS\n\n` +
+          `SOME CHANNELS MAY HAVE BEEN CLOSED OR EXPIRED.`
+        )
+      } else {
+        alert(
+          `✅ ALL CHANNELS SYNCED!\n\n` +
+          `SYNCED ${successCount} CHANNEL${successCount !== 1 ? 'S' : ''} SUCCESSFULLY`
+        )
+      }
+
+      // Refresh payment channels to show updated balances
+      const updatedChannels = await workerApi.getPaymentChannels(walletAddress!)
+      setPaymentChannels(updatedChannels)
+    } catch (error: any) {
+      console.error('[SYNC_ALL_ERROR]', error)
+      alert(`❌ FAILED TO SYNC CHANNELS:\n\n${error.message}`)
+    } finally {
+      setSyncingAllChannels(false)
     }
   }
 
@@ -448,9 +551,53 @@ const WorkerDashboard: React.FC = () => {
           {/* Payment Channels Section - Positioned first for primary visibility */}
           {paymentChannels.length > 0 && (
             <div className="mb-12 bg-white rounded-2xl shadow-xl p-6 border-2 border-xah-blue/30">
+              {/* Manual Refresh Reminder */}
+              <div className="mb-4 bg-blue-50 border-l-4 border-blue-500 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-blue-900 uppercase tracking-wide mb-1">
+                      ℹ️ MANUAL REFRESH REQUIRED
+                    </p>
+                    <p className="text-xs text-blue-800 mb-2">
+                      AUTOMATIC BACKGROUND POLLING HAS BEEN DISABLED TO REDUCE SERVER LOAD. PLEASE USE THE REFRESH CONTROLS BELOW TO UPDATE YOUR DATA.
+                    </p>
+                    <div className="flex flex-wrap gap-2 text-xs text-blue-700">
+                      <span className="font-semibold">• BROWSER REFRESH → FULL DASHBOARD UPDATE</span>
+                      <span className="font-semibold">• SYNC WITH LEDGER → REAL-TIME BALANCE FROM XAHAU</span>
+                      <span className="font-semibold">• SYNC ALL CHANNELS → BATCH UPDATE ALL BALANCES</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-6">
                 MY PAYMENT CHANNELS
               </h3>
+
+              {/* Sync All Channels Button */}
+              <div className="mb-4 flex justify-end">
+                <button
+                  onClick={handleSyncAllChannels}
+                  disabled={syncingAllChannels}
+                  className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg text-xs uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {syncingAllChannels ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      SYNCING ALL CHANNELS...
+                    </>
+                  ) : (
+                    <>🔄 SYNC ALL CHANNELS WITH LEDGER</>
+                  )}
+                </button>
+              </div>
+
               <div className="space-y-3">
                 {paymentChannels.map((channel) => (
                   <div
