@@ -52,11 +52,13 @@ async function processHardDeletes() {
                 OR
                 -- Criterion 2: No active channels or unpaid balances (instant deletion)
                 NOT EXISTS (
-                    SELECT 1 FROM payment_channels pc
-                    WHERE pc.employee_wallet_address = u.wallet_address
+                    SELECT 1
+                    FROM payment_channels pc
+                    JOIN employees e ON pc.employee_id = e.id
+                    WHERE e.employee_wallet_address = u.wallet_address
                     AND (
                         pc.status = 'active'
-                        OR pc.unpaid_balance > 0
+                        OR pc.accumulated_balance > 0
                         OR pc.closure_tx_hash IS NULL
                     )
                 )

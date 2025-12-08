@@ -14,9 +14,8 @@ const workersRoutes = require('./routes/workers')
 const workerNotificationsRoutes = require('./routes/workerNotifications')
 const workSessionsRoutes = require('./routes/workSessions')
 
-// Import scheduled jobs
-const { startHardDeleteJob } = require('./jobs/hardDelete')
-const { startInactivityDeletionJob } = require('./jobs/inactivityDeletion')
+// NOTE: Scheduled jobs now run via system cron (see backend/jobs/runHardDelete.js)
+// This ensures jobs run independently of server uptime for production reliability
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -94,12 +93,8 @@ const startServer = async () => {
     // Initialize database
     await initializeDatabase()
 
-    // Start scheduled jobs
-    const hardDeleteJobId = startHardDeleteJob()
-    const inactivityDeleteJobId = startInactivityDeletionJob()
-    console.log('⏰ Scheduled jobs initialized:')
-    console.log('   - Hard delete job (runs every hour)')
-    console.log('   - Inactivity deletion job (runs daily at 2:00 AM)')
+    // NOTE: Scheduled jobs run via system cron (independent of server)
+    // See: backend/jobs/runHardDelete.js and backend/CRON_SETUP.md for configuration
 
     // Start Express server
     app.listen(PORT, () => {

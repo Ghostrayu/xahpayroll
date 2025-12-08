@@ -263,4 +263,50 @@ router.get('/unread-count/:walletAddress', async (req, res) => {
   }
 })
 
+/**
+ * DELETE /api/worker-notifications/clear-read/:walletAddress
+ * Delete all READ notifications for a worker
+ * Only deletes notifications where is_read = TRUE
+ * Unread notifications are preserved
+ */
+router.delete('/clear-read/:walletAddress', async (req, res) => {
+  try {
+    const { walletAddress } = req.params
+
+    console.log('[WORKER_NOTIFICATIONS_CLEAR_READ]', { walletAddress })
+
+    // Delete only read notifications
+    const result = await query(
+      `DELETE FROM worker_notifications
+       WHERE worker_wallet_address = $1
+       AND is_read = TRUE
+       RETURNING id`,
+      [walletAddress]
+    )
+
+    const deletedCount = result.rows.length
+
+    console.log('[WORKER_NOTIFICATIONS_CLEAR_READ_SUCCESS]', {
+      walletAddress,
+      deletedCount
+    })
+
+    res.json({
+      success: true,
+      data: {
+        deletedCount,
+        message: deletedCount === 0
+          ? 'NO READ NOTIFICATIONS TO DELETE'
+          : `${deletedCount} READ NOTIFICATION${deletedCount > 1 ? 'S' : ''} DELETED PERMANENTLY`
+      }
+    })
+  } catch (error) {
+    console.error('[WORKER_NOTIFICATIONS_CLEAR_READ_ERROR]', error)
+    res.status(500).json({
+      success: false,
+      error: { message: 'FAILED TO CLEAR READ NOTIFICATIONS' }
+    })
+  }
+})
+
 module.exports = router

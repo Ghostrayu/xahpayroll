@@ -267,6 +267,7 @@ router.get('/workers/:walletAddress', async (req, res) => {
     const organization = orgResult.rows[0]
 
     // Get active workers with their current work session info
+    // Filter out workers whose user accounts have been soft-deleted
     const workersResult = await query(
       `SELECT
         e.id,
@@ -279,9 +280,11 @@ router.get('/workers/:walletAddress', async (req, res) => {
           0
         ) as hours_today
        FROM employees e
+       JOIN users u ON e.employee_wallet_address = u.wallet_address
        LEFT JOIN work_sessions ws ON e.id = ws.employee_id AND ws.clock_out IS NULL AND ws.session_status = 'active'
        WHERE e.organization_id = $1
        AND e.employment_status = 'active'
+       AND u.deleted_at IS NULL
        ORDER BY ws.clock_in DESC NULLS LAST`,
       [organization.id]
     )
@@ -693,6 +696,53 @@ router.post('/:organizationId/notifications/mark-all-read', async (req, res) => 
     res.status(500).json({
       success: false,
       error: 'FAILED TO MARK NOTIFICATIONS AS READ',
+      details: error.message
+    })
+  }
+})
+
+/**
+ * DELETE /api/organizations/:organizationId/notifications/clear-read
+ * Delete all READ notifications for an organization
+ * Only deletes notifications where is_read = TRUE
+ * Unread notifications are preserved
+ */
+router.delete('/:organizationId/notifications/clear-read', async (req, res) => {
+  try {
+    const { organizationId } = req.params
+
+    console.log('[NGO_NOTIFICATIONS_CLEAR_READ]', { organizationId })
+
+    // Delete only read notifications
+    const result = await query(
+      `DELETE FROM ngo_notifications
+       WHERE organization_id = $1
+       AND is_read = TRUE
+       RETURNING id`,
+      [organizationId]
+    )
+
+    const deletedCount = result.rows.length
+
+    console.log('[NGO_NOTIFICATIONS_CLEAR_READ_SUCCESS]', {
+      organizationId,
+      deletedCount
+    })
+
+    res.json({
+      success: true,
+      data: {
+        deletedCount,
+        message: deletedCount === 0
+          ? 'NO READ NOTIFICATIONS TO DELETE'
+          : `${deletedCount} READ NOTIFICATION${deletedCount > 1 ? 'S' : ''} DELETED PERMANENTLY`
+      }
+    })
+  } catch (error) {
+    console.error('[NGO_NOTIFICATIONS_CLEAR_READ_ERROR]', error)
+    res.status(500).json({
+      success: false,
+      error: 'FAILED TO CLEAR READ NOTIFICATIONS',
       details: error.message
     })
   }
