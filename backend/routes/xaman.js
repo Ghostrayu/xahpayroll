@@ -154,12 +154,13 @@ router.post('/create-payload', async (req, res) => {
     console.log(`Enforcing Xahau network: ${forceNetwork} (based on XRPL_NETWORK=${network})`)
 
     // Merge user-provided options with network enforcement
+    // IMPORTANT: Only include return_url if explicitly provided in options
+    // For transaction payloads (PaymentChannelClaim, etc.), frontend OMITS return_url
+    // to prevent page refresh during polling loop. Only sign-in needs return_url.
     const defaultOptions = {
       submit: true,
-      force_network: forceNetwork, // Force Xaman to switch to Xahau network
-      return_url: {
-        web: process.env.FRONTEND_URL || 'http://localhost:3000'
-      }
+      force_network: forceNetwork // Force Xaman to switch to Xahau network
+      // NO default return_url - only add if frontend explicitly provides it
     }
 
     // Use custom_meta from request if provided, otherwise use default instruction

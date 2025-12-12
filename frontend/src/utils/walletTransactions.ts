@@ -105,13 +105,15 @@ async function submitWithXaman(transaction: any, _network: string, customDescrip
     const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
 
     // Build request body with optional custom description
+    // IMPORTANT: Do NOT set return_url for transaction payloads
+    // Setting return_url causes Xaman to redirect back to the page after signing,
+    // which triggers a page refresh and interrupts the polling loop (Steps 2-3).
+    // The frontend polling loop will wait for transaction completion without redirect.
     const requestBody: any = {
       txjson: transaction,
       options: {
-        submit: true,
-        return_url: {
-          web: window.location.href
-        }
+        submit: true
+        // NO return_url - prevents page refresh during transaction flow
       }
     }
 

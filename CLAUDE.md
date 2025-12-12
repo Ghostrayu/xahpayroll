@@ -170,6 +170,39 @@ npm run test:db
 openssl rand -base64 32
 ```
 
+### Database Diagnostic Commands
+
+**Standard database connection pattern for diagnostics**:
+
+```bash
+# Verify database existence and connectivity
+PGPASSWORD='xahpayroll_secure_2024' psql -U xahpayroll_user -d xahpayroll_dev -h localhost -p 5432 -c "SELECT version();"
+
+# List all tables
+PGPASSWORD='xahpayroll_secure_2024' psql -U xahpayroll_user -d xahpayroll_dev -h localhost -p 5432 -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;"
+
+# Count tables
+PGPASSWORD='xahpayroll_secure_2024' psql -U xahpayroll_user -d xahpayroll_dev -h localhost -p 5432 -c "SELECT COUNT(*) as table_count FROM information_schema.tables WHERE table_schema = 'public';"
+
+# Check specific table row counts
+PGPASSWORD='xahpayroll_secure_2024' psql -U xahpayroll_user -d xahpayroll_dev -h localhost -p 5432 -c "SELECT 'users' as table_name, COUNT(*) FROM users UNION ALL SELECT 'organizations', COUNT(*) FROM organizations UNION ALL SELECT 'payment_channels', COUNT(*) FROM payment_channels;"
+```
+
+**Database Configuration**:
+- **Database Name**: `xahpayroll_dev` (development environment)
+- **User**: `xahpayroll_user`
+- **Password**: `xahpayroll_secure_2024` (change in production!)
+- **Host**: `localhost`
+- **Port**: `5432`
+
+**Environment Variable**: `DB_NAME=xahpayroll_dev` (set in `backend/.env`)
+
+**Important**: The codebase uses a 3-tier fallback in `backend/database/db.js`:
+```javascript
+database: process.env.DB_NAME || 'xahpayroll'
+```
+Always ensure `DB_NAME` is set in `.env` to use the correct database.
+
 ## Worker Management API
 
 **POST /api/workers/add**

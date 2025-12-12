@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react'
 import { useAuth } from './AuthContext'
 import { useWallet } from './WalletContext'
 import { organizationApi, workerApi, ApiError } from '../services/api'
@@ -70,6 +70,9 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
   // Loading and Error State
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Track if data has been fetched to prevent duplicate calls (React Strict Mode double-mounting)
+  const hasFetchedRef = useRef(false)
 
   /**
    * Fetch NGO/Organization data
@@ -262,14 +265,26 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
 
   /**
    * Auto-fetch data when wallet connects or user type changes
+   *
+   * FIX (2025-12-11): Added hasFetchedRef to prevent duplicate API calls
+   * during React Strict Mode double-mounting in development.
+   *
+   * Without this fix, useEffect runs twice → 8 parallel API calls → instant
+   * HTTP 429 rate limit breach (limit: 100 req/15min).
    */
   useEffect(() => {
     if (walletAddress && userType) {
-      refreshData()
+      // Prevent duplicate fetch during React Strict Mode double-mounting
+      if (!hasFetchedRef.current) {
+        hasFetchedRef.current = true
+        refreshData()
+      }
     } else {
+      // Reset ref when wallet disconnects
+      hasFetchedRef.current = false
       clearData()
     }
-  }, [walletAddress, userType])
+  }, [walletAddress, userType, refreshData])
 
   /**
    * POLLING REMOVED (2025-12-06)
