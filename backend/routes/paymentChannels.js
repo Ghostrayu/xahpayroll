@@ -822,7 +822,7 @@ router.post('/:channelId/close', async (req, res) => {
           TransactionType: 'PaymentChannelClaim',
           Channel: channel.channel_id,
           Balance: balanceDrops, // Amount to pay worker (in drops)
-          Flags: 0x00010000 // tfClose flag (closes channel)
+          Flags: 0x00020000 // tfClose flag (131072 decimal) - closes channel
         }
       }
     })
