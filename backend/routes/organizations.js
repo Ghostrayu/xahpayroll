@@ -443,7 +443,7 @@ router.get('/payment-channels/:walletAddress', async (req, res) => {
 
     const organization = orgResult.rows[0]
 
-    // Get payment channels
+    // Get payment channels (active and closing - exclude only fully closed)
     const channelsResult = await query(
       `SELECT
         pc.id,
@@ -457,10 +457,12 @@ router.get('/payment-channels/:walletAddress', async (req, res) => {
         pc.accumulated_balance,
         pc.hours_accumulated,
         pc.escrow_funded_amount,
-        pc.last_ledger_sync
+        pc.last_ledger_sync,
+        pc.expiration_time,
+        pc.closure_tx_hash
        FROM payment_channels pc
        JOIN employees e ON pc.employee_id = e.id
-       WHERE pc.organization_id = $1 AND pc.status = 'active'
+       WHERE pc.organization_id = $1 AND pc.status IN ('active', 'closing')
        ORDER BY pc.created_at DESC`,
       [organization.id]
     )
@@ -500,6 +502,8 @@ router.get('/payment-channels/:walletAddress', async (req, res) => {
         lastUpdate,
         balanceUpdateFrequency: c.balance_update_frequency || 'Hourly',
         lastLedgerSync: c.last_ledger_sync,
+        expirationTime: c.expiration_time,
+        closureTxHash: c.closure_tx_hash,
         hasInvalidChannelId: !channelId || (channelId.length !== 64 || !/^[0-9A-F]+$/i.test(channelId)) // Flag for frontend to display warning
       }
     })
@@ -921,58 +925,122 @@ router.post('/:walletAddress/sync-all-channels', async (req, res) => {
         if (existingChannelResult.rows.length > 0) {
           const existingChannel = existingChannelResult.rows[0]
 
-          // Update existing channel if it's still active
-          if (existingChannel.status === 'active') {
-            await query(
-              `UPDATE payment_channels
-               SET
-                 escrow_funded_amount = $1,
-                 accumulated_balance = $2,
-                 last_ledger_sync = NOW(),
-                 updated_at = NOW()
-               WHERE channel_id = $3`,
-              [escrowAmountXah, balanceXah, channelId]
-            )
-            console.log('[SYNC_ALL_CHANNELS] Updated existing channel:', channelId)
+          // Update existing channel if it's active OR closing (channel still exists on ledger)
+          // Only skip if status is 'closed' (channel already removed from ledger)
+          if (existingChannel.status !== 'closed') {
+            // Check if channel has expiration (closing state)
+            if (ledgerChannel.expiration) {
+              const expirationTimestamp = ledgerChannel.expiration + 946684800 // XRPL Ripple time to Unix
+              await query(
+                `UPDATE payment_channels
+                 SET
+                   status = 'closing',
+                   expiration_time = to_timestamp($1),
+                   escrow_funded_amount = $2,
+                   accumulated_balance = $3,
+                   settle_delay = $4,
+                   last_ledger_sync = NOW(),
+                   updated_at = NOW()
+                 WHERE channel_id = $5`,
+                [expirationTimestamp, escrowAmountXah, balanceXah, ledgerChannel.settle_delay || 0, channelId]
+              )
+              console.log('[SYNC_ALL_CHANNELS] Updated existing channel to CLOSING:', channelId, 'expires:', new Date(expirationTimestamp * 1000).toISOString())
+            } else {
+              await query(
+                `UPDATE payment_channels
+                 SET
+                   status = 'active',
+                   escrow_funded_amount = $1,
+                   accumulated_balance = $2,
+                   settle_delay = $3,
+                   last_ledger_sync = NOW(),
+                   updated_at = NOW()
+                 WHERE channel_id = $4`,
+                [escrowAmountXah, balanceXah, ledgerChannel.settle_delay || 0, channelId]
+              )
+              console.log('[SYNC_ALL_CHANNELS] Updated existing channel to ACTIVE:', channelId)
+            }
             syncResults.updated++
           } else {
-            console.log('[SYNC_ALL_CHANNELS] Skipping closed/closing channel:', channelId)
+            console.log('[SYNC_ALL_CHANNELS] Skipping fully closed channel:', channelId)
             syncResults.skipped++
           }
         } else {
           // Import new channel from ledger
           // NOTE: Xahau ledger does not store job names, hourly rates, or other metadata.
           // These must be set manually after import or during normal channel creation via UI.
-          await query(
-            `INSERT INTO payment_channels (
-              channel_id,
-              organization_id,
-              employee_id,
-              job_name,
-              hourly_rate,
-              max_daily_hours,
-              escrow_funded_amount,
-              accumulated_balance,
-              balance_update_frequency,
-              status,
-              last_ledger_sync,
-              created_at,
-              updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW(), NOW())`,
-            [
-              channelId,
-              organization.id,
-              employee.id,
-              `[IMPORTED - EDIT JOB NAME]`, // Placeholder - NGO must edit
-              0, // Default hourly rate - NGO must edit
-              8, // Default max daily hours
-              escrowAmountXah,
-              balanceXah,
-              'Hourly', // Default frequency
-              'active'
-            ]
-          )
-          console.log('[SYNC_ALL_CHANNELS] Imported new channel:', channelId)
+
+          // Check if channel has expiration (scheduled for closure)
+          if (ledgerChannel.expiration) {
+            const expirationTimestamp = ledgerChannel.expiration + 946684800 // XRPL Ripple time to Unix
+            await query(
+              `INSERT INTO payment_channels (
+                channel_id,
+                organization_id,
+                employee_id,
+                job_name,
+                hourly_rate,
+                max_daily_hours,
+                escrow_funded_amount,
+                accumulated_balance,
+                balance_update_frequency,
+                status,
+                expiration_time,
+                settle_delay,
+                last_ledger_sync,
+                created_at,
+                updated_at
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, to_timestamp($11), $12, NOW(), NOW(), NOW())`,
+              [
+                channelId,
+                organization.id,
+                employee.id,
+                `[IMPORTED - EDIT JOB NAME]`, // Placeholder - NGO must edit
+                0, // Default hourly rate - NGO must edit
+                8, // Default max daily hours
+                escrowAmountXah,
+                balanceXah,
+                'Hourly', // Default frequency
+                'closing', // Status is closing because expiration exists
+                expirationTimestamp,
+                ledgerChannel.settle_delay || 0
+              ]
+            )
+            console.log('[SYNC_ALL_CHANNELS] Imported new CLOSING channel:', channelId, 'expires:', new Date(expirationTimestamp * 1000).toISOString())
+          } else {
+            await query(
+              `INSERT INTO payment_channels (
+                channel_id,
+                organization_id,
+                employee_id,
+                job_name,
+                hourly_rate,
+                max_daily_hours,
+                escrow_funded_amount,
+                accumulated_balance,
+                balance_update_frequency,
+                status,
+                settle_delay,
+                last_ledger_sync,
+                created_at,
+                updated_at
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW(), NOW())`,
+              [
+                channelId,
+                organization.id,
+                employee.id,
+                `[IMPORTED - EDIT JOB NAME]`, // Placeholder - NGO must edit
+                0, // Default hourly rate - NGO must edit
+                8, // Default max daily hours
+                escrowAmountXah,
+                balanceXah,
+                'Hourly', // Default frequency
+                'active', // Status is active (no expiration)
+                ledgerChannel.settle_delay || 0
+              ]
+            )
+            console.log('[SYNC_ALL_CHANNELS] Imported new ACTIVE channel:', channelId)
+          }
           syncResults.imported++
         }
       } catch (channelError) {

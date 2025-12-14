@@ -292,59 +292,48 @@ const WorkerDashboard: React.FC = () => {
     setSyncingChannels(prev => new Set(prev).add(channel.channelId))
 
     try {
-      console.log('[LEDGER_SYNC] Syncing channel:', channel.channelId)
+      console.log('[SYNC_CHANNEL] Syncing channel status from ledger:', channel.channelId)
 
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
-      const response = await fetch(`${backendUrl}/api/payment-channels/${channel.channelId}/sync-balance`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+      const response = await fetch(`${backendUrl}/api/payment-channels/${channel.channelId}/sync`, {
+        method: 'GET'
       })
 
       const data = await response.json()
 
       if (!response.ok || !data.success) {
-        // Check if channel was automatically closed
-        if (data.channelClosed) {
-          console.log('[LEDGER_SYNC] Channel was closed - refreshing channel list')
-
-          alert(
-            `⚠️ CHANNEL NO LONGER EXISTS ON LEDGER\n\n` +
-            `THIS CHANNEL HAS BEEN AUTOMATICALLY MARKED AS CLOSED.\n\n` +
-            `REASON: ${data.error?.message || 'CHANNEL NOT FOUND ON LEDGER'}`
-          )
-
-          // Refresh payment channels to remove closed channel from UI
-          const updatedChannels = await workerApi.getPaymentChannels(walletAddress!)
-          setPaymentChannels(updatedChannels)
-        } else {
-          throw new Error(data.error?.message || 'FAILED TO SYNC CHANNEL BALANCE')
-        }
-      } else {
-        console.log('[LEDGER_SYNC] Success:', data)
-
-        if (data.synced) {
-          alert(
-            `✅ CHANNEL SYNCED WITH LEDGER!\n\n` +
-            `ESCROW BALANCE: ${data.channel.escrowBalance.toLocaleString()} XAH\n` +
-            `ACCUMULATED BALANCE: ${data.channel.accumulatedBalance.toLocaleString()} XAH\n` +
-            `LAST SYNC: ${new Date(data.channel.lastLedgerSync).toLocaleString()}`
-          )
-
-          // Refresh payment channels
-          const updatedChannels = await workerApi.getPaymentChannels(walletAddress!)
-          setPaymentChannels(updatedChannels)
-        } else if (data.recentlySynced) {
-          alert(
-            `ℹ️ CHANNEL WAS RECENTLY SYNCED\n\n` +
-            `SYNCED ${data.secondsSinceSync} SECONDS AGO\n\n` +
-            `PLEASE WAIT BEFORE SYNCING AGAIN.`
-          )
-        }
+        throw new Error(data.error?.message || 'FAILED TO SYNC CHANNEL')
       }
+
+      console.log('[SYNC_CHANNEL] Success:', data)
+
+      // Show appropriate message based on channel status
+      let alertMessage = `✅ CHANNEL SYNCED WITH LEDGER!\n\n`
+
+      if (data.status === 'closed') {
+        alertMessage += `STATUS: CLOSED\n`
+        alertMessage += `CLOSED AT: ${new Date(data.data.closedAt).toLocaleString()}\n\n`
+        alertMessage += `THE CHANNEL HAS BEEN SUCCESSFULLY CLOSED ON THE LEDGER.`
+      } else if (data.status === 'closing') {
+        alertMessage += `STATUS: SCHEDULED FOR CLOSURE\n`
+        alertMessage += `EXPIRATION: ${new Date(data.data.expirationTime).toLocaleString()}\n`
+        alertMessage += `ESCROW: ${data.data.escrowAmount.toLocaleString()} XAH\n`
+        alertMessage += `BALANCE: ${data.data.balance.toLocaleString()} XAH\n`
+        alertMessage += `SETTLE DELAY: ${data.data.settleDelay} seconds`
+      } else if (data.status === 'active') {
+        alertMessage += `STATUS: ACTIVE\n`
+        alertMessage += `ESCROW: ${data.data.escrowAmount.toLocaleString()} XAH\n`
+        alertMessage += `BALANCE: ${data.data.balance.toLocaleString()} XAH\n`
+        alertMessage += `SETTLE DELAY: ${data.data.settleDelay} seconds`
+      }
+
+      alert(alertMessage)
+
+      // Refresh payment channels
+      const updatedChannels = await workerApi.getPaymentChannels(walletAddress!)
+      setPaymentChannels(updatedChannels)
     } catch (error: any) {
-      console.error('[LEDGER_SYNC_ERROR]', error)
+      console.error('[SYNC_CHANNEL_ERROR]', error)
       alert(`❌ FAILED TO SYNC CHANNEL:\n\n${error.message}`)
     } finally {
       // Remove from syncing set
@@ -375,11 +364,8 @@ const WorkerDashboard: React.FC = () => {
       const syncPromises = paymentChannels.map(async (channel) => {
         try {
           const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
-          const response = await fetch(`${backendUrl}/api/payment-channels/${channel.channelId}/sync-balance`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            }
+          const response = await fetch(`${backendUrl}/api/payment-channels/${channel.channelId}/sync`, {
+            method: 'GET'
           })
 
           const data = await response.json()
@@ -389,8 +375,8 @@ const WorkerDashboard: React.FC = () => {
             return { channelId: channel.channelId, success: false, error: data.error?.message }
           }
 
-          console.log(`[SYNC_ALL] Synced ${channel.channelId}`)
-          return { channelId: channel.channelId, success: true }
+          console.log(`[SYNC_ALL] Synced ${channel.channelId} - Status: ${data.status}`)
+          return { channelId: channel.channelId, success: true, status: data.status }
         } catch (error: any) {
           console.error(`[SYNC_ALL] Error syncing ${channel.channelId}:`, error)
           return { channelId: channel.channelId, success: false, error: error.message }
@@ -706,8 +692,22 @@ const WorkerDashboard: React.FC = () => {
                         <span className="font-bold text-gray-900 uppercase text-sm truncate flex-1 mr-2">
                           {channel.employer}
                         </span>
-                        <span className="px-2 py-0.5 bg-green-500 text-white rounded-full text-xs font-bold whitespace-nowrap">
+                        <span className={`px-2 py-0.5 text-white rounded-full text-xs font-bold whitespace-nowrap ${
+                          channel.status === 'active' ? 'bg-green-500' :
+                          channel.status === 'closing' ? 'bg-yellow-500' :
+                          channel.status === 'closed' ? 'bg-gray-500' :
+                          'bg-blue-500'
+                        }`}>
                           {channel.status?.toUpperCase() || 'ACTIVE'}
+                          {channel.status === 'closing' && channel.expirationTime && (() => {
+                            const expDate = new Date(channel.expirationTime)
+                            const month = String(expDate.getMonth() + 1).padStart(2, '0')
+                            const day = String(expDate.getDate()).padStart(2, '0')
+                            const year = expDate.getFullYear()
+                            const hours = String(expDate.getHours()).padStart(2, '0')
+                            const minutes = String(expDate.getMinutes()).padStart(2, '0')
+                            return ` ${month}.${day}.${year} AT ${hours}:${minutes}`
+                          })()}
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-xs">

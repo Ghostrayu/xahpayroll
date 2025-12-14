@@ -135,8 +135,9 @@ router.post('/create', async (req, res) => {
         accumulated_balance,
         hours_accumulated,
         max_daily_hours,
+        settle_delay,
         status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, $8, 'active')
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, $8, $9, 'active')
       RETURNING *`,
       [
         organization.id,
@@ -146,7 +147,8 @@ router.post('/create', async (req, res) => {
         hourlyRate,
         balanceUpdateFrequency || 'Hourly',
         fundingAmount,
-        parseFloat(maxHoursPerDay) || 8.00
+        parseFloat(maxHoursPerDay) || 8.00,
+        parseInt(settleDelay) || 86400 // Default 24 hours (86400 seconds) if not provided
       ]
     )
 
@@ -165,6 +167,7 @@ router.post('/create', async (req, res) => {
           escrowFundedAmount: parseFloat(channel.escrow_funded_amount),
           balanceUpdateFrequency: channel.balance_update_frequency,
           maxDailyHours: parseFloat(channel.max_daily_hours),
+          settleDelay: channel.settle_delay,
           status: channel.status
         }
       }
@@ -929,309 +932,59 @@ router.post('/:channelId/close/confirm', async (req, res) => {
     }
 
     // ============================================
-    // STEP 3: VERIFY CHANNEL CLOSURE ON LEDGER
+    // STEP 3: SIMPLIFIED - RECORD TRANSACTION HASH
     // ============================================
+    // NEW APPROACH: Just record the closure transaction hash
+    // User will manually sync from ledger to update channel status
 
-    // Determine if this is source (NGO) or destination (Worker) closure
-    const isSourceClosure = isNGO
-    const isDestinationClosure = isWorker
+    console.log('[CONFIRM_CLOSURE] Recording closure transaction', {
+      channelId,
+      txHash,
+      callerWallet: callerWalletAddress,
+      isNGO,
+      isWorker
+    })
 
-    const client = new Client(getNetworkUrl())
-    let validationResult = {
-      success: false,
-      validated: false,
-      channelRemoved: false,
-      scheduledClosure: false,
-      expirationTime: null,
-      error: null
-    }
+    // Update channel to mark closure attempt
+    const updateResult = await query(
+      `UPDATE payment_channels
+      SET
+        closure_tx_hash = $1,
+        last_validation_at = NOW(),
+        updated_at = NOW()
+      WHERE channel_id = $2
+      RETURNING *`,
+      [txHash, channelId]
+    )
 
-    try {
-      await client.connect()
-      console.log('[VERIFY_CLOSURE] Connected to Xahau', {
-        channelId,
-        txHash,
-        isSourceClosure,
-        isDestinationClosure
-      })
-
-      // STEP 3.1: Verify transaction was validated
-      let transactionValidated = false
-      let transactionResult = ''
-
-      try {
-        const txResponse = await client.request({
-          command: 'tx',
-          transaction: txHash
-        })
-
-        transactionValidated = txResponse.result.validated === true
-        transactionResult = txResponse.result.meta?.TransactionResult || 'UNKNOWN'
-
-        console.log('[VERIFY_CLOSURE] Transaction check', {
-          validated: transactionValidated,
-          result: transactionResult
-        })
-
-        if (!transactionValidated) {
-          validationResult.error = 'TRANSACTION NOT VALIDATED ON LEDGER'
-          validationResult.validated = false
-        } else if (transactionResult !== 'tesSUCCESS') {
-          validationResult.error = `TRANSACTION FAILED: ${transactionResult}`
-          validationResult.validated = true
-        } else {
-          validationResult.validated = true
-        }
-      } catch (txError) {
-        console.error('[VERIFY_CLOSURE] Failed to verify transaction', txError)
-        validationResult.error = `FAILED TO QUERY TRANSACTION: ${txError.message}`
-      }
-
-      // STEP 3.2: Verify channel state based on closure type
-      if (validationResult.validated && !validationResult.error) {
-        if (isSourceClosure) {
-          // SOURCE CLOSURE (NGO): Verify scheduled closure or immediate closure (if no XRP)
-          try {
-            const channelResponse = await client.request({
-              command: 'ledger_entry',
-              payment_channel: channelId
-            })
-
-            const ledgerChannel = channelResponse.result.node
-
-            // Verify Expiration field was set
-            if (!ledgerChannel.Expiration) {
-              validationResult.error = 'SCHEDULED CLOSURE FAILED: EXPIRATION NOT SET'
-              validationResult.validated = true
-            } else {
-              // SUCCESS: Channel scheduled for closure
-              validationResult.success = true
-              validationResult.validated = true
-              validationResult.channelRemoved = false
-              validationResult.scheduledClosure = true
-              validationResult.expirationTime = ledgerChannel.Expiration
-
-              console.log('[VERIFY_CLOSURE] ✅ Channel scheduled for closure', {
-                channelId,
-                expiration: ledgerChannel.Expiration,
-                settleDelay: ledgerChannel.SettleDelay
-              })
-            }
-          } catch (channelError) {
-            if (channelError.data?.error === 'entryNotFound' ||
-                channelError.message?.includes('not found')) {
-              // Channel closed immediately (no XRP remaining)
-              console.log('[VERIFY_CLOSURE] ✅ Channel closed immediately (no XRP remaining)', {
-                channelId,
-                txHash
-              })
-              validationResult.success = true
-              validationResult.validated = true
-              validationResult.channelRemoved = true
-              validationResult.scheduledClosure = false
-            } else {
-              validationResult.error = `FAILED TO VERIFY SCHEDULED CLOSURE: ${channelError.message}`
-            }
-          }
-        } else {
-          // DESTINATION CLOSURE (WORKER): Verify immediate removal
-          try {
-            await client.request({
-              command: 'ledger_entry',
-              payment_channel: channelId
-            })
-
-            // Channel still exists - validation failed
-            console.warn('[VERIFY_CLOSURE] Channel still exists after destination closure', {
-              channelId,
-              txHash
-            })
-            validationResult.error = 'CHANNEL STILL EXISTS AFTER DESTINATION CLOSURE'
-            validationResult.channelRemoved = false
-          } catch (channelError) {
-            // Expected error: channel not found (successfully removed)
-            if (channelError.data?.error === 'entryNotFound' ||
-                channelError.message?.includes('not found')) {
-              console.log('[VERIFY_CLOSURE] ✅ Channel immediately removed by destination', {
-                channelId,
-                txHash
-              })
-              validationResult.channelRemoved = true
-              validationResult.success = true
-              validationResult.scheduledClosure = false
-            } else {
-              console.error('[VERIFY_CLOSURE] Unexpected error querying channel', channelError)
-              validationResult.error = `FAILED TO VERIFY CHANNEL REMOVAL: ${channelError.message}`
-            }
-          }
-        }
-      }
-
-      await client.disconnect()
-    } catch (error) {
-      console.error('[VERIFY_CLOSURE] Critical error during validation', error)
-      await client.disconnect().catch(() => {})
-      validationResult.error = `VALIDATION ERROR: ${error.message}`
-    }
-
-    // ============================================
-    // STEP 4: UPDATE DATABASE BASED ON VALIDATION
-    // ============================================
-
-    if (validationResult.success) {
-      if (validationResult.scheduledClosure) {
-        // SOURCE CLOSURE: Update to 'closing' state with expiration time
-        // Convert XRPL Ripple time (946684800 epoch offset) to Unix timestamp
-        const expirationTimestamp = validationResult.expirationTime + 946684800
-
-        const updateResult = await query(
-          `UPDATE payment_channels
-          SET
-            status = 'closing',
-            closure_tx_hash = $1,
-            expiration_time = to_timestamp($2),
-            accumulated_balance = 0,
-            last_ledger_sync = NOW(),
-            last_validation_at = NOW(),
-            updated_at = NOW()
-          WHERE channel_id = $3
-          RETURNING *`,
-          [txHash, expirationTimestamp, channelId]
-        )
-
-        console.log('[CHANNEL_SCHEDULED_CLOSURE]', {
-          channelId,
-          txHash,
-          expirationTime: new Date(expirationTimestamp * 1000).toISOString(),
-          organizationWallet: organizationWalletAddress,
-          timestamp: new Date().toISOString()
-        })
-
-        res.json({
-          success: true,
-          scheduledClosure: true,
-          expirationTime: validationResult.expirationTime,
-          data: { channel: updateResult.rows[0] }
-        })
-      } else {
-        // IMMEDIATE CLOSURE: Update to 'closed' state
-        // AUTO-CLEAR BALANCE: Worker received payment via XRPL transaction
-        // Clear accumulated_balance to prevent stale data (Fix 2025-12-06)
-        const updateResult = await query(
-          `UPDATE payment_channels
-          SET
-            status = 'closed',
-            closure_tx_hash = $1,
-            closed_at = NOW(),
-            accumulated_balance = 0,
-            last_ledger_sync = NOW(),
-            updated_at = NOW()
-          WHERE channel_id = $2
-          RETURNING *`,
-          [txHash, channelId]
-        )
-
-        console.log('[CHANNEL_CLOSE_SUCCESS]', {
-          channelId,
-          txHash,
-          organizationWallet: organizationWalletAddress,
-          timestamp: new Date().toISOString()
-        })
-
-        res.json({
-          success: true,
-          scheduledClosure: false,
-          data: { channel: updateResult.rows[0] }
-        })
-      }
-    } else {
-      // FAILURE: Validation failed, rollback to 'active' state
-      await query(
-        `UPDATE payment_channels
-        SET
-          status = 'active',
-          last_validation_at = NOW(),
-          updated_at = NOW()
-        WHERE channel_id = $1`,
-        [channelId]
-      )
-
-      console.error('[CHANNEL_CLOSE_VALIDATION_FAILED]', {
-        channelId,
-        txHash,
-        error: validationResult.error,
-        validated: validationResult.validated,
-        channelRemoved: validationResult.channelRemoved,
-        timestamp: new Date().toISOString()
-      })
-
-      // ============================================
-      // STEP 5: CREATE NOTIFICATION FOR VALIDATION FAILURE
-      // ============================================
-
-      try {
-        // Get worker details for notification
-        const workerResult = await query(
-          `SELECT e.employee_wallet_address, e.name, pc.job_name
-          FROM employees e
-          JOIN payment_channels pc ON e.id = pc.employee_id
-          WHERE pc.channel_id = $1`,
-          [channelId]
-        )
-
-        if (workerResult.rows.length > 0) {
-          const worker = workerResult.rows[0]
-          const notificationMessage = `CHANNEL CLOSURE VALIDATION FAILED FOR ${worker.job_name || 'PAYMENT CHANNEL'}. CHANNEL AUTOMATICALLY ROLLED BACK TO ACTIVE STATE.`
-
-          await query(
-            `INSERT INTO ngo_notifications (
-              organization_id,
-              notification_type,
-              worker_wallet_address,
-              worker_name,
-              message,
-              metadata,
-              is_read,
-              created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-            [
-              channel.organization_id,
-              'channel_closure_failed',
-              worker.employee_wallet_address,
-              worker.name,
-              notificationMessage,
-              JSON.stringify({
-                channelId,
-                txHash,
-                error: validationResult.error,
-                validated: validationResult.validated,
-                channelRemoved: validationResult.channelRemoved,
-                jobName: worker.job_name
-              }),
-              false
-            ]
-          )
-
-          console.log('[NOTIFICATION_CREATED] Validation failure notification sent to organization', {
-            organizationId: channel.organization_id,
-            channelId
-          })
-        }
-      } catch (notifError) {
-        // Don't fail the request if notification creation fails
-        console.error('[NOTIFICATION_ERROR] Failed to create validation failure notification', notifError)
-      }
-
-      return res.status(400).json({
+    if (updateResult.rows.length === 0) {
+      return res.status(404).json({
         success: false,
-        error: {
-          message: 'CHANNEL CLOSURE VALIDATION FAILED',
-          details: validationResult.error,
-          validated: validationResult.validated,
-          channelRemoved: validationResult.channelRemoved
-        }
+        error: { message: 'FAILED TO UPDATE CHANNEL' }
       })
     }
+
+    const updatedChannel = updateResult.rows[0]
+
+    console.log('[CONFIRM_CLOSURE] Transaction hash recorded successfully', {
+      channelId,
+      txHash,
+      currentStatus: updatedChannel.status
+    })
+
+    res.json({
+      success: true,
+      message: 'CLOSURE TRANSACTION RECORDED. CLICK "SYNC FROM LEDGER" TO UPDATE CHANNEL STATUS.',
+      data: {
+        channel: {
+          id: updatedChannel.id,
+          channelId: updatedChannel.channel_id,
+          status: updatedChannel.status,
+          closureTxHash: updatedChannel.closure_tx_hash,
+          jobName: updatedChannel.job_name
+        }
+      }
+    })
   } catch (error) {
     console.error('[CHANNEL_CLOSE_CONFIRM_ERROR]', {
       error: error.message,
@@ -1662,6 +1415,179 @@ router.post('/:channelId/sync-balance', async (req, res) => {
     res.status(500).json({
       success: false,
       error: { message: 'FAILED TO SYNC CHANNEL BALANCE', details: error.message }
+    })
+  }
+})
+
+/**
+ * GET /api/payment-channels/:channelId/sync
+ * Sync channel status from Xahau ledger
+ *
+ * This endpoint queries the XRPL ledger to determine actual channel state
+ * and updates the database accordingly. Users trigger this manually after
+ * closing a channel to avoid complex timing/validation issues.
+ */
+router.get('/:channelId/sync', async (req, res) => {
+  try {
+    const { channelId } = req.params
+
+    console.log('[SYNC_CHANNEL] Starting sync for channel:', channelId)
+
+    // Fetch channel from database
+    const channelResult = await query(
+      `SELECT pc.*, o.escrow_wallet_address, e.employee_wallet_address
+      FROM payment_channels pc
+      JOIN organizations o ON pc.organization_id = o.id
+      JOIN employees e ON pc.employee_id = e.id
+      WHERE pc.channel_id = $1`,
+      [channelId]
+    )
+
+    if (channelResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: { message: 'CHANNEL NOT FOUND' }
+      })
+    }
+
+    const channel = channelResult.rows[0]
+
+    // Connect to Xahau ledger
+    const networkUrl = getNetworkUrl()
+    const client = new Client(networkUrl)
+
+    await client.connect()
+    console.log('[SYNC_CHANNEL] Connected to Xahau:', process.env.XRPL_NETWORK || 'testnet')
+
+    try {
+      // Query channel from ledger
+      const channelResponse = await client.request({
+        command: 'ledger_entry',
+        payment_channel: channelId
+      })
+
+      const ledgerChannel = channelResponse.result.node
+      console.log('[SYNC_CHANNEL] Channel EXISTS on ledger', {
+        channelId,
+        expiration: ledgerChannel.Expiration,
+        settleDelay: ledgerChannel.SettleDelay,
+        balance: ledgerChannel.Balance,
+        amount: ledgerChannel.Amount
+      })
+
+      // Channel exists - check if it has expiration (closing) or not (active)
+      if (ledgerChannel.Expiration) {
+        // Channel is scheduled for closure
+        const expirationTimestamp = ledgerChannel.Expiration + 946684800 // XRPL Ripple time to Unix
+        const escrowXah = parseInt(ledgerChannel.Amount) / 1_000_000
+        const balanceXah = parseInt(ledgerChannel.Balance) / 1_000_000
+
+        await query(
+          `UPDATE payment_channels
+          SET
+            status = 'closing',
+            expiration_time = to_timestamp($1),
+            escrow_funded_amount = $2,
+            accumulated_balance = $3,
+            settle_delay = $4,
+            last_ledger_sync = NOW(),
+            updated_at = NOW()
+          WHERE channel_id = $5`,
+          [expirationTimestamp, escrowXah, balanceXah, ledgerChannel.SettleDelay, channelId]
+        )
+
+        await client.disconnect()
+        return res.json({
+          success: true,
+          status: 'closing',
+          message: 'CHANNEL IS SCHEDULED FOR CLOSURE',
+          data: {
+            channelId,
+            status: 'closing',
+            expirationTime: new Date(expirationTimestamp * 1000).toISOString(),
+            escrowAmount: escrowXah,
+            balance: balanceXah,
+            settleDelay: ledgerChannel.SettleDelay
+          }
+        })
+      } else {
+        // Channel is active (no expiration set)
+        const escrowXah = parseInt(ledgerChannel.Amount) / 1_000_000
+        const balanceXah = parseInt(ledgerChannel.Balance) / 1_000_000
+
+        await query(
+          `UPDATE payment_channels
+          SET
+            status = 'active',
+            escrow_funded_amount = $1,
+            accumulated_balance = $2,
+            settle_delay = $3,
+            last_ledger_sync = NOW(),
+            updated_at = NOW()
+          WHERE channel_id = $4`,
+          [escrowXah, balanceXah, ledgerChannel.SettleDelay, channelId]
+        )
+
+        await client.disconnect()
+        return res.json({
+          success: true,
+          status: 'active',
+          message: 'CHANNEL IS ACTIVE',
+          data: {
+            channelId,
+            status: 'active',
+            escrowAmount: escrowXah,
+            balance: balanceXah,
+            settleDelay: ledgerChannel.SettleDelay
+          }
+        })
+      }
+    } catch (ledgerError) {
+      // Channel not found on ledger = it was closed
+      if (ledgerError.data?.error === 'entryNotFound' || ledgerError.message?.includes('not found')) {
+        console.log('[SYNC_CHANNEL] Channel NOT FOUND on ledger - marking as closed', { channelId })
+
+        await query(
+          `UPDATE payment_channels
+          SET
+            status = 'closed',
+            closed_at = NOW(),
+            accumulated_balance = 0,
+            last_ledger_sync = NOW(),
+            updated_at = NOW()
+          WHERE channel_id = $1`,
+          [channelId]
+        )
+
+        await client.disconnect()
+        return res.json({
+          success: true,
+          status: 'closed',
+          message: 'CHANNEL CLOSED SUCCESSFULLY',
+          data: {
+            channelId,
+            status: 'closed',
+            closedAt: new Date().toISOString()
+          }
+        })
+      }
+
+      // Unexpected error
+      console.error('[SYNC_CHANNEL] Unexpected ledger error:', ledgerError)
+      await client.disconnect()
+      return res.status(500).json({
+        success: false,
+        error: {
+          message: 'FAILED TO QUERY LEDGER',
+          details: ledgerError.message
+        }
+      })
+    }
+  } catch (error) {
+    console.error('[SYNC_CHANNEL] Error:', error)
+    res.status(500).json({
+      success: false,
+      error: { message: 'FAILED TO SYNC CHANNEL', details: error.message }
     })
   }
 })

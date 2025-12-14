@@ -29,13 +29,17 @@ app.use(cors({
   credentials: true
 }))
 
-// Rate limiting
-const limiter = rateLimit({
+// Rate limiting - Tiered approach for different endpoint types
+// Global rate limiter for general API protection
+const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  // Return JSON error response instead of plain text
+  // Skip rate limiting for sync endpoints (they have their own custom limits)
+  skip: (req) => {
+    return req.path.includes('/sync') || req.path.includes('/sync-balance')
+  },
   handler: (req, res) => {
     res.status(429).json({
       success: false,
@@ -46,7 +50,25 @@ const limiter = rateLimit({
     })
   }
 })
-app.use(limiter)
+
+// Sync endpoint rate limiter - Higher limits for legitimate batch operations
+const syncLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes (shorter window)
+  max: 500, // Allow 500 sync requests per 5 minutes (100 per minute)
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: {
+        message: 'SYNC RATE LIMIT EXCEEDED. PLEASE WAIT BEFORE SYNCING AGAIN.',
+        retryAfter: Math.ceil((req.rateLimit.resetTime - Date.now()) / 1000)
+      }
+    })
+  }
+})
+
+app.use(globalLimiter)
 
 // Body parser middleware
 app.use(express.json())
@@ -61,7 +83,14 @@ app.get('/health', (req, res) => {
 app.use('/api/xaman', xamanRoutes)
 app.use('/api/users', usersRoutes)
 app.use('/api/organizations', organizationsRoutes)
+
+// Payment channels routes with custom sync rate limiter
+// Apply sync-specific rate limiter to sync endpoints
+app.use('/api/payment-channels/:channelId/sync', syncLimiter)
+app.use('/api/payment-channels/:channelId/sync-balance', syncLimiter)
+app.use('/api/organizations/:walletAddress/sync-all-channels', syncLimiter)
 app.use('/api/payment-channels', paymentChannelsRoutes)
+
 app.use('/api/workers', workersRoutes)
 app.use('/api/worker-notifications', workerNotificationsRoutes)
 app.use('/api/work-sessions', workSessionsRoutes)

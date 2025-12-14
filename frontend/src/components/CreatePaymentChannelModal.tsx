@@ -53,6 +53,7 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
 
   const [isCreating, setIsCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [status, setStatus] = useState<string>('')
   const [xahUsdPrice, setXahUsdPrice] = useState<number | null>(null)
   const [priceLoading, setPriceLoading] = useState(false)
   const [usdConverterInput, setUsdConverterInput] = useState<string>('')
@@ -442,16 +443,18 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
         )
       }
 
-      // Success! Close modal and refresh dashboard
+      // Success! Refresh dashboard BEFORE closing modal
       alert(`✅ PAYMENT CHANNEL CREATED!\n\nCHANNEL ID: ${channelId}\nFUNDING: ${fundingAmountXah} XAH\nWORKER: ${config.workerName}`)
-      onClose()
-      
+
       // Call onSuccess callback if provided, otherwise reload page
       if (onSuccess) {
-        onSuccess()
+        await onSuccess() // Wait for async refresh to complete
       } else {
         window.location.reload()
       }
+
+      // Close modal AFTER refresh completes
+      onClose()
     } catch (err: any) {
       console.error('Error creating payment channel:', err)
       setError(err.message || 'Failed to create payment channel')
