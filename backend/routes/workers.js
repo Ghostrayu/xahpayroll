@@ -789,7 +789,7 @@ router.get('/:walletAddress/payment-channels', async (req, res) => {
       })
     }
 
-    // Get payment channels for this worker
+    // Get payment channels for this worker (including 'closing' channels so workers can see scheduled closures)
     const channelsResult = await query(
       `SELECT
         pc.id,
@@ -804,13 +804,15 @@ router.get('/:walletAddress/payment-channels', async (req, res) => {
         pc.escrow_funded_amount,
         pc.max_daily_hours,
         pc.last_ledger_sync,
+        pc.expiration_time,
+        pc.closure_tx_hash,
         o.organization_name as employer,
         o.escrow_wallet_address as ngo_wallet
        FROM payment_channels pc
        JOIN organizations o ON pc.organization_id = o.id
        JOIN employees e ON pc.employee_id = e.id
        WHERE e.employee_wallet_address = $1
-       AND pc.status NOT IN ('closed', 'closing')
+       AND pc.status IN ('active', 'closing')
        ORDER BY pc.created_at DESC`,
       [walletAddress]
     )
@@ -846,7 +848,9 @@ router.get('/:walletAddress/payment-channels', async (req, res) => {
         status: c.status,
         lastUpdate,
         balanceUpdateFrequency: c.balance_update_frequency || 'Hourly',
-        lastLedgerSync: c.last_ledger_sync
+        lastLedgerSync: c.last_ledger_sync,
+        expirationTime: c.expiration_time,
+        closureTxHash: c.closure_tx_hash
       }
     })
 

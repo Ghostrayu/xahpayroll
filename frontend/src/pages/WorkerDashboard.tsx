@@ -60,8 +60,9 @@ const WorkerDashboard: React.FC = () => {
         const channels = await workerApi.getPaymentChannels(walletAddress)
         console.log('[WORKER_CHANNELS] Fetched channels:', channels.length)
 
-        // Filter out closed channels (defense in depth - backend already filters)
-        const activeChannels = channels.filter(ch => ch.status !== 'closed' && ch.status !== 'closing')
+        // Filter out fully closed channels (but keep 'closing' channels visible)
+        // Workers should see channels scheduled for closure so they can track final payments
+        const activeChannels = channels.filter(ch => ch.status !== 'closed')
         setPaymentChannels(activeChannels)
       } catch (error) {
         console.error('[WORKER_CHANNELS_ERROR] Failed to fetch worker payment channels:', error)
