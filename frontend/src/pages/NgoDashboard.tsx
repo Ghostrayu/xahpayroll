@@ -74,6 +74,71 @@ const NgoDashboard: React.FC = () => {
     return () => clearInterval(interval)
   }, [walletAddress, organizationId])
 
+  // Auto-sync expired channels on dashboard load
+  useEffect(() => {
+    const syncExpiredChannels = async () => {
+      if (!walletAddress) return
+
+      try {
+        console.log('[AUTO_SYNC] Checking for expired closing channels...')
+        const response = await paymentChannelApi.syncExpiredClosing()
+
+        if (response.success && response.data) {
+          const { expiredChannels, closed } = response.data
+
+          if (expiredChannels > 0) {
+            console.log(`[AUTO_SYNC] Found ${expiredChannels} expired channel(s), ${closed} already closed on ledger`)
+
+            // Refresh payment channel data if any were updated
+            if (closed > 0) {
+              await refreshData()
+            }
+          } else {
+            console.log('[AUTO_SYNC] No expired channels found')
+          }
+        }
+      } catch (error) {
+        console.error('[AUTO_SYNC_ERROR]', error)
+        // Silent fail - don't interrupt dashboard loading
+      }
+    }
+
+    syncExpiredChannels()
+  }, [walletAddress, refreshData])
+
+  /**
+   * Check if a closing channel has passed its expiration time
+   */
+  const isChannelExpired = (channel: any): boolean => {
+    if (channel.status !== 'closing' || !channel.expirationTime) {
+      return false
+    }
+    return new Date(channel.expirationTime) < new Date()
+  }
+
+  /**
+   * Get time remaining until expiration for closing channels
+   */
+  const getTimeRemaining = (expirationTime: string): string => {
+    const now = new Date().getTime()
+    const exp = new Date(expirationTime).getTime()
+    const diff = exp - now
+
+    if (diff <= 0) return 'EXPIRED'
+
+    const hours = Math.floor(diff / (1000 * 60 * 60))
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+
+    if (hours > 24) {
+      const days = Math.floor(hours / 24)
+      return `${days} day${days !== 1 ? 's' : ''} remaining`
+    } else if (hours > 0) {
+      return `${hours}h ${minutes}m remaining`
+    } else {
+      return `${minutes}m remaining`
+    }
+  }
+
   /**
    * Handle cancel channel button click - opens confirmation modal
    */
@@ -233,38 +298,6 @@ const NgoDashboard: React.FC = () => {
    * Handle request immediate closure from worker
    * NGO requests worker to close the channel immediately
    */
-  const handleRequestWorkerClosure = async (channel: any) => {
-    if (!walletAddress) {
-      alert('WALLET ADDRESS NOT FOUND')
-      return
-    }
-
-    try {
-      console.log('[REQUEST_WORKER_CLOSURE] Requesting closure for channel:', channel.channelId)
-
-      const response = await paymentChannelApi.requestWorkerClosure(
-        channel.channelId,
-        walletAddress
-      )
-
-      if (response.success) {
-        alert(
-          `✅ CLOSURE REQUEST SENT TO WORKER!\n\n` +
-          `WORKER: ${channel.worker}\n` +
-          `JOB: ${channel.jobName}\n\n` +
-          `THE WORKER WILL BE NOTIFIED AND CAN APPROVE THE REQUEST FROM THEIR DASHBOARD.`
-        )
-
-        console.log('[REQUEST_WORKER_CLOSURE] Success:', response.data)
-      } else {
-        throw new Error(response.error?.message || 'FAILED TO SEND REQUEST')
-      }
-    } catch (error: any) {
-      console.error('[REQUEST_WORKER_CLOSURE_ERROR]', error)
-      alert(`❌ FAILED TO REQUEST WORKER CLOSURE:\n\n${error.message}`)
-    }
-  }
-
   /**
    * Helper: Check if channel was recently synced (within last 60 seconds)
    */
@@ -665,23 +698,28 @@ const NgoDashboard: React.FC = () => {
                           </div>
                         </div>
                         <div className="text-right">
-                          <span className={`inline-flex items-center px-2 py-0.5 text-white rounded-full text-[10px] font-bold ${
-                            channel.status === 'active' ? 'bg-green-500' :
-                            channel.status === 'closing' ? 'bg-yellow-500' :
-                            channel.status === 'closed' ? 'bg-gray-500' :
-                            'bg-blue-500'
-                          }`}>
-                            ● {channel.status.toUpperCase()}
-                            {channel.status === 'closing' && channel.expirationTime && (() => {
-                              const expDate = new Date(channel.expirationTime)
-                              const month = String(expDate.getMonth() + 1).padStart(2, '0')
-                              const day = String(expDate.getDate()).padStart(2, '0')
-                              const year = expDate.getFullYear()
-                              const hours = String(expDate.getHours()).padStart(2, '0')
-                              const minutes = String(expDate.getMinutes()).padStart(2, '0')
-                              return ` ${month}.${day}.${year} AT ${hours}:${minutes}`
-                            })()}
-                          </span>
+                          {channel.status === 'closing' && isChannelExpired(channel) ? (
+                            <div className="flex flex-col items-end gap-1">
+                              <span className="inline-flex items-center px-2 py-0.5 text-white rounded-full text-[10px] font-bold bg-red-600 animate-pulse">
+                                ● EXPIRED - READY TO FINALIZE
+                              </span>
+                              <span className="text-[9px] text-gray-500 uppercase">
+                                Worker can claim {channel.balance.toLocaleString()} XAH
+                              </span>
+                            </div>
+                          ) : (
+                            <span className={`inline-flex items-center px-2 py-0.5 text-white rounded-full text-[10px] font-bold ${
+                              channel.status === 'active' ? 'bg-green-500' :
+                              channel.status === 'closing' ? 'bg-yellow-500' :
+                              channel.status === 'closed' ? 'bg-gray-500' :
+                              'bg-blue-500'
+                            }`}>
+                              ● {channel.status.toUpperCase()}
+                              {channel.status === 'closing' && channel.expirationTime && (
+                                <span className="ml-1">- {getTimeRemaining(channel.expirationTime)}</span>
+                              )}
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -756,21 +794,23 @@ const NgoDashboard: React.FC = () => {
                               'SYNC WITH LEDGER'
                             )}
                           </button>
-                          {channel.status === 'active' && (
+                          {channel.status === 'closing' && isChannelExpired(channel) ? (
                             <button
-                              onClick={() => handleRequestWorkerClosure(channel)}
-                              className="px-3 py-1 bg-yellow-500 hover:bg-yellow-600 text-white font-bold rounded text-[10px] uppercase tracking-wide transition-colors"
+                              onClick={() => handleCancelClick(channel)}
+                              disabled={cancelingChannel === channel.channelId}
+                              className="px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded text-[10px] uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              Request Closure
+                              {cancelingChannel === channel.channelId ? 'Finalizing...' : 'Finalize Closure'}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleCancelClick(channel)}
+                              disabled={cancelingChannel === channel.channelId || channel.status === 'closing'}
+                              className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white font-bold rounded text-[10px] uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {cancelingChannel === channel.channelId || channel.status === 'closing' ? 'Closing...' : 'Cancel Channel'}
                             </button>
                           )}
-                          <button
-                            onClick={() => handleCancelClick(channel)}
-                            disabled={cancelingChannel === channel.channelId || channel.status === 'closing'}
-                            className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white font-bold rounded text-[10px] uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {cancelingChannel === channel.channelId || channel.status === 'closing' ? 'Closing...' : 'Cancel Channel'}
-                          </button>
                         </div>
                       </div>
                     </div>
@@ -911,17 +951,26 @@ const NgoDashboard: React.FC = () => {
         }}
       />
 
-      {/* Cancel Payment Channel Confirmation Modal */}
+      {/* Payment Channel Closure Confirmation Modal (Cancel/Finalize) */}
       {showCancelConfirm && selectedChannel && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-2xl">
             <div className="mb-4">
               <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-2">
-                CANCEL PAYMENT CHANNEL
+                {isChannelExpired(selectedChannel) ? 'FINALIZE CHANNEL CLOSURE' : 'CANCEL PAYMENT CHANNEL'}
               </h3>
               <p className="text-sm text-gray-700 uppercase">
-                ARE YOU SURE YOU WANT TO CANCEL THE PAYMENT CHANNEL FOR{' '}
-                <strong className="text-gray-900">{selectedChannel.worker}</strong>?
+                {isChannelExpired(selectedChannel) ? (
+                  <>
+                    FINALIZE THE EXPIRED PAYMENT CHANNEL FOR{' '}
+                    <strong className="text-gray-900">{selectedChannel.worker}</strong>?
+                  </>
+                ) : (
+                  <>
+                    ARE YOU SURE YOU WANT TO CANCEL THE PAYMENT CHANNEL FOR{' '}
+                    <strong className="text-gray-900">{selectedChannel.worker}</strong>?
+                  </>
+                )}
               </p>
             </div>
 
@@ -948,14 +997,37 @@ const NgoDashboard: React.FC = () => {
             </div>
 
             {/* Important Info */}
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+            <div className={`border rounded-lg p-4 mb-6 ${
+              isChannelExpired(selectedChannel)
+                ? 'bg-orange-50 border-orange-200'
+                : 'bg-yellow-50 border-yellow-200'
+            }`}>
               <div className="flex gap-2">
-                <div className="text-yellow-600 text-xl flex-shrink-0">⚠️</div>
-                <div className="space-y-2 text-xs text-yellow-800 uppercase">
-                  <p className="font-bold uppercase tracking-wide">IMPORTANT:</p>
-                  <p>• UNUSED ESCROW WILL BE RETURNED TO YOUR WALLET</p>
-                  <p>• WORKER WILL RECEIVE ACCUMULATED BALANCE: <strong>{selectedChannel.balance?.toLocaleString() || '0'} XAH</strong></p>
-                  <p>• THIS ACTION CANNOT BE UNDONE</p>
+                <div className={`text-xl flex-shrink-0 ${
+                  isChannelExpired(selectedChannel) ? 'text-orange-600' : 'text-yellow-600'
+                }`}>
+                  {isChannelExpired(selectedChannel) ? '🎯' : '⚠️'}
+                </div>
+                <div className={`space-y-2 text-xs uppercase ${
+                  isChannelExpired(selectedChannel) ? 'text-orange-800' : 'text-yellow-800'
+                }`}>
+                  <p className="font-bold uppercase tracking-wide">
+                    {isChannelExpired(selectedChannel) ? 'FINALIZATION DETAILS:' : 'IMPORTANT:'}
+                  </p>
+                  {isChannelExpired(selectedChannel) ? (
+                    <>
+                      <p>• CHANNEL HAS PASSED EXPIRATION TIME</p>
+                      <p>• WORKER WILL RECEIVE: <strong>{selectedChannel.balance?.toLocaleString() || '0'} XAH</strong></p>
+                      <p>• UNUSED ESCROW RETURNS TO YOUR WALLET</p>
+                      <p>• FINALIZES PERMANENT CHANNEL CLOSURE</p>
+                    </>
+                  ) : (
+                    <>
+                      <p>• UNUSED ESCROW WILL BE RETURNED TO YOUR WALLET</p>
+                      <p>• WORKER WILL RECEIVE ACCUMULATED BALANCE: <strong>{selectedChannel.balance?.toLocaleString() || '0'} XAH</strong></p>
+                      <p>• THIS ACTION CANNOT BE UNDONE</p>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -970,14 +1042,21 @@ const NgoDashboard: React.FC = () => {
                 disabled={cancelingChannel === selectedChannel.channelId}
                 className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold rounded uppercase tracking-wide text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                KEEP CHANNEL
+                {isChannelExpired(selectedChannel) ? 'GO BACK' : 'KEEP CHANNEL'}
               </button>
               <button
                 onClick={() => handleCancelConfirm(false)}
                 disabled={cancelingChannel === selectedChannel.channelId}
-                className="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded uppercase tracking-wide text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`flex-1 px-4 py-2 text-white font-bold rounded uppercase tracking-wide text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                  isChannelExpired(selectedChannel)
+                    ? 'bg-orange-500 hover:bg-orange-600'
+                    : 'bg-red-500 hover:bg-red-600'
+                }`}
               >
-                {cancelingChannel === selectedChannel.channelId ? 'CANCELING...' : 'CANCEL CHANNEL'}
+                {cancelingChannel === selectedChannel.channelId
+                  ? (isChannelExpired(selectedChannel) ? 'FINALIZING...' : 'CANCELING...')
+                  : (isChannelExpired(selectedChannel) ? 'FINALIZE CLOSURE' : 'CANCEL CHANNEL')
+                }
               </button>
             </div>
           </div>

@@ -461,36 +461,32 @@ export const paymentChannelApi = {
   },
 
   /**
-   * NGO requests immediate closure from worker
-   * Creates notification for worker to approve and close channel
+   * Sync expired closing channels
+   * Checks ledger for channels past expiration that are already closed
    */
-  async requestWorkerClosure(
-    channelId: string,
-    organizationWalletAddress: string,
-    message?: string
-  ): Promise<ApiResponse<{
-    notification: any
-    channel: any
+  async syncExpiredClosing(): Promise<ApiResponse<{
+    expiredChannels: number
+    closed: number
   }>> {
     const response = await apiFetch<ApiResponse<{
-      notification: any
-      channel: any
+      expiredChannels: number
+      closed: number
     }>>(
-      `/api/payment-channels/${channelId}/request-worker-closure`,
+      '/api/payment-channels/sync-expired-closing',
       {
         method: 'POST',
-        body: JSON.stringify({ organizationWalletAddress, message }),
       }
     )
 
-    if (!response.success || !response.data) {
+    if (!response.success) {
       throw new ApiError(
-        response.error?.message || 'FAILED TO REQUEST WORKER CLOSURE'
+        response.error?.message || 'FAILED TO SYNC EXPIRED CHANNELS'
       )
     }
 
     return response
   },
+
 }
 
 /**

@@ -99,6 +99,41 @@ const WorkerDashboard: React.FC = () => {
     return () => clearInterval(interval)
   }, [walletAddress])
 
+  /**
+   * Helper: Check if closing channel has passed expiration time
+   * Worker protection: Alerts workers when channels expire so they can finalize
+   */
+  const isChannelExpired = (channel: any): boolean => {
+    if (channel.status !== 'closing' || !channel.expirationTime) {
+      return false
+    }
+    return new Date(channel.expirationTime) < new Date()
+  }
+
+  /**
+   * Helper: Calculate human-readable time remaining until expiration
+   * Shows workers how much time left in SettleDelay period
+   */
+  const getTimeRemaining = (expirationTime: string): string => {
+    const now = new Date().getTime()
+    const exp = new Date(expirationTime).getTime()
+    const diff = exp - now
+
+    if (diff <= 0) return 'EXPIRED'
+
+    const hours = Math.floor(diff / (1000 * 60 * 60))
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+
+    if (hours > 24) {
+      const days = Math.floor(hours / 24)
+      return `${days} day${days !== 1 ? 's' : ''} remaining`
+    } else if hours > 0) {
+      return `${hours}h ${minutes}m remaining`
+    } else {
+      return `${minutes}m remaining`
+    }
+  }
+
   // Use data from context with fallback defaults
   const workerData = {
     hourlyRate: 15.00, // TODO: Get from payment channel or employee record
@@ -609,10 +644,80 @@ const WorkerDashboard: React.FC = () => {
                           {channel.channelId}
                         </p>
                       </div>
-                      <span className="inline-flex items-center px-2 py-0.5 bg-green-500 text-white rounded-full text-xs font-bold whitespace-nowrap">
-                        ● ACTIVE
-                      </span>
+                      {/* Context-aware status badge with expiration alerts */}
+                      {channel.status === 'closing' && isChannelExpired(channel) ? (
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="inline-flex items-center px-2 py-0.5 text-white rounded-full text-[10px] font-bold bg-red-600 animate-pulse">
+                            ● EXPIRED - CLAIM NOW!
+                          </span>
+                          <span className="text-[9px] text-gray-500 uppercase">
+                            PROTECT YOUR {channel.balance?.toLocaleString() || '0'} XAH
+                          </span>
+                        </div>
+                      ) : (
+                        <span className={`inline-flex items-center px-2 py-0.5 text-white rounded-full text-xs font-bold whitespace-nowrap ${
+                          channel.status === 'active' ? 'bg-green-500' :
+                          channel.status === 'closing' ? 'bg-yellow-500' :
+                          channel.status === 'closed' ? 'bg-gray-500' :
+                          'bg-blue-500'
+                        }`}>
+                          ● {channel.status?.toUpperCase() || 'ACTIVE'}
+                          {channel.status === 'closing' && channel.expirationTime && (
+                            <span className="ml-1">- {getTimeRemaining(channel.expirationTime)}</span>
+                          )}
+                        </span>
+                      )}
                     </div>
+
+                    {/* Worker Protection Alert - Closing Channels */}
+                    {channel.status === 'closing' && (
+                      <div className={`mb-3 rounded-lg p-3 border-2 ${
+                        isChannelExpired(channel)
+                          ? 'bg-red-50 border-red-500'
+                          : 'bg-yellow-50 border-yellow-500'
+                      }`}>
+                        <div className="flex items-start gap-2">
+                          <div className={`text-2xl flex-shrink-0 ${
+                            isChannelExpired(channel) ? 'animate-pulse' : ''
+                          }`}>
+                            {isChannelExpired(channel) ? '🚨' : '⚠️'}
+                          </div>
+                          <div className="flex-1">
+                            <p className={`text-xs font-extrabold uppercase tracking-wide mb-1 ${
+                              isChannelExpired(channel) ? 'text-red-900' : 'text-yellow-900'
+                            }`}>
+                              {isChannelExpired(channel)
+                                ? '⏰ CHANNEL EXPIRED - CLAIM YOUR WAGES NOW!'
+                                : '⏳ CHANNEL SCHEDULED FOR CLOSURE'}
+                            </p>
+                            <div className={`text-[10px] space-y-1 ${
+                              isChannelExpired(channel) ? 'text-red-800' : 'text-yellow-800'
+                            }`}>
+                              {isChannelExpired(channel) ? (
+                                <>
+                                  <p className="font-bold">
+                                    • EMPLOYER CAN CLAIM WITH ZERO BALANCE - YOU LOSE {channel.balance?.toLocaleString() || '0'} XAH!
+                                  </p>
+                                  <p className="font-bold">• CLICK "CLAIM NOW" BELOW TO PROTECT YOUR EARNINGS</p>
+                                  <p>• FIRST CLAIM TO VALIDATE ON LEDGER WINS</p>
+                                </>
+                              ) : (
+                                <>
+                                  <p className="font-bold">
+                                    • YOU HAVE {getTimeRemaining(channel.expirationTime)} TO CLAIM
+                                  </p>
+                                  <p>• EMPLOYER INITIATED CLOSURE - SETTLELAY PERIOD ACTIVE</p>
+                                  <p>• AFTER EXPIRATION, EITHER PARTY CAN FINALIZE</p>
+                                  <p className="font-bold text-yellow-900">
+                                    • RECOMMEND CLAIMING BEFORE EXPIRATION TO PROTECT YOUR {channel.balance?.toLocaleString() || '0'} XAH
+                                  </p>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-2 mb-3">
                       <div className="bg-white/60 rounded-lg p-2 border border-green-200">
@@ -661,13 +766,32 @@ const WorkerDashboard: React.FC = () => {
                         )}
                       </button>
 
-                      <button
-                        onClick={() => handleCloseClick(channel)}
-                        disabled={cancelingChannel === channel.channelId || channel.status === 'closing'}
-                        className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white font-bold rounded text-xs uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {cancelingChannel === channel.channelId || channel.status === 'closing' ? 'CLOSING...' : 'CLOSE CHANNEL'}
-                      </button>
+                      {/* Context-aware claim/close button */}
+                      {channel.status === 'closing' ? (
+                        <button
+                          onClick={() => handleCloseClick(channel)}
+                          disabled={cancelingChannel === channel.channelId}
+                          className={`px-3 py-1 text-white font-bold rounded text-xs uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                            isChannelExpired(channel)
+                              ? 'bg-orange-500 hover:bg-orange-600 animate-pulse'
+                              : 'bg-yellow-500 hover:bg-yellow-600'
+                          }`}
+                        >
+                          {cancelingChannel === channel.channelId
+                            ? 'CLAIMING...'
+                            : isChannelExpired(channel)
+                            ? '🛡️ CLAIM NOW'
+                            : '⏳ CLAIM EARLY'}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleCloseClick(channel)}
+                          disabled={cancelingChannel === channel.channelId}
+                          className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white font-bold rounded text-xs uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {cancelingChannel === channel.channelId ? 'CLOSING...' : 'CLOSE CHANNEL'}
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -821,15 +945,9 @@ const WorkerDashboard: React.FC = () => {
                       {/* Notification Header */}
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-2xl">
-                            {notif.type === 'closure_request' ? '⚠️' : '📢'}
-                          </span>
-                          <span className={`text-xs font-bold uppercase tracking-wide px-2 py-1 rounded ${
-                            notif.type === 'closure_request'
-                              ? 'bg-yellow-100 text-yellow-700'
-                              : 'bg-blue-100 text-blue-700'
-                          }`}>
-                            {notif.type === 'closure_request' ? 'CLOSURE REQUEST' : 'INFO'}
+                          <span className="text-2xl">📢</span>
+                          <span className="text-xs font-bold uppercase tracking-wide px-2 py-1 rounded bg-blue-100 text-blue-700">
+                            INFO
                           </span>
                           {!notif.isRead && (
                             <span className="w-2 h-2 bg-red-500 rounded-full"></span>
@@ -847,63 +965,6 @@ const WorkerDashboard: React.FC = () => {
 
                       {/* Actions */}
                       <div className="flex items-center gap-2">
-                        {notif.type === 'closure_request' && !notif.closureApproved && (
-                          <button
-                            onClick={async () => {
-                              try {
-                                console.log('[APPROVE_CLOSURE] Approving notification:', notif.id)
-                                const response = await workerNotificationsApi.approveClosure(notif.id, walletAddress!)
-                                console.log('[APPROVE_CLOSURE] Response:', response.data)
-
-                                // Try to find the channel in current state
-                                let channel = paymentChannels.find(ch => ch.channelId === response.data.channelId)
-
-                                // If channel not in state, fetch fresh data or construct from response
-                                if (!channel) {
-                                  console.log('[APPROVE_CLOSURE] Channel not in state, refreshing payment channels...')
-                                  const freshChannels = await workerApi.getPaymentChannels(walletAddress!)
-                                  setPaymentChannels(freshChannels)
-                                  channel = freshChannels.find(ch => ch.channelId === response.data.channelId)
-
-                                  // If still not found, construct minimal channel object from response
-                                  if (!channel) {
-                                    console.log('[APPROVE_CLOSURE] Constructing channel from response data')
-                                    channel = {
-                                      id: notif.id, // Use notification ID temporarily
-                                      channelId: response.data.channelId,
-                                      jobName: response.data.jobName,
-                                      balance: response.data.balance,
-                                      escrowBalance: response.data.escrowBalance,
-                                      employer: response.data.organizationName,
-                                      status: 'active',
-                                      hourlyRate: 0, // Will be fetched from backend
-                                      hoursAccumulated: 0
-                                    }
-                                  }
-                                }
-
-                                console.log('[APPROVE_CLOSURE] Opening close confirmation modal')
-                                setSelectedChannel(channel)
-                                setShowCancelConfirm(true)
-                                setShowNotifications(false)
-
-                              } catch (error: any) {
-                                console.error('[APPROVE_CLOSURE_ERROR]', error)
-                                alert(`❌ FAILED TO APPROVE CLOSURE: ${error.message}`)
-                              }
-                            }}
-                            className="px-3 py-1 bg-green-500 hover:bg-green-600 text-white font-bold rounded text-xs uppercase tracking-wide transition-colors"
-                          >
-                            APPROVE & CLOSE
-                          </button>
-                        )}
-
-                        {notif.closureApproved && (
-                          <span className="text-xs text-green-600 font-bold uppercase">
-                            ✅ APPROVED
-                          </span>
-                        )}
-
                         {!notif.isRead && (
                           <button
                             onClick={async () => {
