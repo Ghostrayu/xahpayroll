@@ -316,12 +316,18 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
             
             // Provide more helpful error message
             let errorMessage = 'Failed to connect with Xaman'
-            if (xamanError.message?.includes('API')) {
-              errorMessage = 'Invalid Xaman API credentials. Please check your API key and secret.'
+
+            // Check for backend API error response (rate limiting, etc)
+            if (xamanError.response?.data?.error?.message) {
+              errorMessage = xamanError.response.data.error.message
             } else if (xamanError.response?.data?.error) {
               errorMessage = `Xaman API Error: ${xamanError.response.data.error}`
+            } else if (xamanError.message?.includes('API')) {
+              errorMessage = 'Invalid Xaman API credentials. Please check your API key and secret.'
+            } else if (xamanError.message) {
+              errorMessage = xamanError.message
             }
-            
+
             throw new Error(errorMessage)
           }
           break

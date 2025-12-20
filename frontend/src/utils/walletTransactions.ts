@@ -166,23 +166,32 @@ async function submitWithXaman(transaction: any, _network: string, customDescrip
         }
 
         const statusData = await statusResponse.json()
+
+        // Validate response structure
+        if (!statusData || !statusData.data) {
+          console.warn('[XAMAN] Invalid payload status response, retrying...', statusData)
+          continue
+        }
+
         const { signed, resolved, expired, txid } = statusData.data
 
         console.log('[XAMAN] Payload status:', { signed, resolved, expired, txid, attempt: attempts })
 
         // Check if payload expired
-        if (expired) {
+        if (expired === true) {
+          console.error('[XAMAN] ❌ Payload expired')
           return {
             success: false,
             error: 'XAMAN PAYLOAD EXPIRED. PLEASE TRY AGAIN.'
           }
         }
 
-        // Check if user rejected
-        if (resolved && !signed) {
+        // Check if user rejected (resolved=true but not signed)
+        if (resolved === true && signed === false) {
+          console.error('[XAMAN] ❌ Transaction rejected by user')
           return {
             success: false,
-            error: 'TRANSACTION REJECTED BY USER'
+            error: 'TRANSACTION REJECTED IN XAMAN. PLEASE TRY AGAIN.'
           }
         }
 
@@ -207,9 +216,19 @@ async function submitWithXaman(transaction: any, _network: string, customDescrip
     }
 
     // Timeout after 5 minutes
+    console.error('[XAMAN] ❌ Timeout: User did not sign transaction within 5 minutes')
     return {
       success: false,
-      error: 'TIMEOUT: USER DID NOT SIGN TRANSACTION WITHIN 5 MINUTES'
+      error:
+        'TIMEOUT: XAMAN SIGNATURE NOT RECEIVED WITHIN 5 MINUTES.\n\n' +
+        'POSSIBLE CAUSES:\n' +
+        '• WALLET NOT ACTIVATED ON XAHAU (NEED 10+ XAH)\n' +
+        '• NETWORK MISMATCH (CHECK XAMAN NETWORK SETTINGS)\n' +
+        '• XAMAN APP CLOSED OR DISCONNECTED\n\n' +
+        'TROUBLESHOOTING:\n' +
+        '1. VERIFY YOUR WALLET HAS FUNDS ON XAHAU LEDGER\n' +
+        '2. CHECK XAMAN SETTINGS → NETWORK → "XAHAU TESTNET"\n' +
+        '3. REFRESH PAGE AND TRY AGAIN'
     }
 
   } catch (error: any) {

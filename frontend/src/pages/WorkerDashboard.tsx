@@ -13,7 +13,7 @@ import { closePaymentChannel } from '../utils/paymentChannels'
 const WorkerDashboard: React.FC = () => {
   const { userName } = useAuth()
   const { balance, reserve, isConnected, walletAddress, network, provider } = useWallet()
-  const { earnings, workSessions, isLoading, refreshData } = useData()
+  const { earnings, workSessions, refreshData } = useData()
 
   // Payment channel state
   const [paymentChannels, setPaymentChannels] = useState<any[]>([])
@@ -127,7 +127,7 @@ const WorkerDashboard: React.FC = () => {
     if (hours > 24) {
       const days = Math.floor(hours / 24)
       return `${days} day${days !== 1 ? 's' : ''} remaining`
-    } else if hours > 0) {
+    } else if (hours > 0) {
       return `${hours}h ${minutes}m remaining`
     } else {
       return `${minutes}m remaining`
@@ -223,11 +223,7 @@ const WorkerDashboard: React.FC = () => {
           balance: xrplTransaction.Balance,
           escrowReturn: xrplTransaction.Amount,
           account: walletAddress,
-          publicKey: xrplTransaction.Public,
-          // CRITICAL: Specify closure type for validation
-          isSourceClosure: false, // Worker closure = destination closure
-          sourceAddress: selectedChannel.ngoWalletAddress, // NGO wallet (from initial fetch)
-          destinationAddress: walletAddress // Worker wallet
+          publicKey: xrplTransaction.Public
         },
         provider,
         network
@@ -353,14 +349,16 @@ const WorkerDashboard: React.FC = () => {
       } else if (data.status === 'closing') {
         alertMessage += `STATUS: SCHEDULED FOR CLOSURE\n`
         alertMessage += `EXPIRATION: ${new Date(data.data.expirationTime).toLocaleString()}\n`
-        alertMessage += `ESCROW: ${data.data.escrowAmount.toLocaleString()} XAH\n`
-        alertMessage += `BALANCE: ${data.data.balance.toLocaleString()} XAH\n`
-        alertMessage += `SETTLE DELAY: ${data.data.settleDelay} seconds`
+        alertMessage += `LEDGER ESCROW: ${data.data.escrowAmount.toLocaleString()} XAH\n`
+        alertMessage += `LEDGER CLAIMS: ${data.data.balance.toLocaleString()} XAH\n`
+        alertMessage += `SETTLE DELAY: ${data.data.settleDelay} seconds\n\n`
+        alertMessage += `NOTE: YOUR WORK SESSION EARNINGS ARE TRACKED SEPARATELY IN DATABASE`
       } else if (data.status === 'active') {
         alertMessage += `STATUS: ACTIVE\n`
-        alertMessage += `ESCROW: ${data.data.escrowAmount.toLocaleString()} XAH\n`
-        alertMessage += `BALANCE: ${data.data.balance.toLocaleString()} XAH\n`
-        alertMessage += `SETTLE DELAY: ${data.data.settleDelay} seconds`
+        alertMessage += `LEDGER ESCROW: ${data.data.escrowAmount.toLocaleString()} XAH\n`
+        alertMessage += `LEDGER CLAIMS: ${data.data.balance.toLocaleString()} XAH\n`
+        alertMessage += `SETTLE DELAY: ${data.data.settleDelay} seconds\n\n`
+        alertMessage += `NOTE: YOUR WORK SESSION EARNINGS ARE TRACKED SEPARATELY IN DATABASE`
       }
 
       alert(alertMessage)
@@ -722,10 +720,13 @@ const WorkerDashboard: React.FC = () => {
                     <div className="grid grid-cols-2 gap-2 mb-3">
                       <div className="bg-white/60 rounded-lg p-2 border border-green-200">
                         <p className="text-xs text-gray-600 uppercase tracking-wide font-semibold mb-0.5">
-                          ACCUMULATED
+                          COMPLETED SESSIONS
                         </p>
                         <p className="text-base font-extrabold text-green-600">
                           {channel.balance?.toLocaleString() || '0'} XAH
+                        </p>
+                        <p className="text-[9px] text-gray-500 mt-0.5">
+                          SAVED TO DATABASE
                         </p>
                       </div>
                       <div className="bg-white/60 rounded-lg p-2 border border-blue-200">
@@ -745,6 +746,17 @@ const WorkerDashboard: React.FC = () => {
                       maxDailyHours={channel.maxDailyHours || 8}
                       escrowBalance={channel.escrowBalance || 0}
                       channelStatus={channel.status}
+                      onClockOut={async () => {
+                        console.log('[WORKER_DASHBOARD] Refreshing after clock out...')
+                        try {
+                          await refreshData()
+                          console.log('[WORKER_DASHBOARD] refreshData complete')
+                          await fetchPaymentChannels()
+                          console.log('[WORKER_DASHBOARD] fetchPaymentChannels complete')
+                        } catch (error) {
+                          console.error('[WORKER_DASHBOARD] Refresh error:', error)
+                        }
+                      }}
                     />
 
                     <div className="flex justify-end gap-2 mt-4">
@@ -1006,8 +1018,8 @@ const WorkerDashboard: React.FC = () => {
                             alert(`✅ ${data.data.message}`)
                             // Refresh notifications
                             const freshNotifications = await workerNotificationsApi.getNotifications(walletAddress!)
-                            setNotifications(freshNotifications)
-                            setUnreadCount(freshNotifications.filter((n: any) => !n.isRead).length)
+                            setNotifications(freshNotifications.notifications)
+                            setUnreadCount(freshNotifications.unreadCount)
                           } else {
                             alert('❌ FAILED TO CLEAR NOTIFICATIONS')
                           }

@@ -22,6 +22,9 @@ export interface ApiResponse<T> {
   data?: T
   error?: {
     message: string
+    code?: string
+    unpaidBalance?: number
+    callerType?: string
   }
 }
 

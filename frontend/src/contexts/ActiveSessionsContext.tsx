@@ -59,7 +59,7 @@ interface ActiveSessionsProviderProps {
  * Manages worker's active work sessions globally
  */
 export function ActiveSessionsProvider({ children }: ActiveSessionsProviderProps) {
-  const { user } = useAuth()
+  const { walletAddress, userType, isLoggedIn } = useAuth()
   const [activeSessions, setActiveSessions] = useState<Map<number, ActiveWorkSession>>(new Map())
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -68,8 +68,11 @@ export function ActiveSessionsProvider({ children }: ActiveSessionsProviderProps
    * Fetch active sessions from backend
    */
   const refreshActiveSessions = useCallback(async () => {
+    console.log('[ACTIVE_SESSIONS] Fetching sessions:', { isLoggedIn, userType, walletAddress })
+
     // Only fetch if user is logged in as employee
-    if (!user || user.userType !== 'employee') {
+    if (!isLoggedIn || userType !== 'employee' || !walletAddress) {
+      console.log('[ACTIVE_SESSIONS] Not fetching - conditions not met')
       setActiveSessions(new Map())
       return
     }
@@ -78,15 +81,19 @@ export function ActiveSessionsProvider({ children }: ActiveSessionsProviderProps
       setIsLoading(true)
       setError(null)
 
-      const response = await workSessionsApi.getActiveSessions(user.walletAddress)
+      console.log('[ACTIVE_SESSIONS] Calling API for wallet:', walletAddress)
+      const response = await workSessionsApi.getActiveSessions(walletAddress)
+      console.log('[ACTIVE_SESSIONS] API response:', response)
 
       if (response.success && response.data) {
         // Convert array to Map for O(1) lookup by payment channel ID
         const sessionsMap = new Map<number, ActiveWorkSession>()
         response.data.activeSessions.forEach((session) => {
+          console.log('[ACTIVE_SESSIONS] Adding session:', session)
           sessionsMap.set(session.paymentChannelId, session)
         })
 
+        console.log('[ACTIVE_SESSIONS] Sessions loaded:', sessionsMap.size)
         setActiveSessions(sessionsMap)
       } else {
         throw new Error('FAILED TO FETCH ACTIVE SESSIONS')
@@ -94,11 +101,11 @@ export function ActiveSessionsProvider({ children }: ActiveSessionsProviderProps
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'UNKNOWN ERROR'
       setError(errorMessage)
-      console.error('Error fetching active sessions:', err)
+      console.error('[ACTIVE_SESSIONS] Error fetching active sessions:', err)
     } finally {
       setIsLoading(false)
     }
-  }, [user])
+  }, [isLoggedIn, userType, walletAddress])
 
   /**
    * Add active session to state (after clock-in)

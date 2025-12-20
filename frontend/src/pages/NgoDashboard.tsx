@@ -255,10 +255,10 @@ const NgoDashboard: React.FC = () => {
         alert(
           `✅ PAYMENT CHANNEL CLOSED IMMEDIATELY!\n\n` +
           `💚 WORKER EARNED ALL FUNDED AMOUNT\n\n` +
-          `ESCROW RETURNED: 0 XAH (ALL PAID TO WORKER)\n` +
-          `WORKER EARNED: ${workerPayment.toFixed(2)} XAH\n\n` +
+          `ESCROW RETURNED TO NGO: 0 XAH (WORKER EARNED FULL ESCROW)\n` +
+          `WORKER PAYMENT: ${workerPayment.toFixed(2)} XAH\n\n` +
           `TRANSACTION: ${txResult.hash}\n\n` +
-          `NOTE: CHANNEL CLOSED IMMEDIATELY BECAUSE NO XRP REMAINED IN ESCROW. THE WORKER EARNED THE FULL AMOUNT!`
+          `NOTE: WORKER EARNED THE FULL ESCROW AMOUNT. NO FUNDS REMAIN TO RETURN TO NGO.`
         )
       } else {
         // Standard immediate closure
@@ -734,10 +734,13 @@ const NgoDashboard: React.FC = () => {
                         </div>
                         <div className="bg-white/60 rounded-lg p-2 border border-green-200">
                           <p className="text-[10px] text-gray-600 uppercase tracking-wide font-semibold mb-0.5">
-                            Accumulated Balance
+                            Completed Sessions
                           </p>
                           <p className="text-base font-extrabold text-green-600">
                             {channel.balance.toLocaleString()} XAH
+                          </p>
+                          <p className="text-[8px] text-gray-500 mt-0.5">
+                            SAVED TO DATABASE
                           </p>
                         </div>
                         <div className="bg-white/60 rounded-lg p-2 border border-blue-200">

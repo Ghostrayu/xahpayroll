@@ -3,7 +3,7 @@
  * Inline timer display within payment channel card
  */
 
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useActiveSessions } from '../contexts/ActiveSessionsContext'
 import { useWorkSessionTimer } from '../hooks/useWorkSessionTimer'
 import { workSessionsApi } from '../services/api'
@@ -18,6 +18,7 @@ interface WorkSessionTimerProps {
   maxDailyHours: number
   escrowBalance: number
   channelStatus: 'active' | 'closed' | 'closing'
+  onClockOut?: () => void | Promise<void>
 }
 
 /**
@@ -30,8 +31,9 @@ export function WorkSessionTimer({
   maxDailyHours,
   escrowBalance,
   channelStatus,
+  onClockOut,
 }: WorkSessionTimerProps) {
-  const { user } = useAuth()
+  const { walletAddress } = useAuth()
   const { getSessionByChannelId, addActiveSession, removeActiveSession } = useActiveSessions()
   const [isClockingIn, setIsClockingIn] = useState(false)
   const [isClockingOut, setIsClockingOut] = useState(false)
@@ -40,6 +42,11 @@ export function WorkSessionTimer({
 
   // Get active session for this payment channel
   const activeSession = getSessionByChannelId(paymentChannelId)
+
+  // Debug logging
+  useEffect(() => {
+    console.log('[TIMER] Active session state:', { paymentChannelId, hasSession: !!activeSession, session: activeSession })
+  }, [activeSession, paymentChannelId])
 
   // Timer hook (only active when session exists)
   const timer = useWorkSessionTimer(
@@ -68,46 +75,54 @@ export function WorkSessionTimer({
    * Handle clock-in
    */
   const handleClockIn = async () => {
-    if (!user) return
+    if (!walletAddress) return
 
     try {
+      console.log('[CLOCK_IN] Starting clock-in', { paymentChannelId, walletAddress })
       setIsClockingIn(true)
       setError(null)
 
       const response = await workSessionsApi.clockIn(
-        user.walletAddress,
+        walletAddress,
         paymentChannelId
       )
 
-      if (response.success && response.data) {
+      console.log('[CLOCK_IN] API response:', response)
+
+      // Handle response format (backend returns workSession directly, not in data wrapper)
+      const workSession = (response as any).data?.workSession || (response as any).workSession
+
+      if (response.success && workSession) {
         // Add to active sessions context
         const newSession = {
-          id: response.data.workSession.id,
-          paymentChannelId: response.data.workSession.paymentChannelId,
+          id: workSession.id,
+          paymentChannelId: workSession.paymentChannelId,
           paymentChannel: {
             id: paymentChannelId,
             jobName: '', // Will be filled by context refresh
             organizationName: '',
-            hourlyRate: response.data.workSession.hourlyRate,
-            maxDailyHours: response.data.workSession.maxDailyHours,
+            hourlyRate: workSession.hourlyRate,
+            maxDailyHours: workSession.maxDailyHours,
             escrowFundedAmount: escrowBalance,
             accumulatedBalance: 0,
           },
-          clockIn: response.data.workSession.clockIn,
-          hourlyRate: response.data.workSession.hourlyRate,
+          clockIn: workSession.clockIn,
+          hourlyRate: workSession.hourlyRate,
           sessionStatus: 'active' as const,
           elapsedSeconds: 0,
           currentEarnings: 0,
         }
 
+        console.log('[CLOCK_IN] Adding to active sessions:', newSession)
         addActiveSession(paymentChannelId, newSession)
-        alert(response.data.message || 'CLOCKED IN SUCCESSFULLY')
+        console.log('[CLOCK_IN] Session added successfully')
+        alert((response as any).message || (response as any).data?.message || 'CLOCKED IN SUCCESSFULLY')
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'FAILED TO CLOCK IN'
       setError(errorMessage)
       alert(errorMessage)
-      console.error('Clock-in error:', err)
+      console.error('[CLOCK_IN] Error:', err)
     } finally {
       setIsClockingIn(false)
     }
@@ -117,7 +132,7 @@ export function WorkSessionTimer({
    * Handle clock-out
    */
   const handleClockOut = async () => {
-    if (!user || !activeSession) return
+    if (!walletAddress || !activeSession) return
 
     try {
       setIsClockingOut(true)
@@ -125,19 +140,37 @@ export function WorkSessionTimer({
       setShowConfirmModal(false)
 
       const response = await workSessionsApi.clockOut(
-        user.walletAddress,
+        walletAddress,
         activeSession.id
       )
 
       if (response.success && response.data) {
         // Remove from active sessions context
         removeActiveSession(paymentChannelId)
-        alert(response.data.message || 'CLOCKED OUT SUCCESSFULLY')
 
-        // Optional: Show earnings summary
+        // Show earnings summary
         const earnings = response.data.workSession.totalAmount.toFixed(2)
         const hours = response.data.workSession.hoursWorked.toFixed(2)
         console.log(`SESSION COMPLETE: ${hours} hours, ${earnings} XAH earned`)
+
+        // Trigger dashboard refresh callback BEFORE showing alert
+        // This ensures data updates even if user quickly dismisses alert
+        if (onClockOut) {
+          console.log('[CLOCK_OUT] Triggering dashboard refresh...')
+          try {
+            await onClockOut()
+            console.log('[CLOCK_OUT] Dashboard refresh complete')
+          } catch (refreshError) {
+            console.error('[CLOCK_OUT] Dashboard refresh failed:', refreshError)
+          }
+        }
+
+        // Show success message after refresh completes
+        const successMessage = `${response.data.message || 'CLOCKED OUT SUCCESSFULLY'}\n\n` +
+          `SESSION EARNINGS: ${earnings} XAH\n` +
+          `HOURS WORKED: ${hours}h\n\n` +
+          `YOUR COMPLETED SESSIONS BALANCE HAS BEEN UPDATED`
+        alert(successMessage)
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'FAILED TO CLOCK OUT'
@@ -168,18 +201,21 @@ export function WorkSessionTimer({
         {/* Timer Display */}
         <div className="flex justify-between items-center mb-3">
           <div>
-            <div className="text-2xl font-bold text-green-700 dark:text-green-400">
+            <div className="text-2xl font-bold !text-black">
               {timer.elapsedFormatted}
             </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400">
-              EARNINGS: {timer.currentEarnings.toFixed(4)} XAH
+            <div className="text-sm font-bold !text-black">
+              CURRENT SESSION: {timer.currentEarnings.toFixed(4)} XAH
+            </div>
+            <div className="text-[9px] font-semibold !text-black">
+              NOT YET SAVED - CLOCK OUT TO SAVE
             </div>
           </div>
           <div className="text-right">
-            <div className="text-xs text-gray-500 dark:text-gray-400">
+            <div className="text-xs font-bold !text-black">
               RATE: {hourlyRate} XAH/HR
             </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">
+            <div className="text-xs font-bold !text-black">
               MAX: {maxDailyHours}H/DAY
             </div>
           </div>
@@ -219,20 +255,20 @@ export function WorkSessionTimer({
         {showConfirmModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
-              <h3 className="text-xl font-bold mb-4">⚠️ CONFIRM CLOCK OUT</h3>
+              <h3 className="text-xl font-bold mb-4 !text-gray-900 dark:!text-white">⚠️ CONFIRM CLOCK OUT</h3>
 
               <div className="space-y-2 mb-6 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">DURATION:</span>
-                  <span className="font-semibold">{timer.elapsedFormatted}</span>
+                  <span className="!text-gray-700 dark:!text-gray-300 font-semibold">DURATION:</span>
+                  <span className="font-bold !text-gray-900 dark:!text-white">{timer.elapsedFormatted}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">RATE:</span>
-                  <span className="font-semibold">{hourlyRate} XAH/HR</span>
+                  <span className="!text-gray-700 dark:!text-gray-300 font-semibold">RATE:</span>
+                  <span className="font-bold !text-gray-900 dark:!text-white">{hourlyRate} XAH/HR</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">EARNINGS:</span>
-                  <span className="font-semibold text-green-600">{timer.currentEarnings.toFixed(4)} XAH</span>
+                  <span className="!text-gray-700 dark:!text-gray-300 font-semibold">EARNINGS:</span>
+                  <span className="font-bold !text-green-700 dark:!text-green-400">{timer.currentEarnings.toFixed(4)} XAH</span>
                 </div>
               </div>
 

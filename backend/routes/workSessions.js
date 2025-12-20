@@ -362,7 +362,9 @@ router.get('/active', async (req, res) => {
 
     res.json({
       success: true,
-      activeSessions
+      data: {
+        activeSessions
+      }
     })
   } catch (error) {
     console.error('Error fetching active sessions:', error)
@@ -465,11 +467,13 @@ router.get('/ngo-active', async (req, res) => {
 
     res.json({
       success: true,
-      activeSessions,
-      summary: {
-        totalActiveWorkers: summary.totalActiveWorkers,
-        totalActiveHours: parseFloat(summary.totalActiveHours.toFixed(2)),
-        totalCurrentEarnings: parseFloat(summary.totalCurrentEarnings.toFixed(8))
+      data: {
+        activeSessions,
+        summary: {
+          totalActiveWorkers: summary.totalActiveWorkers,
+          totalActiveHours: parseFloat(summary.totalActiveHours.toFixed(2)),
+          totalCurrentEarnings: parseFloat(summary.totalCurrentEarnings.toFixed(8))
+        }
       }
     })
   } catch (error) {

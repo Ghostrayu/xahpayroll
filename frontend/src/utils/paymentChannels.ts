@@ -715,6 +715,49 @@ export const claimChannelBalance = async (
 }
 
 /**
+ * Check if account exists on Xahau ledger
+ * Returns true if account is activated, false otherwise
+ *
+ * CRITICAL: Workers need activated accounts to submit transactions
+ * Account activation requires minimum 10-20 XAH on testnet/mainnet
+ */
+async function checkAccountExists(
+  accountAddress: string,
+  network: string
+): Promise<boolean> {
+  try {
+    const wsUrl = network === 'testnet'
+      ? 'wss://xahau-test.net'
+      : 'wss://xahau.network'
+
+    const client = new Client(wsUrl)
+    await client.connect()
+
+    try {
+      await client.request({
+        command: 'account_info',
+        account: accountAddress,
+        ledger_index: 'validated'
+      })
+
+      await client.disconnect()
+      return true  // Account exists and is activated
+    } catch (error: any) {
+      await client.disconnect()
+
+      if (error.data?.error === 'actNotFound') {
+        return false  // Account NOT activated on ledger
+      }
+
+      throw error  // Other error (network issue, etc.)
+    }
+  } catch (error: any) {
+    console.error('[ACCOUNT_CHECK_ERROR]', error)
+    throw new Error('Failed to verify account activation')
+  }
+}
+
+/**
  * Close payment channel (optionally with final balance claim)
  * Uses PaymentChannelClaim with tfClose flag
  */
@@ -725,6 +768,32 @@ export const closePaymentChannel = async (
 ): Promise<CloseChannelResult> => {
   if (!provider) {
     return { success: false, error: 'No wallet connected' }
+  }
+
+  // PRE-FLIGHT CHECK: Verify account exists on Xahau ledger
+  // This prevents "unable to set account sequence" error in Xaman
+  try {
+    console.log('[PREFLIGHT_CHECK] Verifying account activation on ledger:', params.account)
+    const accountExists = await checkAccountExists(params.account, network)
+
+    if (!accountExists) {
+      console.error('[PREFLIGHT_CHECK] Account not activated on ledger')
+      return {
+        success: false,
+        error:
+          'ACCOUNT NOT ACTIVATED ON XAHAU LEDGER.\n\n' +
+          'YOUR WALLET NEEDS AT LEAST 10 XAH TO ACTIVATE.\n\n' +
+          'PLEASE:\n' +
+          '1. ADD FUNDS TO YOUR WALLET\n' +
+          '2. OR USE TESTNET FAUCET: https://xahau-test.net/faucet\n' +
+          '3. THEN TRY CLOSING THE CHANNEL AGAIN'
+      }
+    }
+
+    console.log('[PREFLIGHT_CHECK] Account activation verified ✅')
+  } catch (error: any) {
+    console.warn('[PREFLIGHT_CHECK_WARNING]', error.message)
+    // Continue anyway - let wallet provider handle the error with its own messaging
   }
 
   try {
