@@ -715,49 +715,6 @@ export const claimChannelBalance = async (
 }
 
 /**
- * Check if account exists on Xahau ledger
- * Returns true if account is activated, false otherwise
- *
- * CRITICAL: Workers need activated accounts to submit transactions
- * Account activation requires minimum 10-20 XAH on testnet/mainnet
- */
-async function checkAccountExists(
-  accountAddress: string,
-  network: string
-): Promise<boolean> {
-  try {
-    const wsUrl = network === 'testnet'
-      ? 'wss://xahau-test.net'
-      : 'wss://xahau.network'
-
-    const client = new Client(wsUrl)
-    await client.connect()
-
-    try {
-      await client.request({
-        command: 'account_info',
-        account: accountAddress,
-        ledger_index: 'validated'
-      })
-
-      await client.disconnect()
-      return true  // Account exists and is activated
-    } catch (error: any) {
-      await client.disconnect()
-
-      if (error.data?.error === 'actNotFound') {
-        return false  // Account NOT activated on ledger
-      }
-
-      throw error  // Other error (network issue, etc.)
-    }
-  } catch (error: any) {
-    console.error('[ACCOUNT_CHECK_ERROR]', error)
-    throw new Error('Failed to verify account activation')
-  }
-}
-
-/**
  * Close payment channel (optionally with final balance claim)
  * Uses PaymentChannelClaim with tfClose flag
  */

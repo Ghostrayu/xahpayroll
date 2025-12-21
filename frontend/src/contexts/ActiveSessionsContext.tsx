@@ -3,7 +3,7 @@
  * Global state management for worker's active work sessions
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
 import { workSessionsApi } from '../services/api'
 import { useAuth } from './AuthContext'
 

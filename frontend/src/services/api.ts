@@ -434,7 +434,11 @@ export const paymentChannelApi = {
     txHash: string,
     walletAddress: string,
     userType: 'ngo' | 'worker'
-  ): Promise<ApiResponse<{ channel: any }>> {
+  ): Promise<ApiResponse<{
+    channel: any
+    scheduledClosure?: boolean
+    expirationTime?: number
+  }>> {
     const body: any = { txHash }
 
     if (userType === 'ngo') {

@@ -16,7 +16,7 @@ interface DeleteProfileModalProps {
 type ModalStep = 'eligibility-check' | 'blocked' | 'eligible' | 'confirmation' | 'success'
 
 const DeleteProfileModal: React.FC<DeleteProfileModalProps> = ({ isOpen, onClose }) => {
-  const { userName, logout } = useAuth()
+  const { logout } = useAuth()
   const { walletAddress, disconnectWallet } = useWallet()
 
   const [currentStep, setCurrentStep] = useState<ModalStep>('eligibility-check')

@@ -206,7 +206,10 @@ const NgoDashboard: React.FC = () => {
           balance: xrplTransaction.Balance,
           escrowReturn: xrplTransaction.Amount,
           account: walletAddress,
-          publicKey: xrplTransaction.Public
+          publicKey: xrplTransaction.PublicKey,
+          isSourceClosure: true, // NGO is the source (sender) of the payment channel
+          sourceAddress: walletAddress,
+          destinationAddress: channel.workerWalletAddress
         },
         provider,
         network
@@ -230,13 +233,13 @@ const NgoDashboard: React.FC = () => {
       console.log('[CANCEL_FLOW] Step 3 complete. Channel closed successfully')
 
       // Enhanced success messaging based on closure type
-      const isScheduledClosure = confirmResponse.scheduledClosure || false
+      const isScheduledClosure = confirmResponse.data?.scheduledClosure || false
       const escrowReturn = parseFloat(channel.escrowReturn || '0')
       const workerPayment = parseFloat(channel.accumulatedBalance || '0')
 
       if (isScheduledClosure) {
         // Scheduled closure (XRP remaining in channel)
-        const expirationTime = confirmResponse.expirationTime
+        const expirationTime = confirmResponse.data?.expirationTime
         const expirationDate = expirationTime
           ? new Date((expirationTime + 946684800) * 1000).toLocaleString()
           : 'PENDING CONFIRMATION'
@@ -782,16 +785,16 @@ const NgoDashboard: React.FC = () => {
                           </button>
                           <button
                             onClick={() => handleSyncChannel(channel)}
-                            disabled={syncingChannels.has(channel.channelId) || wasRecentlySynced(channel.lastLedgerSync) || !channel.channelId}
+                            disabled={syncingChannels.has(channel.channelId || '') || wasRecentlySynced(channel.lastLedgerSync || null) || !channel.channelId}
                             className={`px-3 py-1 text-white font-bold rounded text-[10px] uppercase tracking-wide transition-colors disabled:cursor-not-allowed ${
-                              wasRecentlySynced(channel.lastLedgerSync)
+                              wasRecentlySynced(channel.lastLedgerSync || null)
                                 ? 'bg-green-600'
                                 : 'bg-purple-500 hover:bg-purple-600 disabled:opacity-50'
                             }`}
                           >
-                            {syncingChannels.has(channel.channelId) ? (
+                            {syncingChannels.has(channel.channelId || '') ? (
                               'SYNCING...'
-                            ) : wasRecentlySynced(channel.lastLedgerSync) ? (
+                            ) : wasRecentlySynced(channel.lastLedgerSync || null) ? (
                               'SYNCED ✓'
                             ) : (
                               'SYNC WITH LEDGER'

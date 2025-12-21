@@ -53,7 +53,7 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
 
   const [isCreating, setIsCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [status, setStatus] = useState<string>('')
+  const [, setStatus] = useState<string>('') // Used for UI status updates during creation
   const [xahUsdPrice, setXahUsdPrice] = useState<number | null>(null)
   const [priceLoading, setPriceLoading] = useState(false)
   const [usdConverterInput, setUsdConverterInput] = useState<string>('')
@@ -403,8 +403,7 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
               organizationWalletAddress: walletAddress,
               workerWalletAddress: config.workerAddress,
               jobName: config.jobName,
-              hourlyRate: config.hourlyRate,
-              balanceUpdateFrequency: config.balanceUpdateFrequency
+              hourlyRate: config.hourlyRate
             })
           })
 

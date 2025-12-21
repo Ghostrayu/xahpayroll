@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import MultiStepSignupModal from './MultiStepSignupModal'
 import crossmarkLogo from '../assets/images/primary_128x128.png'
 import xamanLogo from '../assets/images/App icon 512px.png'
-import { isInstalled as gemWalletIsInstalled } from '@gemwallet/api'
+// GemWallet API will be dynamically imported for availability check
 
 interface WalletSelectionModalProps {
   isOpen: boolean
@@ -22,7 +22,7 @@ interface WalletOption {
   available: boolean
 }
 
-const WalletSelectionModal: React.FC<WalletSelectionModalProps> = ({ isOpen, onClose, userType }) => {
+const WalletSelectionModal: React.FC<WalletSelectionModalProps> = ({ isOpen, onClose }) => {
   const { connectWallet, isLoading, error, xamanQrUrl, walletAddress } = useWallet()
   const { login, updateProfile } = useAuth()
   const navigate = useNavigate()
@@ -36,12 +36,14 @@ const WalletSelectionModal: React.FC<WalletSelectionModalProps> = ({ isOpen, onC
   // Check if browser extensions are available
   const isCrossmarkAvailable = typeof window !== 'undefined' && !!(window as any).crossmark
   
-  // GemWallet detection using @gemwallet/api
+  // GemWallet detection - dynamically imported to reduce initial bundle
   const [isGemWalletAvailable, setIsGemWalletAvailable] = React.useState(false)
-  
+
   React.useEffect(() => {
     const checkGemWallet = async () => {
       try {
+        // Dynamically import GemWallet API only for availability check
+        const { isInstalled: gemWalletIsInstalled } = await import('@gemwallet/api')
         const result = await gemWalletIsInstalled()
         console.log('GemWallet isInstalled result:', result)
         const isInstalled = result?.result?.isInstalled === true

@@ -51,28 +51,29 @@ const WorkerDashboard: React.FC = () => {
    * - Idle workers: 240 → 0 API calls/hour (100% reduction)
    * - Active workers: 120 → 0 API calls/hour (100% reduction)
    */
-  useEffect(() => {
-    const fetchWorkerChannels = async () => {
-      if (!walletAddress) return
+  const fetchPaymentChannels = async () => {
+    if (!walletAddress) return
 
-      try {
-        console.log('[WORKER_CHANNELS] Fetching channels for worker:', walletAddress)
-        const channels = await workerApi.getPaymentChannels(walletAddress)
-        console.log('[WORKER_CHANNELS] Fetched channels:', channels.length)
+    try {
+      console.log('[WORKER_CHANNELS] Fetching channels for worker:', walletAddress)
+      const channels = await workerApi.getPaymentChannels(walletAddress)
+      console.log('[WORKER_CHANNELS] Fetched channels:', channels.length)
 
-        // Filter out fully closed channels (but keep 'closing' channels visible)
-        // Workers should see channels scheduled for closure so they can track final payments
-        const activeChannels = channels.filter(ch => ch.status !== 'closed')
-        setPaymentChannels(activeChannels)
-      } catch (error) {
-        console.error('[WORKER_CHANNELS_ERROR] Failed to fetch worker payment channels:', error)
-        // Don't show alert for this - just log the error
-        // Payment channels section will simply not show if empty
-      }
+      // Filter out fully closed channels (but keep 'closing' channels visible)
+      // Workers should see channels scheduled for closure so they can track final payments
+      const activeChannels = channels.filter(ch => ch.status !== 'closed')
+      setPaymentChannels(activeChannels)
+    } catch (error) {
+      console.error('[WORKER_CHANNELS_ERROR] Failed to fetch worker payment channels:', error)
+      // Don't show alert for this - just log the error
+      // Payment channels section will simply not show if empty
     }
+  }
 
+  useEffect(() => {
     // Initial fetch only (no polling)
-    fetchWorkerChannels()
+    fetchPaymentChannels()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [walletAddress])
 
   // Fetch worker notifications
@@ -223,7 +224,10 @@ const WorkerDashboard: React.FC = () => {
           balance: xrplTransaction.Balance,
           escrowReturn: xrplTransaction.Amount,
           account: walletAddress,
-          publicKey: xrplTransaction.Public
+          publicKey: xrplTransaction.PublicKey,
+          isSourceClosure: false, // Worker is the destination (receiver) of the payment channel
+          sourceAddress: channel.ngoWalletAddress || channel.organizationWalletAddress,
+          destinationAddress: walletAddress
         },
         provider,
         network

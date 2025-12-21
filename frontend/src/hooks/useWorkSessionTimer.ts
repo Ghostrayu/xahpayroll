@@ -32,7 +32,7 @@ export function useWorkSessionTimer(
   hoursWorkedToday: number = 0
 ): UseWorkSessionTimerResult {
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
-  const [clockInTime, setClockInTime] = useState<Date | null>(null)
+  const [, setClockInTime] = useState<Date | null>(null) // Used for tracking clock-in state
   const intervalRef = useRef<number | null>(null)
 
   /**

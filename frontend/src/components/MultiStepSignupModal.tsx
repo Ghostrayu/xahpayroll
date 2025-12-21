@@ -11,8 +11,7 @@
  */
 
 import { useState } from 'react'
-import { UserType } from '../contexts/AuthContext'
-import { userApi, organizationApi, workerDeletionApi } from '../services/api'
+import { userApi, workerDeletionApi } from '../services/api'
 import type { OrphanedRecordsStats } from '../types/api'
 import UserProfileStep, { UserProfileData } from './UserProfileStep'
 import OrganizationSetupStep from './OrganizationSetupStep'

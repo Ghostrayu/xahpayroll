@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { Client, Wallet, dropsToXrp, xrpToDrops } from 'xrpl'
-import { getAddress as gemWalletGetAddress, isInstalled as gemWalletIsInstalled } from '@gemwallet/api'
+// GemWallet API will be dynamically imported only when needed
 
 // Types
 export type NetworkType = 'testnet' | 'mainnet'
@@ -363,23 +363,26 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
           break
 
         case 'gemwallet':
-          // Connect to GemWallet using @gemwallet/api package
+          // Dynamically import GemWallet API only when needed (reduces initial bundle size)
           try {
+            console.log('Loading GemWallet API...')
+            const { getAddress: gemWalletGetAddress, isInstalled: gemWalletIsInstalled } = await import('@gemwallet/api')
+
             // Check if GemWallet is installed
             const installCheck = await gemWalletIsInstalled()
-            
+
             if (!installCheck.result.isInstalled) {
               throw new Error('GemWallet extension not found. Please install it from https://gemwallet.app and refresh the page.')
             }
-            
+
             // Get address from GemWallet
             const response = await gemWalletGetAddress()
-            
+
             if (response.type === 'response' && response.result?.address) {
               const walletAddress = response.result.address
               await initializeClient(network)
               await getBalanceForAddress(walletAddress, network)
-              
+
               setWalletState(prev => ({
                 ...prev,
                 isConnected: true,

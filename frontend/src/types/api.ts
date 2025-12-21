@@ -365,13 +365,21 @@ export interface NGONotification {
   workerName: string              // Worker's full name
   message: string                 // Notification message (ALL CAPS)
   metadata: {                     // Additional context data (JSONB)
+    // Worker deletion metadata
     reason?: string               // Deletion reason
     deletionDate?: string         // ISO 8601 timestamp
     deletionType?: string         // 'manual' | 'automatic'
     inactivityDays?: number       // Days of inactivity before auto-deletion
-    error?: string                // Error type for deletion_error
     blockingChannelId?: string    // Channel ID blocking deletion
     removedBy?: string            // Email/ID of admin who removed worker
+
+    // Channel closure failure metadata
+    channelId?: string            // Payment channel ID
+    txHash?: string               // Transaction hash
+    jobName?: string              // Job/channel name
+    validated?: boolean           // Transaction validation status
+    channelRemoved?: boolean      // Channel removal status on ledger
+    error?: string                // Error message/type
   }
   isRead: boolean                 // Whether notification has been read
   createdAt: string               // ISO 8601 timestamp of notification creation
