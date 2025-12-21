@@ -611,7 +611,7 @@ const NgoDashboard: React.FC = () => {
                     ℹ️ MANUAL REFRESH REQUIRED
                   </p>
                   <p className="text-xs text-blue-800 mb-2">
-                    AUTOMATIC BACKGROUND POLLING HAS BEEN DISABLED TO REDUCE SERVER LOAD. PLEASE USE THE REFRESH CONTROLS BELOW TO UPDATE YOUR DATA.
+                    PLEASE REFRESH BROWSER TO UPDATE YOUR DATA.
                   </p>
                   <div className="flex flex-wrap gap-2 text-xs text-blue-700">
                     <span className="font-semibold">• BROWSER REFRESH → FULL DASHBOARD UPDATE</span>

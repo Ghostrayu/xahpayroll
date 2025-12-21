@@ -30,6 +30,9 @@ const WorkerDashboard: React.FC = () => {
   const [unreadCount, setUnreadCount] = useState<number>(0)
   const [showNotifications, setShowNotifications] = useState(false)
 
+  // "How This Works" modal state
+  const [showHowItWorksModal, setShowHowItWorksModal] = useState(false)
+
   /**
    * Fetch worker payment channels
    *
@@ -586,7 +589,7 @@ const WorkerDashboard: React.FC = () => {
                       ℹ️ MANUAL REFRESH REQUIRED
                     </p>
                     <p className="text-xs text-blue-800 mb-2">
-                      AUTOMATIC BACKGROUND POLLING HAS BEEN DISABLED TO REDUCE SERVER LOAD. PLEASE USE THE REFRESH CONTROLS BELOW TO UPDATE YOUR DATA.
+                      PLEASE REFRESH BROWSER TO UPDATE YOUR DATA.
                     </p>
                     <div className="flex flex-wrap gap-2 text-xs text-blue-700">
                       <span className="font-semibold">• BROWSER REFRESH → FULL DASHBOARD UPDATE</span>
@@ -876,7 +879,18 @@ const WorkerDashboard: React.FC = () => {
 
             {/* Recent Payments */}
             <div className="bg-white rounded-2xl shadow-xl p-6 border-2 border-xah-blue/30">
-              <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-6">Recent Payments</h3>
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight">Recent Payments</h3>
+                <button
+                  onClick={() => setShowHowItWorksModal(true)}
+                  className="text-xs font-semibold text-xah-blue hover:text-primary-700 uppercase tracking-wide flex items-center gap-1 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  HOW THIS WORKS
+                </button>
+              </div>
               <div className="space-y-4">
                 {recentPayments.length > 0 ? (
                   recentPayments.map((payment) => (
@@ -1137,6 +1151,97 @@ const WorkerDashboard: React.FC = () => {
           callerType={unclaimedBalanceData.callerType}
           isClosing={cancelingChannel === selectedChannel.channelId}
         />
+      )}
+
+      {/* How This Works Modal */}
+      {showHowItWorksModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 border-4 border-xah-blue/40">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-xah-blue to-primary-700 text-white p-6 rounded-t-xl">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-extrabold uppercase tracking-tight">
+                  HOW RECENT PAYMENTS WORK
+                </h2>
+                <button
+                  onClick={() => setShowHowItWorksModal(false)}
+                  className="text-white hover:text-secondary-500 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <div className="space-y-4 mb-6">
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 bg-xah-blue rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span className="text-white font-bold text-sm">1</span>
+                  </div>
+                  <p className="text-gray-700 text-sm">
+                    <strong className="text-gray-900">WORK TRACKING:</strong> YOUR HOURS ARE TRACKED AUTOMATICALLY. EARNINGS ACCUMULATE WITH EACH WORK SESSION AND ARE PAID WHEN THE PAYMENT CHANNEL CLOSES.
+                  </p>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 bg-xah-blue rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span className="text-white font-bold text-sm">2</span>
+                  </div>
+                  <p className="text-gray-700 text-sm">
+                    <strong className="text-gray-900">WHAT YOU SEE HERE:</strong> THIS SECTION SHOWS YOUR COMPLETED WORK SESSIONS, NOT INDIVIDUAL LEDGER TRANSACTIONS. PAYMENT HAPPENS ONCE WHEN THE CHANNEL CLOSES.
+                  </p>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 bg-xah-blue rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span className="text-white font-bold text-sm">3</span>
+                  </div>
+                  <p className="text-gray-700 text-sm">
+                    <strong className="text-gray-900">PAYMENT CHANNELS:</strong> YOUR EMPLOYER FUNDS AN ESCROW CHANNEL ON THE XAH LEDGER. ALL ACCUMULATED EARNINGS ARE SENT TO YOUR WALLET ({walletAddress ? `${walletAddress.substring(0, 8)}...${walletAddress.substring(walletAddress.length - 6)}` : 'YOUR WALLET'}) IN ONE SECURE LEDGER TRANSACTION AT CHANNEL CLOSURE.
+                  </p>
+                </div>
+              </div>
+
+              {/* Explorer Link */}
+              <div className="bg-gradient-to-br from-primary-50 to-secondary-50 rounded-xl p-4 border-2 border-xah-blue/20">
+                <p className="text-sm text-gray-700 mb-3 font-semibold uppercase tracking-wide">
+                  📊 VIEW YOUR TRANSACTION HISTORY
+                </p>
+                <a
+                  href={
+                    network === 'mainnet'
+                      ? `https://explorer.xahau.network/${walletAddress}`
+                      : `https://explorer.xahau-test.net/${walletAddress}`
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-xah-blue hover:bg-primary-700 text-white font-bold rounded-lg transition-colors uppercase text-sm"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                  OPEN XAHAU EXPLORER
+                </a>
+                <p className="text-xs text-gray-500 mt-2 uppercase tracking-wide">
+                  VIEW ALL YOUR XAH TRANSACTIONS AND PAYMENT CHANNEL ACTIVITY ON THE LEDGER
+                </p>
+              </div>
+
+              {/* Close Button */}
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={() => setShowHowItWorksModal(false)}
+                  className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-lg transition-colors uppercase text-sm border-2 border-gray-300"
+                >
+                  GOT IT
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
