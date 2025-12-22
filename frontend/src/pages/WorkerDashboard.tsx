@@ -645,9 +645,12 @@ const WorkerDashboard: React.FC = () => {
                             {channel.jobName}
                           </span>
                         </div>
-                        <p className="text-xs text-gray-500 uppercase tracking-wide mt-1 truncate">
-                          {channel.channelId}
-                        </p>
+                        <div className="mt-1">
+                          <span className="text-xs text-gray-600 uppercase tracking-wide font-semibold">CHANNEL ID: </span>
+                          <span className="text-xs text-gray-500 uppercase tracking-wide truncate">
+                            {channel.channelId}
+                          </span>
+                        </div>
                       </div>
                       {/* Context-aware status badge with expiration alerts */}
                       {channel.status === 'closing' && isChannelExpired(channel) ? (
@@ -855,15 +858,9 @@ const WorkerDashboard: React.FC = () => {
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center space-x-4">
-                          <div>
-                            <span className="text-gray-600 uppercase font-semibold">Rate:</span>
-                            <span className="ml-1 font-bold text-xah-blue">{channel.hourlyRate?.toFixed(2) || '0'} XAH</span>
-                          </div>
-                          <div className="text-gray-600">
-                            <span className="uppercase font-semibold">Freq:</span>
-                            <span className="ml-1 font-bold text-gray-900">{channel.balanceUpdateFrequency?.toUpperCase() || 'HOURLY'}</span>
-                          </div>
+                        <div>
+                          <span className="text-gray-600 uppercase font-semibold">Hourly Rate:</span>
+                          <span className="ml-1 font-bold text-xah-blue">{channel.hourlyRate?.toFixed(2) || '0'} XAH</span>
                         </div>
                       </div>
                     </div>
