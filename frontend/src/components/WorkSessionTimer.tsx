@@ -272,6 +272,16 @@ export function WorkSessionTimer({
                 </div>
               </div>
 
+              {/* Manual Refresh Reminder */}
+              <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 border-l-4 border-blue-500 rounded">
+                <p className="text-xs font-bold text-blue-900 dark:text-blue-300 uppercase tracking-wide">
+                  ℹ️ MANUAL REFRESH REQUIRED
+                </p>
+                <p className="text-xs text-blue-800 dark:text-blue-400 mt-1">
+                  PLEASE REFRESH BROWSER AFTER CLOCKING OUT TO UPDATE YOUR DASHBOARD.
+                </p>
+              </div>
+
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowConfirmModal(false)}
