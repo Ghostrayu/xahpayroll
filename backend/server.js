@@ -74,9 +74,14 @@ app.use(globalLimiter)
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 
-// Health check endpoint
+// Health check endpoint with network configuration
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() })
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    network: process.env.XRPL_NETWORK || 'testnet',
+    environment: process.env.NODE_ENV || 'development'
+  })
 })
 
 // API Routes
