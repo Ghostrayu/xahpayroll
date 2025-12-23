@@ -159,7 +159,7 @@ const WorkerDashboard: React.FC = () => {
       amount: session.hours ? (session.hours * workerData.hourlyRate) : 0,
       time: new Date(session.clockOut!).toLocaleString(),
       status: 'Completed',
-      txHash: `0x${session.id.toString().padStart(6, '0')}`
+      txHash: `SESSION #${session.id}`
     }))
 
   /**
@@ -903,18 +903,9 @@ const WorkerDashboard: React.FC = () => {
                       </div>
                       <div className="text-right">
                         <p className="text-xs text-green-600 uppercase tracking-wide font-semibold">{payment.status}</p>
-                        <a
-                          href={
-                            network === 'mainnet'
-                              ? `https://explorer.xahau.network/tx/${payment.txHash}`
-                              : `https://explorer.xahau-test.net/tx/${payment.txHash}`
-                          }
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-xah-blue hover:underline"
-                        >
+                        <p className="text-xs text-gray-500 uppercase tracking-wide font-mono">
                           {payment.txHash}
-                        </a>
+                        </p>
                       </div>
                     </div>
                   ))

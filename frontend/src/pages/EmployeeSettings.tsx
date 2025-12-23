@@ -64,6 +64,9 @@ const EmployeeSettings: React.FC = () => {
               <code className="text-sm font-mono text-xah-blue bg-blue-50 px-3 py-2 rounded-lg border border-blue-200 inline-block">
                 {walletAddress}
               </code>
+              <p className="text-xs text-gray-500 italic mt-2">
+                ADDRESS CHANGES NOT SUPPORTED AT THIS TIME
+              </p>
             </div>
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">
