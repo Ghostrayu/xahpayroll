@@ -72,7 +72,7 @@ export interface PaymentChannel {
   worker: string                   // Worker's full name
   jobName: string                  // Job/channel description
   channelId: string | null         // XRPL payment channel ID (64-char hex) or null if invalid/missing
-  balance: number                  // Accumulated balance (XAH) - what worker has earned
+  balance: number                  // Accumulated balance (XAH) - maps to off_chain_accumulated_balance from backend
   escrowBalance: number            // Remaining escrow (funded - accumulated)
   hourlyRate: number               // Payment rate in XAH per hour
   hoursAccumulated: number         // Total hours tracked for this channel
@@ -83,6 +83,8 @@ export interface PaymentChannel {
   lastLedgerSync?: string | null   // Timestamp when channel was last synced from XAH Ledger (ISO format) or null if never synced
   hasInvalidChannelId?: boolean    // Flag indicating channel_id is missing or invalid format
   expirationTime?: string          // Scheduled expiration time (ISO format) for channels in 'closing' status
+  offChainAccumulatedBalance?: number // Optional: Off-chain balance field (worker earnings) for transparency
+  onChainBalance?: number          // Optional: On-chain balance field (XRPL ledger Balance) for transparency
 }
 
 /**

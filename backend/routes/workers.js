@@ -246,7 +246,7 @@ router.get('/deletion-eligibility', async (req, res) => {
 
     // Check for unpaid balances
     const unpaidBalances = await query(`
-      SELECT SUM(pc.accumulated_balance) as total
+      SELECT SUM(pc.off_chain_accumulated_balance) as total
       FROM payment_channels pc
       JOIN employees e ON pc.employee_id = e.id
       WHERE e.employee_wallet_address = $1
@@ -260,10 +260,10 @@ router.get('/deletion-eligibility', async (req, res) => {
 
     for (const channel of activeChannels.rows) {
       blockingReasons.push({
-        type: channel.accumulated_balance > 0 ? 'active_channel' : 'unclosed_channel',
+        type: channel.off_chain_accumulated_balance > 0 ? 'active_channel' : 'unclosed_channel',
         organization: channel.organization_name,
         channelId: channel.id,
-        unpaidBalance: parseFloat(channel.accumulated_balance || 0),
+        unpaidBalance: parseFloat(channel.off_chain_accumulated_balance || 0),
         status: channel.status
       })
     }
@@ -340,7 +340,7 @@ router.post('/delete-profile', async (req, res) => {
       WHERE e.employee_wallet_address = $1
       AND (
         pc.status IN ('active', 'timeout', 'closing')
-        OR pc.accumulated_balance > 0
+        OR pc.off_chain_accumulated_balance > 0
       )
     `, [walletAddress])
 
@@ -616,7 +616,7 @@ router.get('/check-orphaned-records', async (req, res) => {
     const earnings = await query(`
       SELECT
         COALESCE(SUM(p.amount), 0) as paid_earnings,
-        COALESCE(SUM(pc.accumulated_balance), 0) as unpaid_earnings
+        COALESCE(SUM(pc.off_chain_accumulated_balance), 0) as unpaid_earnings
       FROM employees e
       LEFT JOIN payment_channels pc ON pc.employee_id = e.id
       LEFT JOIN payments p ON p.payment_channel_id = pc.id
@@ -799,7 +799,7 @@ router.get('/:walletAddress/payment-channels', async (req, res) => {
         pc.balance_update_frequency,
         pc.status,
         pc.updated_at,
-        pc.accumulated_balance,
+        pc.off_chain_accumulated_balance,
         pc.hours_accumulated,
         pc.escrow_funded_amount,
         pc.max_daily_hours,
@@ -831,7 +831,7 @@ router.get('/:walletAddress/payment-channels', async (req, res) => {
 
       // Escrow balance is the funded amount minus what's been accumulated
       const fundedAmount = parseFloat(c.escrow_funded_amount || 0)
-      const accumulatedAmount = parseFloat(c.accumulated_balance || 0)
+      const accumulatedAmount = parseFloat(c.off_chain_accumulated_balance || 0)
       const escrowBalance = fundedAmount - accumulatedAmount
 
       return {
@@ -840,7 +840,7 @@ router.get('/:walletAddress/payment-channels', async (req, res) => {
         ngoWalletAddress: c.ngo_wallet,
         jobName: c.job_name || 'Unnamed Job',
         channelId: c.channel_id || `CH-${new Date().getFullYear()}-${String(c.id).padStart(3, '0')}`,
-        balance: parseFloat(c.accumulated_balance || 0),
+        balance: parseFloat(c.off_chain_accumulated_balance || 0),
         escrowBalance: escrowBalance,
         hourlyRate: parseFloat(c.hourly_rate || 0),
         hoursAccumulated: parseFloat(c.hours_accumulated || 0),

@@ -245,15 +245,25 @@ router.post('/clock-out', async (req, res) => {
       const updatedSession = updateSessionResult.rows[0]
 
       // Update payment channel accumulated balance and hours
+      // NOTE: Uses off_chain_accumulated_balance (worker's earned wages from clock in/out)
+      // This field is the source of truth for final payment and is never synced from ledger
       const updateChannelResult = await query(
         `UPDATE payment_channels
-         SET accumulated_balance = accumulated_balance + $1,
+         SET off_chain_accumulated_balance = off_chain_accumulated_balance + $1,
              hours_accumulated = hours_accumulated + $2,
              updated_at = NOW()
          WHERE id = $3
          RETURNING *`,
         [totalAmount, hoursWorked, session.payment_channel_id]
       )
+
+      // Log balance update for debugging
+      console.log('[CLOCK_OUT_BALANCE_UPDATE]', {
+        channelId: session.payment_channel_id,
+        addedAmount: totalAmount,
+        hoursWorked: hoursWorked,
+        newOffChainBalance: updateChannelResult.rows[0]?.off_chain_accumulated_balance
+      })
 
       const updatedChannel = updateChannelResult.rows[0]
 
@@ -275,7 +285,7 @@ router.post('/clock-out', async (req, res) => {
         },
         paymentChannelUpdate: {
           id: updatedChannel.id,
-          accumulatedBalance: parseFloat(updatedChannel.accumulated_balance),
+          accumulatedBalance: parseFloat(updatedChannel.off_chain_accumulated_balance),
           hoursAccumulated: parseFloat(updatedChannel.hours_accumulated)
         },
         message: `CLOCKED OUT SUCCESSFULLY. SESSION EARNINGS: ${totalAmount.toFixed(2)} XAH`

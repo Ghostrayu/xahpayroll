@@ -831,7 +831,8 @@ router.post('/:channelId/close', async (req, res) => {
     // - NGO closure of EXPIRED channels should verify ledger (race condition protection)
 
     let accumulatedBalance
-    const databaseBalance = parseFloat(channel.accumulated_balance) || 0
+    // Use off_chain_accumulated_balance (worker's earned wages from clock in/out)
+    const databaseBalance = parseFloat(channel.off_chain_accumulated_balance) || 0
     const isExpired = channel.status === 'closing' &&
                      channel.expiration_time &&
                      new Date(channel.expiration_time) < new Date()
@@ -937,6 +938,14 @@ router.post('/:channelId/close', async (req, res) => {
 
     // Convert XAH to drops (1 XAH = 1,000,000 drops)
     const balanceDrops = Math.floor(accumulatedBalance * 1000000).toString()
+
+    // Log balance calculation for debugging
+    console.log('[CLOSURE_BALANCE_CALCULATION]', {
+      channelId,
+      offChainBalance: databaseBalance,
+      balanceDrops,
+      source: 'off_chain_accumulated_balance'
+    })
 
     console.log('[CHANNEL_CLOSE_INIT]', {
       channelId,
@@ -1100,14 +1109,15 @@ router.post('/:channelId/close/confirm', async (req, res) => {
 
     // Update channel - IMMEDIATE CLOSURE
     // Status: 'closed' (not 'closing')
-    // Clear accumulated_balance (worker was paid via XRPL transaction)
+    // Clear off_chain_accumulated_balance (worker was paid via XRPL transaction)
+    // Do NOT touch on_chain_balance (will sync from ledger separately)
     const updateResult = await query(
       `UPDATE payment_channels
       SET
         status = 'closed',
         closure_tx_hash = $1,
         closed_at = NOW(),
-        accumulated_balance = 0,
+        off_chain_accumulated_balance = 0,
         last_ledger_sync = NOW(),
         last_validation_at = NOW(),
         updated_at = NOW()
@@ -1322,11 +1332,13 @@ router.post('/:channelId/sync-balance', async (req, res) => {
       const balanceXah = parseFloat(ledgerChannel.balance || '0') / 1_000_000
 
       // Update database with live ledger data
+      // CRITICAL: Update on_chain_balance (read-only from XRPL)
+      // NEVER touch off_chain_accumulated_balance (worker earnings from clock in/out)
       const updateResult = await query(
         `UPDATE payment_channels
          SET
            escrow_funded_amount = $1,
-           accumulated_balance = $2,
+           on_chain_balance = $2,
            last_ledger_sync = NOW(),
            updated_at = NOW()
          WHERE channel_id = $3
@@ -1334,7 +1346,8 @@ router.post('/:channelId/sync-balance', async (req, res) => {
            id,
            channel_id,
            escrow_funded_amount,
-           accumulated_balance,
+           on_chain_balance,
+           off_chain_accumulated_balance,
            last_ledger_sync,
            status`,
         [escrowAmountXah, balanceXah, channelId]
@@ -1344,10 +1357,24 @@ router.post('/:channelId/sync-balance', async (req, res) => {
 
       const updatedChannel = updateResult.rows[0]
 
+      // Log balance discrepancy (expected for active channels with off-chain work)
+      const offChainBalance = parseFloat(updatedChannel.off_chain_accumulated_balance) || 0
+      const onChainBalance = parseFloat(updatedChannel.on_chain_balance) || 0
+      if (Math.abs(onChainBalance - offChainBalance) > 0.01) {
+        console.warn('[BALANCE_DISCREPANCY]', {
+          channelId: updatedChannel.channel_id,
+          offChainBalance,
+          onChainBalance,
+          discrepancy: (onChainBalance - offChainBalance).toFixed(6),
+          reason: 'Off-chain work tracking (expected for active channels)'
+        })
+      }
+
       console.log('[LEDGER_SYNC] ✅ Database updated successfully:', {
         channelId: updatedChannel.channel_id,
         escrowFundedAmount: updatedChannel.escrow_funded_amount,
-        accumulatedBalance: updatedChannel.accumulated_balance,
+        onChainBalance: updatedChannel.on_chain_balance,
+        offChainAccumulatedBalance: updatedChannel.off_chain_accumulated_balance,
         lastLedgerSync: updatedChannel.last_ledger_sync
       })
 
@@ -1360,8 +1387,8 @@ router.post('/:channelId/sync-balance', async (req, res) => {
           id: updatedChannel.id,
           channelId: updatedChannel.channel_id,
           escrowFundedAmount: parseFloat(updatedChannel.escrow_funded_amount),
-          accumulatedBalance: parseFloat(updatedChannel.accumulated_balance),
-          escrowBalance: parseFloat(updatedChannel.escrow_funded_amount) - parseFloat(updatedChannel.accumulated_balance),
+          accumulatedBalance: parseFloat(updatedChannel.off_chain_accumulated_balance),
+          escrowBalance: parseFloat(updatedChannel.escrow_funded_amount) - parseFloat(updatedChannel.off_chain_accumulated_balance),
           lastLedgerSync: updatedChannel.last_ledger_sync,
           status: updatedChannel.status
         }
@@ -1526,7 +1553,7 @@ router.get('/:channelId/sync', async (req, res) => {
           SET
             status = 'closed',
             closed_at = NOW(),
-            accumulated_balance = 0,
+            off_chain_accumulated_balance = 0,
             last_ledger_sync = NOW(),
             updated_at = NOW()
           WHERE channel_id = $1`,
