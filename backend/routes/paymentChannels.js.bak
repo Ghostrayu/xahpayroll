@@ -12,46 +12,6 @@ function getNetworkUrl() {
 }
 
 /**
- * Check if payment channel exists on Xahau ledger
- * Used to verify if channel was actually closed or just entered closing state
- *
- * @param {string} channelId - 64-character hex channel ID
- * @returns {Promise<Object|null>} - Channel data if exists, null if deleted, throws on error
- */
-async function checkChannelExistsOnLedger(channelId) {
-  const client = new Client(getNetworkUrl())
-
-  try {
-    await client.connect()
-    console.log('[CHANNEL_EXISTS_CHECK] Connected to Xahau network')
-
-    const response = await client.request({
-      command: 'ledger_entry',
-      payment_channel: channelId
-    })
-
-    console.log('[CHANNEL_EXISTS_CHECK] Channel found on ledger', {
-      channelId,
-      amount: response.result.node.Amount,
-      balance: response.result.node.Balance,
-      expiration: response.result.node.Expiration,
-      cancelAfter: response.result.node.CancelAfter
-    })
-
-    return response.result.node
-  } catch (error) {
-    if (error.data?.error === 'entryNotFound') {
-      console.log('[CHANNEL_EXISTS_CHECK] Channel NOT found on ledger (properly closed)', { channelId })
-      return null
-    }
-    console.error('[CHANNEL_EXISTS_CHECK_ERROR] Failed to query channel', error.message)
-    throw error
-  } finally {
-    await client.disconnect()
-  }
-}
-
-/**
  * Query Xahau ledger for payment channel's actual balance
  * SECURITY: Reads balance directly from ledger to prevent database manipulation
  *
@@ -234,7 +194,7 @@ router.post('/create', async (req, res) => {
         hourly_rate,
         balance_update_frequency,
         escrow_funded_amount,
-        off_chain_accumulated_balance,
+        accumulated_balance,
         hours_accumulated,
         max_daily_hours,
         settle_delay,
@@ -487,7 +447,7 @@ router.post('/sync-from-ledger', async (req, res) => {
         job_name,
         hourly_rate,
         balance_update_frequency,
-        off_chain_accumulated_balance,
+        accumulated_balance,
         hours_accumulated,
         status,
         escrow_funded_amount,
@@ -827,7 +787,7 @@ router.post('/:channelId/close', async (req, res) => {
     // STEP 4.5: UNCLAIMED BALANCE WARNING (NGO ONLY)
     // ============================================
 
-    const unpaidBalance = parseFloat(channel.off_chain_accumulated_balance) || 0
+    const unpaidBalance = parseFloat(channel.accumulated_balance) || 0
 
     // CRITICAL: Only warn for NGO/Source closures
     // Worker/Destination closures claim the balance IN THE SAME TRANSACTION
@@ -865,7 +825,7 @@ router.post('/:channelId/close', async (req, res) => {
     // - Ledger balance: Tracks on-chain signed claims only
     //
     // SYSTEM ARCHITECTURE:
-    // - Workers clock in/out → work_sessions table → off_chain_accumulated_balance (database)
+    // - Workers clock in/out → work_sessions table → accumulated_balance (database)
     // - No on-chain claims until final closure → ledger Balance = 0
     // - Worker closure MUST use database balance (their earned wages)
     // - NGO closure of EXPIRED channels should verify ledger (race condition protection)
@@ -1132,62 +1092,38 @@ router.post('/:channelId/close/confirm', async (req, res) => {
     }
 
     // ============================================
-    // STEP 3: VERIFY CHANNEL CLOSURE ON LEDGER
+    // STEP 3: IMMEDIATE CLOSURE (tfClose FLAG)
     // ============================================
-    // Check if channel was actually deleted from ledger or just entered closing state
-    // CRITICAL: tfClose flag does NOT guarantee immediate closure if channel has Expiration set
-    // If Expiration exists and hasn't passed, channel enters SettleDelay period
+    // The /close endpoint always uses tfClose flag (immediate closure)
+    // Worker receives accumulated balance, channel closes immediately
+    // No SettleDelay period needed for worker-initiated closures
 
-    console.log('[CONFIRM_CLOSURE] Verifying channel closure on ledger', {
+    console.log('[CONFIRM_CLOSURE] Immediate closure with tfClose flag', {
       channelId,
       txHash,
       callerWallet: callerWalletAddress,
       isNGO,
       isWorker,
-      accumulatedBalance: channel.off_chain_accumulated_balance
+      accumulatedBalance: channel.accumulated_balance
     })
 
-    // Query ledger to check if channel still exists
-    const channelOnLedger = await checkChannelExistsOnLedger(channelId)
-
-    let finalStatus
-    let expirationTime = null
-
-    if (channelOnLedger === null) {
-      // Channel successfully deleted from ledger - IMMEDIATE CLOSURE
-      console.log('[CONFIRM_CLOSURE] Channel deleted from ledger (immediate closure)')
-      finalStatus = 'closed'
-    } else {
-      // Channel still exists on ledger - ENTERED CLOSING STATE WITH SETTLE DELAY
-      console.log('[CONFIRM_CLOSURE] Channel still on ledger (closing state with SettleDelay)', {
-        expiration: channelOnLedger.Expiration,
-        cancelAfter: channelOnLedger.CancelAfter,
-        settleDelay: channelOnLedger.SettleDelay
-      })
-      finalStatus = 'closing'
-      // Convert Ripple epoch to Unix timestamp
-      if (channelOnLedger.Expiration) {
-        expirationTime = new Date((channelOnLedger.Expiration + 946684800) * 1000)
-      }
-    }
-
-    // Update channel with appropriate status
+    // Update channel - IMMEDIATE CLOSURE
+    // Status: 'closed' (not 'closing')
     // Clear off_chain_accumulated_balance (worker was paid via XRPL transaction)
     // Do NOT touch on_chain_balance (will sync from ledger separately)
     const updateResult = await query(
       `UPDATE payment_channels
       SET
-        status = $1,
-        closure_tx_hash = $2,
-        closed_at = CASE WHEN $1 = 'closed' THEN NOW() ELSE NULL END,
-        expiration_time = $3,
+        status = 'closed',
+        closure_tx_hash = $1,
+        closed_at = NOW(),
         off_chain_accumulated_balance = 0,
         last_ledger_sync = NOW(),
         last_validation_at = NOW(),
         updated_at = NOW()
-      WHERE channel_id = $4
+      WHERE channel_id = $2
       RETURNING *`,
-      [finalStatus, txHash, expirationTime, channelId]
+      [txHash, channelId]
     )
 
     if (updateResult.rows.length === 0) {
@@ -1199,22 +1135,16 @@ router.post('/:channelId/close/confirm', async (req, res) => {
 
     const updatedChannel = updateResult.rows[0]
 
-    console.log('[CONFIRM_CLOSURE] Channel status updated', {
+    console.log('[CONFIRM_CLOSURE] Channel closed immediately', {
       channelId,
       txHash,
       finalStatus: updatedChannel.status,
-      closedAt: updatedChannel.closed_at,
-      expirationTime: updatedChannel.expiration_time
+      closedAt: updatedChannel.closed_at
     })
-
-    // Generate appropriate message based on final status
-    const message = updatedChannel.status === 'closed'
-      ? 'PAYMENT CHANNEL CLOSED SUCCESSFULLY!'
-      : 'PAYMENT CHANNEL ENTERING CLOSING STATE. FINAL CLOSURE AFTER EXPIRATION TIME.'
 
     res.json({
       success: true,
-      message,
+      message: 'PAYMENT CHANNEL CLOSED SUCCESSFULLY!',
       data: {
         channel: {
           id: updatedChannel.id,
@@ -1222,7 +1152,6 @@ router.post('/:channelId/close/confirm', async (req, res) => {
           status: updatedChannel.status,
           closureTxHash: updatedChannel.closure_tx_hash,
           closedAt: updatedChannel.closed_at,
-          expirationTime: updatedChannel.expiration_time,
           jobName: updatedChannel.job_name
         }
       }
@@ -1552,7 +1481,7 @@ router.get('/:channelId/sync', async (req, res) => {
         const escrowXah = parseInt(ledgerChannel.Amount) / 1_000_000
         const balanceXah = parseInt(ledgerChannel.Balance) / 1_000_000
 
-        // CRITICAL: Do NOT overwrite off_chain_accumulated_balance - it tracks off-chain work sessions
+        // CRITICAL: Do NOT overwrite accumulated_balance - it tracks off-chain work sessions
         // Ledger Balance only tracks on-chain signed claims, not database work sessions
         await query(
           `UPDATE payment_channels
@@ -1586,7 +1515,7 @@ router.get('/:channelId/sync', async (req, res) => {
         const escrowXah = parseInt(ledgerChannel.Amount) / 1_000_000
         const balanceXah = parseInt(ledgerChannel.Balance) / 1_000_000
 
-        // CRITICAL: Do NOT overwrite off_chain_accumulated_balance - it tracks off-chain work sessions
+        // CRITICAL: Do NOT overwrite accumulated_balance - it tracks off-chain work sessions
         // Ledger Balance only tracks on-chain signed claims, not database work sessions
         await query(
           `UPDATE payment_channels
@@ -1682,7 +1611,7 @@ router.post('/sync-expired-closing', async (req, res) => {
         o.escrow_wallet_address,
         e.employee_wallet_address,
         pc.expiration_time,
-        pc.off_chain_accumulated_balance
+        pc.accumulated_balance
       FROM payment_channels pc
       JOIN organizations o ON pc.organization_id = o.id
       JOIN employees e ON pc.employee_id = e.id
@@ -1728,7 +1657,7 @@ router.post('/sync-expired-closing', async (req, res) => {
              SET
                status = 'closed',
                closed_at = NOW(),
-               off_chain_accumulated_balance = 0,
+               accumulated_balance = 0,
                last_ledger_sync = NOW(),
                updated_at = NOW()
              WHERE channel_id = $1`,

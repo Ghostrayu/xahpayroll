@@ -168,7 +168,7 @@ router.get('/stats/:walletAddress', async (req, res) => {
 
     // Get total workers count
     const totalWorkersResult = await query(
-      'SELECT COUNT(*) as total FROM employees e JOIN users u ON e.employee_wallet_address = u.wallet_address WHERE e.organization_id = $1 AND u.deleted_at IS NULL',
+      'SELECT COUNT(*) as total FROM employees WHERE organization_id = $1',
       [organization.id]
     )
 
@@ -208,11 +208,11 @@ router.get('/stats/:walletAddress', async (req, res) => {
       [organization.id]
     )
 
-    // Get total escrow balance from all active and closing payment channels
+    // Get total escrow balance from all active payment channels
     const escrowBalanceResult = await query(
-      `SELECT COALESCE(SUM(escrow_funded_amount - off_chain_accumulated_balance), 0) as total_escrow
+      `SELECT COALESCE(SUM(escrow_funded_amount - accumulated_balance), 0) as total_escrow
        FROM payment_channels
-       WHERE organization_id = $1 AND status IN ('active', 'closing')`,
+       WHERE organization_id = $1 AND status = 'active'`,
       [organization.id]
     )
 
@@ -454,7 +454,7 @@ router.get('/payment-channels/:walletAddress', async (req, res) => {
         pc.balance_update_frequency,
         pc.status,
         pc.updated_at,
-        pc.off_chain_accumulated_balance,
+        pc.accumulated_balance,
         pc.hours_accumulated,
         pc.escrow_funded_amount,
         pc.last_ledger_sync,
@@ -480,7 +480,7 @@ router.get('/payment-channels/:walletAddress', async (req, res) => {
 
       // Escrow balance is the funded amount minus what's been accumulated
       const fundedAmount = parseFloat(c.escrow_funded_amount || 0)
-      const accumulatedAmount = parseFloat(c.off_chain_accumulated_balance || 0)
+      const accumulatedAmount = parseFloat(c.accumulated_balance || 0)
       const escrowBalance = fundedAmount - accumulatedAmount
 
       // Validate channel_id - must be 64-character hex string or null
@@ -494,7 +494,7 @@ router.get('/payment-channels/:walletAddress', async (req, res) => {
         worker: c.worker,
         jobName: c.job_name || 'Unnamed Job',
         channelId: channelId || null, // Return null if missing/invalid instead of generating fake ID
-        balance: parseFloat(c.off_chain_accumulated_balance),
+        balance: parseFloat(c.accumulated_balance),
         escrowBalance: escrowBalance,
         hourlyRate: parseFloat(c.hourly_rate),
         hoursAccumulated: parseFloat(c.hours_accumulated),
@@ -937,7 +937,7 @@ router.post('/:walletAddress/sync-all-channels', async (req, res) => {
                    status = 'closing',
                    expiration_time = to_timestamp($1),
                    escrow_funded_amount = $2,
-                   off_chain_accumulated_balance = $3,
+                   accumulated_balance = $3,
                    settle_delay = $4,
                    last_ledger_sync = NOW(),
                    updated_at = NOW()
@@ -951,7 +951,7 @@ router.post('/:walletAddress/sync-all-channels', async (req, res) => {
                  SET
                    status = 'active',
                    escrow_funded_amount = $1,
-                   off_chain_accumulated_balance = $2,
+                   accumulated_balance = $2,
                    settle_delay = $3,
                    last_ledger_sync = NOW(),
                    updated_at = NOW()
@@ -982,7 +982,7 @@ router.post('/:walletAddress/sync-all-channels', async (req, res) => {
                 hourly_rate,
                 max_daily_hours,
                 escrow_funded_amount,
-                off_chain_accumulated_balance,
+                accumulated_balance,
                 balance_update_frequency,
                 status,
                 expiration_time,
@@ -1017,7 +1017,7 @@ router.post('/:walletAddress/sync-all-channels', async (req, res) => {
                 hourly_rate,
                 max_daily_hours,
                 escrow_funded_amount,
-                off_chain_accumulated_balance,
+                accumulated_balance,
                 balance_update_frequency,
                 status,
                 settle_delay,

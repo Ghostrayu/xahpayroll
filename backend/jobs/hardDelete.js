@@ -58,7 +58,7 @@ async function processHardDeletes() {
                     WHERE e.employee_wallet_address = u.wallet_address
                     AND (
                         pc.status = 'active'
-                        OR pc.accumulated_balance > 0
+                        OR pc.off_chain_accumulated_balance > 0
                         OR pc.closure_tx_hash IS NULL
                     )
                 )
@@ -171,3 +171,16 @@ module.exports = {
     startHardDeleteJob,
     stopHardDeleteJob
 };
+
+// Run as standalone script if executed directly
+if (require.main === module) {
+    processHardDeletes()
+        .then(results => {
+            console.log('[HARD_DELETE] Manual execution completed:', results);
+            process.exit(0);
+        })
+        .catch(error => {
+            console.error('[HARD_DELETE_ERROR] Manual execution failed:', error);
+            process.exit(1);
+        });
+}

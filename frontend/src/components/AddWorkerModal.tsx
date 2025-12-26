@@ -430,12 +430,12 @@ const AddWorkerModal: React.FC<AddWorkerModalProps> = ({ isOpen, onClose, onSucc
                 {/* Instructions */}
                 <div className="mt-6 space-y-3">
                   <p className="text-sm font-bold text-gray-900 uppercase tracking-wide">
-                    Instructions:
+                    WORKER INSTRUCTIONS:
                   </p>
                   <ol className="text-xs text-gray-700 space-y-2 text-left max-w-xs mx-auto">
                     <li className="flex items-start gap-2">
                       <span className="font-bold text-blue-600">1.</span>
-                      <span>OPEN XAMAN WALLET APP ON YOUR PHONE</span>
+                      <span>OPEN YOUR XAMAN WALLET APP ON YOUR PHONE</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="font-bold text-blue-600">2.</span>
@@ -443,7 +443,7 @@ const AddWorkerModal: React.FC<AddWorkerModalProps> = ({ isOpen, onClose, onSucc
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="font-bold text-blue-600">3.</span>
-                      <span>SCAN THIS QR CODE TO SIGN IN</span>
+                      <span>SCAN THIS QR CODE TO SHARE YOUR WALLET ADDRESS</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="font-bold text-blue-600">4.</span>

@@ -301,8 +301,9 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
         sourceAddress: walletAddress,
         destinationAddress: config.workerAddress,
         amount: fundingAmountDrops,
-        settleDelay: settleDelaySeconds,
-        cancelAfter: expirationTime
+        settleDelay: settleDelaySeconds
+        // REMOVED: cancelAfter field to enable immediate closure
+        // Without CancelAfter, channels can be closed immediately with tfClose flag
       })
 
       console.log('Prepared transaction:', paymentChannelTx)

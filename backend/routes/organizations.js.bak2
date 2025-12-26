@@ -168,7 +168,7 @@ router.get('/stats/:walletAddress', async (req, res) => {
 
     // Get total workers count
     const totalWorkersResult = await query(
-      'SELECT COUNT(*) as total FROM employees e JOIN users u ON e.employee_wallet_address = u.wallet_address WHERE e.organization_id = $1 AND u.deleted_at IS NULL',
+      'SELECT COUNT(*) as total FROM employees WHERE organization_id = $1',
       [organization.id]
     )
 
@@ -208,11 +208,11 @@ router.get('/stats/:walletAddress', async (req, res) => {
       [organization.id]
     )
 
-    // Get total escrow balance from all active and closing payment channels
+    // Get total escrow balance from all active payment channels
     const escrowBalanceResult = await query(
       `SELECT COALESCE(SUM(escrow_funded_amount - off_chain_accumulated_balance), 0) as total_escrow
        FROM payment_channels
-       WHERE organization_id = $1 AND status IN ('active', 'closing')`,
+       WHERE organization_id = $1 AND status = 'active'`,
       [organization.id]
     )
 
