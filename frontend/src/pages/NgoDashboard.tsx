@@ -685,19 +685,24 @@ const NgoDashboard: React.FC = () => {
                       className="bg-gradient-to-br from-green-50 to-blue-50 rounded-lg p-3 border-2 border-green-200 hover:border-green-400 transition-all"
                     >
                       <div className="flex items-start justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                            <span className="text-white font-bold text-xs">
-                              {channel.worker.split(' ').map((n: string) => n[0]).join('')}
+                        <div className="flex-1 mr-2">
+                          <div className="mb-1">
+                            <span className="text-xs text-gray-600 uppercase tracking-wide font-semibold">JOB NAME: </span>
+                            <span className="font-bold text-gray-900 text-sm uppercase tracking-wide">
+                              {channel.jobName}
                             </span>
                           </div>
-                          <div>
-                            <p className="font-bold text-gray-900 text-sm uppercase tracking-wide">
-                              {channel.jobName || channel.worker}
-                            </p>
-                            <p className="text-[10px] text-gray-600 uppercase tracking-wide">
-                              {channel.worker} • {channel.channelId}
-                            </p>
+                          <div className="mb-1">
+                            <span className="text-xs text-gray-600 uppercase tracking-wide font-semibold">WORKER: </span>
+                            <span className="font-bold text-xah-blue text-xs uppercase tracking-wide">
+                              {channel.worker}
+                            </span>
+                          </div>
+                          <div className="mt-1">
+                            <span className="text-xs text-gray-600 uppercase tracking-wide font-semibold">CHANNEL ID: </span>
+                            <span className="text-[10px] text-gray-600 font-mono break-all">
+                              {channel.channelId}
+                            </span>
                           </div>
                         </div>
                         <div className="text-right">
