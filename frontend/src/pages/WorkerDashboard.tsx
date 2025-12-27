@@ -150,8 +150,8 @@ const WorkerDashboard: React.FC = () => {
     employer: 'Good Money Collective'
   }
 
-  // Recent payments from work sessions (completed)
-  const recentPayments = workSessions
+  // Recent work sessions (completed) - shows hours worked and earnings accumulated
+  const recentWorkSessions = workSessions
     .filter(session => session.clockOut && session.status === 'completed')
     .slice(0, 4)
     .map((session) => ({
@@ -159,7 +159,7 @@ const WorkerDashboard: React.FC = () => {
       amount: session.hours ? (session.hours * workerData.hourlyRate) : 0,
       time: new Date(session.clockOut!).toLocaleString(),
       status: 'Completed',
-      txHash: `SESSION #${session.id}`
+      sessionId: `SESSION #${session.id}`
     }))
 
   /**
@@ -764,7 +764,12 @@ const WorkerDashboard: React.FC = () => {
                           await fetchPaymentChannels()
                           console.log('[WORKER_DASHBOARD] fetchPaymentChannels complete')
                         } catch (error) {
-                          console.error('[WORKER_DASHBOARD] Refresh error:', error)
+                          console.error('[WORKER_DASHBOARD] Refresh error (will reload anyway):', error)
+                        } finally {
+                          // CRITICAL: Always reload page, even if data fetch fails
+                          // This ensures stale session data is cleared from memory
+                          console.log('[WORKER_DASHBOARD] Forcing page reload to display updated balance')
+                          window.location.reload()
                         }
                       }}
                     />
@@ -874,10 +879,10 @@ const WorkerDashboard: React.FC = () => {
               )}
             </div>
 
-            {/* Recent Payments */}
+            {/* Recent Work Sessions */}
             <div className="bg-white rounded-2xl shadow-xl p-6 border-2 border-xah-blue/30">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight">Recent Payments</h3>
+                <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight">RECENT WORK SESSIONS</h3>
                 <button
                   onClick={() => setShowHowItWorksModal(true)}
                   className="text-xs font-semibold text-xah-blue hover:text-primary-700 uppercase tracking-wide flex items-center gap-1 transition-colors"
@@ -889,35 +894,35 @@ const WorkerDashboard: React.FC = () => {
                 </button>
               </div>
               <div className="space-y-4">
-                {recentPayments.length > 0 ? (
-                  recentPayments.map((payment) => (
-                    <div key={payment.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                {recentWorkSessions.length > 0 ? (
+                  recentWorkSessions.map((session) => (
+                    <div key={session.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
                           <span className="text-white font-bold text-lg">✓</span>
                         </div>
                         <div>
-                          <p className="font-bold text-gray-900 text-sm">{payment.amount.toFixed(2)} XAH</p>
-                          <p className="text-xs text-gray-600 uppercase tracking-wide">{payment.time}</p>
+                          <p className="font-bold text-gray-900 text-sm">{session.amount.toFixed(2)} XAH EARNED</p>
+                          <p className="text-xs text-gray-600 uppercase tracking-wide">{session.time}</p>
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-xs text-green-600 uppercase tracking-wide font-semibold">{payment.status}</p>
+                        <p className="text-xs text-green-600 uppercase tracking-wide font-semibold">{session.status}</p>
                         <p className="text-xs text-gray-500 uppercase tracking-wide font-mono">
-                          {payment.txHash}
+                          {session.sessionId}
                         </p>
                       </div>
                     </div>
                   ))
                 ) : (
                   <div className="text-center py-8">
-                    <p className="text-sm text-gray-500 uppercase tracking-wide">No payments yet</p>
-                    <p className="text-xs text-gray-400 mt-2">Clock in to start earning!</p>
+                    <p className="text-sm text-gray-500 uppercase tracking-wide">NO WORK SESSIONS YET</p>
+                    <p className="text-xs text-gray-400 mt-2">CLOCK IN TO START TRACKING YOUR HOURS!</p>
                   </div>
                 )}
               </div>
               <button className="w-full mt-4 bg-gray-200 hover:bg-gray-300 text-gray-900 font-bold py-3 px-4 rounded-lg text-sm uppercase tracking-wide transition-colors">
-                VIEW ALL PAYMENTS
+                VIEW ALL WORK SESSIONS
               </button>
             </div>
           </div>

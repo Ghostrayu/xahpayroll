@@ -217,8 +217,8 @@ router.post('/:id/approve-closure', async (req, res) => {
       success: true,
       data: {
         channelId: channel.channel_id,
-        balance: channel.accumulated_balance,
-        escrowBalance: parseFloat(channel.funded_amount) - parseFloat(channel.accumulated_balance),
+        balance: channel.off_chain_accumulated_balance,
+        escrowBalance: parseFloat(channel.funded_amount) - parseFloat(channel.off_chain_accumulated_balance),
         jobName: channel.job_name,
         organizationName: channel.organization_name,
         message: 'CLOSURE REQUEST APPROVED. PLEASE PROCEED TO CLOSE THE CHANNEL.'

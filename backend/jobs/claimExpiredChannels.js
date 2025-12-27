@@ -45,7 +45,7 @@ async function claimExpiredChannels() {
         escrow_wallet_address,
         employee_wallet_address,
         expiration_time,
-        accumulated_balance,
+        off_chain_accumulated_balance,
         closure_tx_hash
       FROM payment_channels
       WHERE status = 'closing'
@@ -64,7 +64,7 @@ async function claimExpiredChannels() {
     expiredChannelsResult.rows.forEach((ch, idx) => {
       console.log(`  ${idx + 1}. Channel: ${ch.channel_id}`);
       console.log(`     Expired: ${ch.expiration_time}`);
-      console.log(`     Balance: ${ch.accumulated_balance || 0} XAH`);
+      console.log(`     Balance: ${ch.off_chain_accumulated_balance || 0} XAH`);
     });
 
     // ============================================
@@ -103,7 +103,7 @@ async function claimExpiredChannels() {
              SET
                status = 'closed',
                closed_at = NOW(),
-               accumulated_balance = 0,
+               off_chain_accumulated_balance = 0,
                last_ledger_sync = NOW(),
                updated_at = NOW()
              WHERE channel_id = $1`,
@@ -165,7 +165,7 @@ async function claimExpiredChannels() {
                status = 'closed',
                closed_at = NOW(),
                closure_tx_hash = $1,
-               accumulated_balance = 0,
+               off_chain_accumulated_balance = 0,
                last_ledger_sync = NOW(),
                updated_at = NOW()
              WHERE channel_id = $2`,

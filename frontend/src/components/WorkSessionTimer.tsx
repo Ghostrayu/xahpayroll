@@ -153,10 +153,19 @@ export function WorkSessionTimer({
         const hours = response.data.workSession.hoursWorked.toFixed(2)
         console.log(`SESSION COMPLETE: ${hours} hours, ${earnings} XAH earned`)
 
-        // Trigger dashboard refresh callback BEFORE showing alert
-        // This ensures data updates even if user quickly dismisses alert
+        // Show success message FIRST (blocking alert)
+        // User must dismiss this before page refresh happens
+        const successMessage = `${response.data.message || 'CLOCKED OUT SUCCESSFULLY'}\n\n` +
+          `SESSION EARNINGS: ${earnings} XAH\n` +
+          `HOURS WORKED: ${hours}h\n\n` +
+          `YOUR COMPLETED SESSIONS BALANCE HAS BEEN UPDATED\n\n` +
+          `CLICK OK TO REFRESH DASHBOARD`
+        alert(successMessage)
+
+        // Trigger dashboard refresh callback AFTER user dismisses alert
+        // This ensures user sees the success message before page reloads
         if (onClockOut) {
-          console.log('[CLOCK_OUT] Triggering dashboard refresh...')
+          console.log('[CLOCK_OUT] User dismissed alert, triggering dashboard refresh...')
           try {
             await onClockOut()
             console.log('[CLOCK_OUT] Dashboard refresh complete')
@@ -164,13 +173,6 @@ export function WorkSessionTimer({
             console.error('[CLOCK_OUT] Dashboard refresh failed:', refreshError)
           }
         }
-
-        // Show success message after refresh completes
-        const successMessage = `${response.data.message || 'CLOCKED OUT SUCCESSFULLY'}\n\n` +
-          `SESSION EARNINGS: ${earnings} XAH\n` +
-          `HOURS WORKED: ${hours}h\n\n` +
-          `YOUR COMPLETED SESSIONS BALANCE HAS BEEN UPDATED`
-        alert(successMessage)
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'FAILED TO CLOCK OUT'
@@ -272,13 +274,13 @@ export function WorkSessionTimer({
                 </div>
               </div>
 
-              {/* Manual Refresh Reminder */}
+              {/* Auto-Refresh Notice */}
               <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 border-l-4 border-blue-500 rounded">
                 <p className="text-xs font-bold text-blue-900 dark:text-blue-300 uppercase tracking-wide">
-                  ℹ️ MANUAL REFRESH REQUIRED
+                  ℹ️ DASHBOARD WILL AUTO-REFRESH
                 </p>
                 <p className="text-xs text-blue-800 dark:text-blue-400 mt-1">
-                  PLEASE REFRESH BROWSER AFTER CLOCKING OUT TO UPDATE YOUR DASHBOARD.
+                  AFTER CONFIRMING, YOUR DASHBOARD WILL AUTOMATICALLY REFRESH TO SHOW UPDATED BALANCE.
                 </p>
               </div>
 

@@ -96,7 +96,7 @@ router.post('/clock-in', async (req, res) => {
 
     // Verify payment channel has sufficient escrow balance (minimum 1 hour)
     const minimumBalance = parseFloat(channel.hourly_rate)
-    const availableBalance = parseFloat(channel.escrow_funded_amount) - parseFloat(channel.accumulated_balance)
+    const availableBalance = parseFloat(channel.escrow_funded_amount) - parseFloat(channel.off_chain_accumulated_balance)
 
     if (availableBalance < minimumBalance) {
       return res.status(400).json({
@@ -332,7 +332,7 @@ router.get('/active', async (req, res) => {
         pc.hourly_rate as channel_hourly_rate,
         pc.max_daily_hours,
         pc.escrow_funded_amount,
-        pc.accumulated_balance,
+        pc.off_chain_accumulated_balance,
         o.organization_name,
         EXTRACT(EPOCH FROM (NOW() - ws.clock_in)) as elapsed_seconds
        FROM work_sessions ws
@@ -360,7 +360,7 @@ router.get('/active', async (req, res) => {
           hourlyRate: parseFloat(session.channel_hourly_rate),
           maxDailyHours: parseFloat(session.max_daily_hours),
           escrowFundedAmount: parseFloat(session.escrow_funded_amount),
-          accumulatedBalance: parseFloat(session.accumulated_balance)
+          accumulatedBalance: parseFloat(session.off_chain_accumulated_balance)
         },
         clockIn: session.clock_in,
         hourlyRate: parseFloat(session.hourly_rate),

@@ -55,7 +55,7 @@ async function fetchComprehensiveWorkerData(walletAddress) {
         pc.job_name,
         pc.hourly_rate,
         pc.escrow_funded_amount,
-        pc.accumulated_balance,
+        pc.off_chain_accumulated_balance,
         pc.status,
         pc.created_at,
         pc.closed_at,
@@ -104,7 +104,7 @@ async function fetchComprehensiveWorkerData(walletAddress) {
     // 6. CALCULATE STATISTICS
     const activeChannels = channelsResult.rows.filter(c => c.status === 'active').length;
     const closedChannels = channelsResult.rows.filter(c => c.status === 'closed').length;
-    const totalUnpaidBalance = channelsResult.rows.reduce((sum, c) => sum + parseFloat(c.accumulated_balance || 0), 0);
+    const totalUnpaidBalance = channelsResult.rows.reduce((sum, c) => sum + parseFloat(c.off_chain_accumulated_balance || 0), 0);
     const totalSessions = workSessionsResult.rows.length;
     const totalHours = workSessionsResult.rows.reduce((sum, ws) => sum + parseFloat(ws.hours_worked || 0), 0);
     const totalPayments = paymentsResult.rows.length;
@@ -256,7 +256,7 @@ async function generateWorkerDataPDF(walletAddress, res) {
         doc.text(`    STATUS: ${channel.status.toUpperCase()}`, { continued: false });
         doc.text(`    HOURLY RATE: ${formatAmount(channel.hourly_rate)}`, { continued: false });
         doc.text(`    ESCROW AMOUNT: ${formatAmount(channel.escrow_funded_amount)}`, { continued: false });
-        doc.text(`    ACCUMULATED BALANCE: ${formatAmount(channel.accumulated_balance)}`, { continued: false });
+        doc.text(`    ACCUMULATED BALANCE: ${formatAmount(channel.off_chain_accumulated_balance)}`, { continued: false });
         doc.text(`    CREATED: ${formatDate(channel.created_at)}`, { continued: false });
 
         if (channel.closed_at) {
