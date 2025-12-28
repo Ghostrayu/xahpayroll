@@ -787,6 +787,8 @@ export const closePaymentChannel = async (
       channelId: params.channelId,
       balance: params.balance,
       balanceFieldIncluded: params.balance !== '0',
+      publicKeyIncluded: !!transaction.PublicKey,
+      publicKeyPreview: transaction.PublicKey ? `${transaction.PublicKey.substring(0, 20)}...` : 'NOT_INCLUDED',
       escrowReturn: params.escrowReturn,
       provider,
       network

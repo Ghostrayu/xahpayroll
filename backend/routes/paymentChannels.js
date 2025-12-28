@@ -34,6 +34,7 @@ async function checkChannelExistsOnLedger(channelId) {
       channelId,
       amount: response.result.node.Amount,
       balance: response.result.node.Balance,
+      publicKey: response.result.node.PublicKey ? `${response.result.node.PublicKey.substring(0, 20)}...` : 'NOT_FOUND',
       expiration: response.result.node.Expiration,
       cancelAfter: response.result.node.CancelAfter
     })
@@ -973,6 +974,42 @@ router.post('/:channelId/close', async (req, res) => {
     })
 
     // ============================================
+    // STEP 7.5: QUERY LEDGER FOR CHANNEL'S PUBLIC KEY
+    // ============================================
+    // CRITICAL FIX (2025-12-28): PaymentChannelClaim requires the channel's PublicKey field
+    // when closing from destination (worker) address to prevent temBAD_SIGNATURE errors
+    //
+    // IMPORTANT: The channel's PublicKey field IS the NGO's public key from channel creation
+    // This is the correct key to use for worker (destination) closures
+
+    let publicKey = null
+    try {
+      console.log('[PUBLIC_KEY_LOOKUP] Querying channel on ledger for PublicKey', {
+        channelId
+      })
+
+      // Query the channel to get the NGO's public key
+      const channelOnLedger = await checkChannelExistsOnLedger(channelId)
+
+      if (channelOnLedger?.PublicKey) {
+        publicKey = channelOnLedger.PublicKey
+        console.log('[PUBLIC_KEY_LOOKUP] PublicKey retrieved from channel', {
+          channelId,
+          publicKey: publicKey.substring(0, 20) + '...'
+        })
+      } else {
+        console.warn('[PUBLIC_KEY_LOOKUP] No PublicKey found in channel object')
+      }
+    } catch (error) {
+      console.error('[PUBLIC_KEY_LOOKUP_ERROR] Failed to retrieve PublicKey from channel', {
+        error: error.message,
+        channelId
+      })
+      // Continue without PublicKey - let XRPL reject if required
+      // This allows NGO closures (source) which don't need PublicKey
+    }
+
+    // ============================================
     // STEP 8: RETURN XRPL TRANSACTION DETAILS
     // ============================================
 
@@ -998,6 +1035,30 @@ router.post('/:channelId/close', async (req, res) => {
       balanceSource: (isNGO && isExpired) ? 'ledger' : 'database',
       isNGO,
       isExpired,
+      publicKeyIncluded: !!publicKey,
+      timestamp: new Date().toISOString()
+    })
+
+    // Build XRPL transaction object
+    const xrplTransaction = {
+      TransactionType: 'PaymentChannelClaim',
+      Channel: channel.channel_id,
+      Balance: balanceDrops, // Amount to pay worker (in drops)
+      Flags: 0x00020000 // tfClose flag (131072 decimal) - closes channel
+    }
+
+    // Add PublicKey if available (required for worker closures)
+    if (publicKey) {
+      xrplTransaction.PublicKey = publicKey
+    }
+
+    // LOG TRANSACTION BEING RETURNED TO FRONTEND
+    console.log('[CLOSE_RESPONSE] Returning transaction to frontend', {
+      channelId,
+      transactionIncludesPublicKey: !!xrplTransaction.PublicKey,
+      publicKeyValue: xrplTransaction.PublicKey ? `${xrplTransaction.PublicKey.substring(0, 20)}...` : 'NOT_INCLUDED',
+      balanceDrops: xrplTransaction.Balance,
+      isWorkerClosure: isWorker,
       timestamp: new Date().toISOString()
     })
 
@@ -1011,6 +1072,8 @@ router.post('/:channelId/close', async (req, res) => {
           jobName: channel.job_name,
           workerAddress: channel.employee_wallet_address,
           workerName: channel.employee_name,
+          ngoWalletAddress: channel.escrow_wallet_address,
+          organizationName: channel.organization_name,
           escrowFunded: escrowFunded,
           accumulatedBalance: accumulatedBalance,
           escrowReturn: escrowReturn,
@@ -1021,12 +1084,8 @@ router.post('/:channelId/close', async (req, res) => {
         // NOTE: Amount field is NOT included - escrow returns automatically on close
         // The Amount field was causing temBAD_AMOUNT errors because it's meant for
         // sending additional XAH from Account's balance, not for returning escrow
-        xrplTransaction: {
-          TransactionType: 'PaymentChannelClaim',
-          Channel: channel.channel_id,
-          Balance: balanceDrops, // Amount to pay worker (in drops)
-          Flags: 0x00020000 // tfClose flag (131072 decimal) - closes channel
-        }
+        // PublicKey is now included for worker closures to prevent temBAD_SIGNATURE errors
+        xrplTransaction
       }
     })
   } catch (error) {
@@ -1132,23 +1191,120 @@ router.post('/:channelId/close/confirm', async (req, res) => {
     }
 
     // ============================================
-    // STEP 3: VERIFY CHANNEL CLOSURE ON LEDGER
+    // STEP 3: VERIFY TRANSACTION VALIDATED ON LEDGER
+    // ============================================
+    // CRITICAL FIX (2025-12-28): Verify transaction actually succeeded before database update
+    // Prevents database corruption when transactions fail validation (e.g., temBAD_SIGNATURE)
+
+    console.log('[CONFIRM_CLOSURE] Step 3A: Verifying transaction on ledger', {
+      channelId,
+      txHash,
+      callerWallet: callerWalletAddress,
+      isNGO,
+      isWorker
+    })
+
+    // Initialize XRPL client for validation
+    const networkUrl = getNetworkUrl()
+    const client = new Client(networkUrl)
+
+    let txValidated = false
+    let txResult = null
+
+    try {
+      await client.connect()
+      console.log('[CONFIRM_CLOSURE] Connected to Xahau:', process.env.XRPL_NETWORK || 'testnet')
+
+      const txResponse = await client.request({
+        command: 'tx',
+        transaction: txHash,
+        binary: false
+      })
+
+      const tx = txResponse.result
+      txValidated = tx.validated
+      txResult = tx.meta?.TransactionResult
+
+      console.log('[CONFIRM_CLOSURE] Transaction query result', {
+        txHash: txHash.substring(0, 20) + '...',
+        validated: txValidated,
+        result: txResult
+      })
+
+      // VALIDATION CHECK: Transaction must be validated AND successful
+      if (!txValidated) {
+        console.error('[CONFIRM_CLOSURE] Transaction not validated by network', {
+          txHash,
+          channelId
+        })
+        await client.disconnect()
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: 'TRANSACTION NOT VALIDATED BY NETWORK',
+            code: 'NOT_VALIDATED',
+            txHash,
+            details: 'The transaction was submitted but not accepted by Xahau validators. Channel remains active.'
+          }
+        })
+      }
+
+      if (txResult !== 'tesSUCCESS') {
+        console.error('[CONFIRM_CLOSURE] Transaction failed on ledger', {
+          txHash,
+          result: txResult,
+          channelId
+        })
+        await client.disconnect()
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: `TRANSACTION FAILED ON LEDGER: ${txResult}`,
+            code: 'TRANSACTION_FAILED',
+            txHash,
+            result: txResult,
+            details: 'The transaction was validated but failed. Channel remains active.'
+          }
+        })
+      }
+
+      console.log('[CONFIRM_CLOSURE] Transaction validated and succeeded ✅')
+
+    } catch (txError) {
+      console.error('[CONFIRM_CLOSURE] Error querying transaction', {
+        error: txError.message,
+        txHash,
+        channelId
+      })
+      await client.disconnect()
+      return res.status(500).json({
+        success: false,
+        error: {
+          message: 'FAILED TO VERIFY TRANSACTION ON LEDGER',
+          code: 'VERIFICATION_ERROR',
+          details: txError.message
+        }
+      })
+    }
+
+    // ============================================
+    // STEP 4: VERIFY CHANNEL STATE ON LEDGER
     // ============================================
     // Check if channel was actually deleted from ledger or just entered closing state
     // CRITICAL: tfClose flag does NOT guarantee immediate closure if channel has Expiration set
     // If Expiration exists and hasn't passed, channel enters SettleDelay period
 
-    console.log('[CONFIRM_CLOSURE] Verifying channel closure on ledger', {
+    console.log('[CONFIRM_CLOSURE] Step 3B: Verifying channel state on ledger', {
       channelId,
-      txHash,
-      callerWallet: callerWalletAddress,
-      isNGO,
-      isWorker,
       accumulatedBalance: channel.off_chain_accumulated_balance
     })
 
     // Query ledger to check if channel still exists
     const channelOnLedger = await checkChannelExistsOnLedger(channelId)
+
+    // Disconnect client after validation complete
+    await client.disconnect()
+    console.log('[CONFIRM_CLOSURE] Disconnected from Xahau ledger')
 
     let finalStatus
     let expirationTime = null
@@ -1177,10 +1333,10 @@ router.post('/:channelId/close/confirm', async (req, res) => {
     const updateResult = await query(
       `UPDATE payment_channels
       SET
-        status = $1,
+        status = $1::VARCHAR,
         closure_tx_hash = $2,
-        closed_at = CASE WHEN $1 = 'closed' THEN NOW() ELSE NULL END,
-        expiration_time = $3,
+        closed_at = CASE WHEN $1::VARCHAR = 'closed' THEN NOW() ELSE NULL END,
+        expiration_time = $3::TIMESTAMP,
         off_chain_accumulated_balance = 0,
         last_ledger_sync = NOW(),
         last_validation_at = NOW(),

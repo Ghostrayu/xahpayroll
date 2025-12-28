@@ -8,7 +8,7 @@ import Footer from '../components/Footer'
 import UnclaimedBalanceWarningModal from '../components/UnclaimedBalanceWarningModal'
 import { WorkSessionTimer } from '../components/WorkSessionTimer'
 import { paymentChannelApi, workerApi, workerNotificationsApi } from '../services/api'
-import { closePaymentChannel } from '../utils/paymentChannels'
+import { closePaymentChannel, verifyChannelClosure } from '../utils/paymentChannels'
 
 const WorkerDashboard: React.FC = () => {
   const { userName } = useAuth()
@@ -218,6 +218,13 @@ const WorkerDashboard: React.FC = () => {
       const { channel, xrplTransaction } = response.data
 
       console.log('[WORKER_CLOSE_FLOW] Step 1 complete. Worker payment:', channel.accumulatedBalance, 'XAH')
+      console.log('[WORKER_CLOSE_FLOW] Backend returned xrplTransaction:', {
+        hasPublicKey: !!xrplTransaction.PublicKey,
+        publicKeyPreview: xrplTransaction.PublicKey ? `${xrplTransaction.PublicKey.substring(0, 20)}...` : 'MISSING',
+        balance: xrplTransaction.Balance,
+        transactionType: xrplTransaction.TransactionType,
+        flags: xrplTransaction.Flags
+      })
 
       // Step 2: Execute XRPL transaction
       console.log('[WORKER_CLOSE_FLOW] Step 2: Executing XRPL PaymentChannelClaim')
@@ -242,8 +249,32 @@ const WorkerDashboard: React.FC = () => {
 
       console.log('[WORKER_CLOSE_FLOW] Step 2 complete. TX:', txResult.hash)
 
-      // Step 3: Confirm closure in database
-      console.log('[WORKER_CLOSE_FLOW] Step 3: Confirming closure')
+      // Step 2.5: CRITICAL - Verify transaction on ledger before database update
+      console.log('[WORKER_CLOSE_FLOW] Step 2.5: Verifying transaction on ledger...')
+      const validation = await verifyChannelClosure(
+        channel.channelId,
+        txResult.hash,
+        network,
+        false // isSourceClosure = false for worker (destination) closures
+      )
+
+      if (!validation.success || !validation.validated) {
+        console.error('[WORKER_CLOSE_FLOW] VALIDATION FAILED', validation)
+        throw new Error(
+          `TRANSACTION FAILED ON LEDGER: ${validation.error || 'NOT_VALIDATED'}\n` +
+          `Result Code: ${validation.details?.transactionResult || 'UNKNOWN'}\n\n` +
+          `The transaction was submitted but rejected by the network. ` +
+          `Your wallet balance has not changed and the channel remains active.`
+        )
+      }
+
+      console.log('[WORKER_CLOSE_FLOW] Transaction validated successfully ✅', {
+        transactionResult: validation.details?.transactionResult,
+        channelRemoved: validation.channelRemoved
+      })
+
+      // Step 3: Confirm closure in database (ONLY after validation succeeds)
+      console.log('[WORKER_CLOSE_FLOW] Step 3: Confirming closure in database')
       await paymentChannelApi.confirmChannelClosure(
         selectedChannel.channelId,
         txResult.hash,

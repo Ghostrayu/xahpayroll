@@ -144,18 +144,19 @@ export function WorkSessionTimer({
         activeSession.id
       )
 
-      if (response.success && response.data) {
+      // FIX (2025-12-28): Backend returns workSession at root level, not nested under data
+      if (response.success && (response as any).workSession) {
         // Remove from active sessions context
         removeActiveSession(paymentChannelId)
 
-        // Show earnings summary
-        const earnings = response.data.workSession.totalAmount.toFixed(2)
-        const hours = response.data.workSession.hoursWorked.toFixed(2)
+        // Show earnings summary (access workSession from root level)
+        const earnings = (response as any).workSession.totalAmount.toFixed(2)
+        const hours = (response as any).workSession.hoursWorked.toFixed(2)
         console.log(`SESSION COMPLETE: ${hours} hours, ${earnings} XAH earned`)
 
         // Show success message FIRST (blocking alert)
         // User must dismiss this before page refresh happens
-        const successMessage = `${response.data.message || 'CLOCKED OUT SUCCESSFULLY'}\n\n` +
+        const successMessage = `${(response as any).message || 'CLOCKED OUT SUCCESSFULLY'}\n\n` +
           `SESSION EARNINGS: ${earnings} XAH\n` +
           `HOURS WORKED: ${hours}h\n\n` +
           `YOUR COMPLETED SESSIONS BALANCE HAS BEEN UPDATED\n\n` +
