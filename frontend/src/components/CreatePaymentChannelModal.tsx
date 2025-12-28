@@ -31,6 +31,7 @@ interface PaymentChannelConfig {
   settleDelay: string
   paymentStructure: 'accumulating' | 'fixed'
   autoRelease: boolean
+  durationHours: string // Worker protection: hours until force-close enabled
 }
 
 const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ isOpen, onClose, onSuccess }) => {
@@ -48,6 +49,7 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
     paymentFrequency: 'hourly',
     settleDelay: '24',
     paymentStructure: 'accumulating',
+    durationHours: '24', // Default: 24 hours (worker can force-close after 1 day)
     autoRelease: true
   })
 
@@ -364,7 +366,8 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
               expiration: expirationTime,
               balanceUpdateFrequency: config.paymentFrequency === 'hourly' ? 'Hourly' :
                                        config.paymentFrequency === 'every-30min' ? 'Every 30 Minutes' :
-                                       config.paymentFrequency === 'every-15min' ? 'Every 15 Minutes' : 'Continuous'
+                                       config.paymentFrequency === 'every-15min' ? 'Every 15 Minutes' : 'Continuous',
+              durationHours: parseFloat(config.durationHours) // Worker protection: hours until force-close
             })
           })
 
@@ -760,6 +763,41 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
               </select>
               <p className="text-xs text-gray-500 mt-1 uppercase">
                 ⏱️ Time delay before channel can close after final claim. Gives you time to dispute if needed.
+              </p>
+            </div>
+
+            {/* Worker Protection: Force-Close Duration */}
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase mb-2">
+                Worker Protection Duration (Hours)
+              </label>
+              <div className="grid grid-cols-4 gap-2 mb-2">
+                {[12, 24, 48, 168].map((hours) => (
+                  <button
+                    key={hours}
+                    type="button"
+                    onClick={() => handleInputChange('durationHours', hours.toString())}
+                    className={`px-3 py-2 border-2 rounded-lg text-xs font-bold uppercase transition-colors ${
+                      config.durationHours === hours.toString()
+                        ? 'bg-xah-blue text-white border-xah-blue'
+                        : 'bg-white text-gray-700 border-gray-300 hover:border-xah-blue'
+                    }`}
+                  >
+                    {hours < 48 ? `${hours}H` : `${hours / 24}D`}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="number"
+                value={config.durationHours}
+                onChange={(e) => handleInputChange('durationHours', e.target.value)}
+                min="1"
+                max="720"
+                className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-xah-blue focus:outline-none"
+                placeholder="CUSTOM HOURS"
+              />
+              <p className="text-xs text-gray-500 mt-1 uppercase">
+                ⚠️ After {config.durationHours} hours, worker can force-close channel without your approval to claim earned wages. This deadline is IMMUTABLE.
               </p>
             </div>
 

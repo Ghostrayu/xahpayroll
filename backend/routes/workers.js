@@ -869,6 +869,295 @@ router.get('/:walletAddress/payment-channels', async (req, res) => {
 })
 
 /**
+ * GET /api/workers/activity/:walletAddress
+ * Get recent activity for a worker (similar to NGO activity feed)
+ * Enhanced with Phase 1-3: payment events, channel events, notifications
+ */
+router.get('/activity/:walletAddress', async (req, res) => {
+  try {
+    const { walletAddress } = req.params
+
+    console.log('[WORKER_ACTIVITY_FETCH]', { walletAddress })
+
+    // Get employee ID from wallet address
+    const employeeResult = await query(
+      `SELECT id FROM employees WHERE employee_wallet_address = $1`,
+      [walletAddress]
+    )
+
+    if (employeeResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: { message: 'WORKER NOT FOUND' }
+      })
+    }
+
+    const employeeId = employeeResult.rows[0].id
+
+    // Get recent activity: work sessions, payments, channel events, notifications
+    // Phase 1: Payment events (completed and failed), channel closures, escrow deposits
+    // Phase 2: Payment types, channel names, tx hashes, failure reasons
+    // Phase 3: Priority indicators (critical, warning, notification, normal)
+    const activityResult = await query(
+      `(
+        -- Clock In Events
+        SELECT
+          'clock_in' as type,
+          o.organization_name as organization,
+          ws.clock_in as timestamp,
+          NULL::numeric as amount,
+          NULL::varchar as payment_type,
+          NULL::varchar as payment_status,
+          NULL::varchar as tx_hash,
+          NULL::varchar as job_name,
+          NULL::varchar as details,
+          'normal' as priority
+        FROM work_sessions ws
+        JOIN organizations o ON ws.organization_id = o.id
+        WHERE ws.employee_id = $1
+        ORDER BY ws.clock_in DESC
+        LIMIT 5
+      )
+      UNION ALL
+      (
+        -- Clock Out Events
+        SELECT
+          'clock_out' as type,
+          o.organization_name as organization,
+          ws.clock_out as timestamp,
+          ws.hours_worked as amount,
+          NULL::varchar as payment_type,
+          NULL::varchar as payment_status,
+          NULL::varchar as tx_hash,
+          NULL::varchar as job_name,
+          NULL::varchar as details,
+          'normal' as priority
+        FROM work_sessions ws
+        JOIN organizations o ON ws.organization_id = o.id
+        WHERE ws.employee_id = $1 AND ws.clock_out IS NOT NULL
+        ORDER BY ws.clock_out DESC
+        LIMIT 5
+      )
+      UNION ALL
+      (
+        -- Payment Received (Successful)
+        SELECT
+          'payment_received' as type,
+          o.organization_name as organization,
+          p.created_at as timestamp,
+          p.amount,
+          p.payment_type,
+          p.payment_status,
+          p.tx_hash,
+          NULL::varchar as job_name,
+          NULL::varchar as details,
+          'normal' as priority
+        FROM payments p
+        JOIN organizations o ON p.organization_id = o.id
+        WHERE p.employee_id = $1 AND p.payment_status = 'completed'
+        ORDER BY p.created_at DESC
+        LIMIT 5
+      )
+      UNION ALL
+      (
+        -- Payment Failed (Phase 1 + Phase 3: Critical Alert)
+        SELECT
+          'payment_failed' as type,
+          o.organization_name as organization,
+          p.created_at as timestamp,
+          p.amount,
+          p.payment_type,
+          p.payment_status,
+          p.tx_hash,
+          NULL::varchar as job_name,
+          CASE
+            WHEN p.payment_status = 'failed' THEN 'PAYMENT PROCESSING FAILED'
+            WHEN p.payment_status = 'cancelled' THEN 'PAYMENT CANCELLED BY ORGANIZATION'
+            ELSE 'UNKNOWN ERROR'
+          END as details,
+          'critical' as priority
+        FROM payments p
+        JOIN organizations o ON p.organization_id = o.id
+        WHERE p.employee_id = $1 AND p.payment_status IN ('failed', 'cancelled')
+        ORDER BY p.created_at DESC
+        LIMIT 5
+      )
+      UNION ALL
+      (
+        -- Channel Assignments (Channel Created for Worker)
+        SELECT
+          'channel_assigned' as type,
+          o.organization_name as organization,
+          pc.created_at as timestamp,
+          pc.escrow_funded_amount as amount,
+          NULL::varchar as payment_type,
+          NULL::varchar as payment_status,
+          NULL::varchar as tx_hash,
+          pc.job_name,
+          NULL::varchar as details,
+          'notification' as priority
+        FROM payment_channels pc
+        JOIN organizations o ON pc.organization_id = o.id
+        WHERE pc.employee_id = $1
+        ORDER BY pc.created_at DESC
+        LIMIT 5
+      )
+      UNION ALL
+      (
+        -- Channel Closed Events (Phase 1 + Phase 2)
+        SELECT
+          'channel_closed' as type,
+          o.organization_name as organization,
+          pc.closed_at as timestamp,
+          pc.off_chain_accumulated_balance as amount,
+          NULL::varchar as payment_type,
+          NULL::varchar as payment_status,
+          pc.closure_tx_hash as tx_hash,
+          pc.job_name,
+          NULL::varchar as details,
+          'normal' as priority
+        FROM payment_channels pc
+        JOIN organizations o ON pc.organization_id = o.id
+        WHERE pc.employee_id = $1 AND pc.closed_at IS NOT NULL
+        ORDER BY pc.closed_at DESC
+        LIMIT 5
+      )
+      UNION ALL
+      (
+        -- Channel Expiring Soon (Phase 3: Warning)
+        SELECT
+          'channel_expiring' as type,
+          o.organization_name as organization,
+          pc.expiration_time as timestamp,
+          pc.off_chain_accumulated_balance as amount,
+          NULL::varchar as payment_type,
+          NULL::varchar as payment_status,
+          NULL::varchar as tx_hash,
+          pc.job_name,
+          'YOU CAN FINALIZE CLOSURE TO RECEIVE YOUR BALANCE' as details,
+          'warning' as priority
+        FROM payment_channels pc
+        JOIN organizations o ON pc.organization_id = o.id
+        WHERE pc.employee_id = $1
+          AND pc.status = 'closing'
+          AND pc.expiration_time IS NOT NULL
+          AND pc.expiration_time <= NOW() + INTERVAL '24 hours'
+        ORDER BY pc.expiration_time DESC
+        LIMIT 5
+      )
+      UNION ALL
+      (
+        -- Worker Notifications (closure requests, system alerts)
+        SELECT
+          CONCAT('notification_', wn.type) as type,
+          COALESCE(o.organization_name, 'SYSTEM') as organization,
+          wn.created_at as timestamp,
+          NULL::numeric as amount,
+          NULL::varchar as payment_type,
+          NULL::varchar as payment_status,
+          wn.closure_tx_hash as tx_hash,
+          wn.job_name,
+          wn.message as details,
+          CASE
+            WHEN wn.type = 'closure_request' THEN 'notification'
+            WHEN wn.type = 'error' THEN 'critical'
+            WHEN wn.type = 'warning' THEN 'warning'
+            ELSE 'notification'
+          END as priority
+        FROM worker_notifications wn
+        LEFT JOIN organizations o ON wn.ngo_wallet_address = o.escrow_wallet_address
+        WHERE wn.worker_wallet_address = $2
+        ORDER BY wn.created_at DESC
+        LIMIT 5
+      )
+      ORDER BY timestamp DESC
+      LIMIT 20`,
+      [employeeId, walletAddress]
+    )
+
+    const activity = activityResult.rows.map(a => {
+      const now = new Date()
+      const timestamp = new Date(a.timestamp)
+      const diffMs = now.getTime() - timestamp.getTime()
+      const diffMins = Math.floor(diffMs / 60000)
+
+      let timeAgo
+      if (diffMins < 1) timeAgo = 'JUST NOW'
+      else if (diffMins < 60) timeAgo = `${diffMins} MINUTE${diffMins > 1 ? 'S' : ''} AGO`
+      else if (diffMins < 1440) timeAgo = `${Math.floor(diffMins / 60)} HOUR${Math.floor(diffMins / 60) > 1 ? 'S' : ''} AGO`
+      else timeAgo = `${Math.floor(diffMins / 1440)} DAY${Math.floor(diffMins / 1440) > 1 ? 'S' : ''} AGO`
+
+      // Phase 2: Build action text with enhanced context
+      let action = ''
+      let actionDetails = a.details
+
+      switch (a.type) {
+        case 'clock_in':
+          action = 'CLOCKED IN'
+          break
+        case 'clock_out':
+          action = 'CLOCKED OUT'
+          actionDetails = a.amount ? `WORKED ${parseFloat(a.amount).toFixed(2)} HOURS` : null
+          break
+        case 'payment_received':
+          action = 'PAYMENT RECEIVED'
+          actionDetails = a.payment_type ? `TYPE: ${a.payment_type.toUpperCase()}` : null
+          break
+        case 'payment_failed':
+          action = '⚠️ PAYMENT FAILED'
+          break
+        case 'channel_assigned':
+          action = `📋 CHANNEL ASSIGNED${a.job_name ? ': ' + a.job_name.toUpperCase() : ''}`
+          actionDetails = 'NEW JOB AVAILABLE'
+          break
+        case 'channel_closed':
+          action = `CHANNEL CLOSED${a.job_name ? ': ' + a.job_name.toUpperCase() : ''}`
+          actionDetails = a.tx_hash ? `TX: ${a.tx_hash.substring(0, 8)}...` : 'FINAL PAYOUT RECEIVED'
+          break
+        case 'channel_expiring':
+          action = `⏰ CHANNEL READY TO CLOSE${a.job_name ? ': ' + a.job_name.toUpperCase() : ''}`
+          break
+        case 'notification_closure_request':
+          action = '🔔 CLOSURE REQUEST FROM ORGANIZATION'
+          break
+        case 'notification_error':
+          action = '🚨 SYSTEM ERROR'
+          break
+        case 'notification_warning':
+          action = '⚠️ SYSTEM WARNING'
+          break
+        default:
+          action = a.type.toUpperCase().replace(/_/g, ' ')
+      }
+
+      return {
+        organization: a.organization,
+        action,
+        actionDetails,
+        amount: a.amount && !a.type.includes('clock') ? `${parseFloat(a.amount).toFixed(2)} XAH` : null,
+        time: timeAgo,
+        status: a.type === 'clock_in' ? 'active' : 'completed',
+        priority: a.priority || 'normal',
+        txHash: a.tx_hash || null,
+        paymentType: a.payment_type || null,
+        jobName: a.job_name || null
+      }
+    })
+
+    res.json({
+      success: true,
+      data: activity
+    })
+  } catch (error) {
+    console.error('[WORKER_ACTIVITY_ERROR]', error)
+    res.status(500).json({
+      success: false,
+      error: { message: 'FAILED TO FETCH WORKER ACTIVITY' }
+    })
+  }
+})
+
+/**
  * POST /api/workers/reassociate-records
  * Re-associate orphaned employee records with new user account
  * This restores complete work history when worker re-signs up with same wallet

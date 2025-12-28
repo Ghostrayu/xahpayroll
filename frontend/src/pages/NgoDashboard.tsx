@@ -140,6 +140,55 @@ const NgoDashboard: React.FC = () => {
   }
 
   /**
+   * Check if CancelAfter has expired (worker can force-close)
+   * CancelAfter is Ripple Epoch timestamp - convert to Unix for comparison
+   */
+  const isCancelAfterExpired = (channel: any): boolean => {
+    if (!channel.cancelAfter || channel.status !== 'active') {
+      return false
+    }
+    // Convert Ripple Epoch to Unix timestamp (milliseconds)
+    const cancelAfterUnix = (channel.cancelAfter + 946684800) * 1000
+    return Date.now() >= cancelAfterUnix
+  }
+
+  /**
+   * Check if CancelAfter is approaching (< 48 hours remaining)
+   * Warns NGOs that worker force-close deadline is coming soon
+   */
+  const isCancelAfterApproaching = (channel: any): boolean => {
+    if (!channel.cancelAfter || channel.status !== 'active') {
+      return false
+    }
+    const cancelAfterUnix = (channel.cancelAfter + 946684800) * 1000
+    const hoursRemaining = (cancelAfterUnix - Date.now()) / (1000 * 60 * 60)
+    return hoursRemaining > 0 && hoursRemaining <= 48
+  }
+
+  /**
+   * Calculate time remaining until CancelAfter expiration
+   * Shows NGOs when worker can force-close channel
+   */
+  const getCancelAfterTimeRemaining = (cancelAfter: number): string => {
+    const cancelAfterUnix = (cancelAfter + 946684800) * 1000
+    const diff = cancelAfterUnix - Date.now()
+
+    if (diff <= 0) return 'WORKER CAN FORCE-CLOSE NOW'
+
+    const hours = Math.floor(diff / (1000 * 60 * 60))
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+
+    if (hours > 24) {
+      const days = Math.floor(hours / 24)
+      return `${days} day${days !== 1 ? 's' : ''} until force-close`
+    } else if (hours > 0) {
+      return `${hours}h ${minutes}m until force-close`
+    } else {
+      return `${minutes}m until force-close`
+    }
+  }
+
+  /**
    * Handle cancel channel button click - opens confirmation modal
    */
   const handleCancelClick = (channel: any) => {
@@ -731,6 +780,59 @@ const NgoDashboard: React.FC = () => {
                         </div>
                       </div>
 
+                      {/* CancelAfter Expiration Warning - NGO Alert */}
+                      {channel.status === 'active' && channel.cancelAfter && (isCancelAfterExpired(channel) || isCancelAfterApproaching(channel)) && (
+                        <div className={`mb-3 rounded-lg p-3 border-2 ${
+                          isCancelAfterExpired(channel)
+                            ? 'bg-red-50 border-red-500'
+                            : 'bg-yellow-50 border-yellow-500'
+                        }`}>
+                          <div className="flex items-start gap-2">
+                            <div className={`text-2xl flex-shrink-0 ${
+                              isCancelAfterExpired(channel) ? 'animate-pulse' : ''
+                            }`}>
+                              {isCancelAfterExpired(channel) ? '⚠️' : '⏰'}
+                            </div>
+                            <div className="flex-1">
+                              <p className={`text-xs font-extrabold uppercase tracking-wide mb-1 ${
+                                isCancelAfterExpired(channel) ? 'text-red-900' : 'text-yellow-900'
+                              }`}>
+                                {isCancelAfterExpired(channel)
+                                  ? '⚠️ WORKER CAN FORCE-CLOSE WITHOUT YOUR APPROVAL!'
+                                  : '⏰ WORKER PROTECTION DEADLINE APPROACHING'}
+                              </p>
+                              <div className={`text-[10px] space-y-1 ${
+                                isCancelAfterExpired(channel) ? 'text-red-800' : 'text-yellow-800'
+                              }`}>
+                                {isCancelAfterExpired(channel) ? (
+                                  <>
+                                    <p className="font-bold">
+                                      • CANCELAFTER DEADLINE REACHED - {channel.worker} CAN CLOSE CHANNEL UNILATERALLY
+                                    </p>
+                                    <p className="font-bold">• WORKER WILL CLAIM {channel.balance?.toLocaleString() || '0'} XAH, ESCROW RETURNS TO YOU</p>
+                                    <p>• THIS IS XRPL WORKER PROTECTION - YOU CANNOT PREVENT CLOSURE</p>
+                                    <p className="font-bold text-red-900">
+                                      • CONSIDER CLOSING CHANNEL YOURSELF TO SETTLE BALANCE
+                                    </p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <p className="font-bold">
+                                      • {getCancelAfterTimeRemaining(channel.cancelAfter)} UNTIL {channel.worker} CAN FORCE-CLOSE
+                                    </p>
+                                    <p>• AFTER DEADLINE, WORKER CAN CLOSE WITHOUT YOUR SIGNATURE</p>
+                                    <p>• XRPL WORKER PROTECTION PREVENTS INDEFINITE FUND LOCKING</p>
+                                    <p className="font-bold text-yellow-900">
+                                      • CLOSE CHANNEL BEFORE DEADLINE OR WORKER WILL FORCE-CLOSE
+                                    </p>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
                         <div className="bg-white/60 rounded-lg p-2 border border-orange-200">
                           <p className="text-[10px] text-gray-600 uppercase tracking-wide font-semibold mb-0.5">
@@ -857,29 +959,90 @@ const NgoDashboard: React.FC = () => {
 
           {/* Recent Activity and Workers Grid */}
           <div className="mt-12 grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Recent Activity */}
+            {/* Recent Activity - Enhanced with Phase 1-3 */}
             <div className="bg-white rounded-2xl shadow-xl p-6 border-2 border-xah-blue/30">
               <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-6">Recent Activity</h3>
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {recentActivity.length > 0 ? (
-                  recentActivity.slice(0, 5).map((activity, index) => (
-                    <div key={index} className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                      <div className={`w-2 h-2 rounded-full mt-2 ${
-                        activity.status === 'active' ? 'bg-green-500' : 'bg-gray-400'
-                      }`} />
-                      <div className="flex-1">
-                        <p className="font-bold text-gray-900 text-sm uppercase tracking-wide">{activity.worker}</p>
-                        <p className="text-xs text-gray-600 uppercase tracking-wide">{activity.action}</p>
-                        {activity.amount && (
-                          <p className="text-xs text-xah-blue font-bold uppercase tracking-wide mt-1">{activity.amount}</p>
-                        )}
+                  recentActivity.slice(0, 8).map((activity, index) => {
+                    // Phase 3: Priority-based styling
+                    const priorityStyles = {
+                      critical: {
+                        bg: 'bg-red-50 border-red-200',
+                        border: 'border-l-4 border-l-red-500',
+                        indicator: 'bg-red-500 animate-pulse',
+                        text: 'text-red-900'
+                      },
+                      warning: {
+                        bg: 'bg-yellow-50 border-yellow-200',
+                        border: 'border-l-4 border-l-yellow-500',
+                        indicator: 'bg-yellow-500',
+                        text: 'text-yellow-900'
+                      },
+                      notification: {
+                        bg: 'bg-blue-50 border-blue-200',
+                        border: 'border-l-4 border-l-blue-500',
+                        indicator: 'bg-blue-500',
+                        text: 'text-blue-900'
+                      },
+                      normal: {
+                        bg: 'bg-gray-50 border-gray-200',
+                        border: '',
+                        indicator: activity.status === 'active' ? 'bg-green-500' : 'bg-gray-400',
+                        text: 'text-gray-900'
+                      }
+                    }
+
+                    const style = priorityStyles[activity.priority] || priorityStyles.normal
+
+                    return (
+                      <div
+                        key={index}
+                        className={`flex items-start gap-3 p-3 rounded-lg border transition-all hover:shadow-md ${style.bg} ${style.border}`}
+                      >
+                        <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${style.indicator}`} />
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-bold text-sm uppercase tracking-wide ${style.text}`}>
+                            {activity.worker}
+                          </p>
+                          <p className="text-xs text-gray-700 uppercase tracking-wide mt-0.5">
+                            {activity.action}
+                          </p>
+
+                          {/* Phase 2: Enhanced details */}
+                          {activity.actionDetails && (
+                            <p className="text-xs text-gray-600 mt-1 font-mono">
+                              {activity.actionDetails}
+                            </p>
+                          )}
+
+                          {activity.amount && (
+                            <p className="text-xs text-xah-blue font-bold uppercase tracking-wide mt-1">
+                              {activity.amount}
+                            </p>
+                          )}
+
+                          {/* Phase 2: Transaction hash link */}
+                          {activity.txHash && (
+                            <a
+                              href={`https://explorer.xahau.network/tx/${activity.txHash}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 hover:text-blue-800 underline mt-1 inline-block"
+                            >
+                              VIEW TX ↗
+                            </a>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500 uppercase tracking-wide flex-shrink-0">
+                          {activity.time}
+                        </p>
                       </div>
-                      <p className="text-xs text-gray-500 uppercase tracking-wide">{activity.time}</p>
-                    </div>
-                  ))
+                    )
+                  })
                 ) : (
                   <div className="text-center py-8">
-                    <p className="text-sm text-gray-500 uppercase tracking-wide">No recent activity</p>
+                    <p className="text-sm text-gray-500 uppercase tracking-wide">NO RECENT ACTIVITY</p>
                   </div>
                 )}
               </div>

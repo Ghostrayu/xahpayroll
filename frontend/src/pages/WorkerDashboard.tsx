@@ -30,6 +30,9 @@ const WorkerDashboard: React.FC = () => {
   const [unreadCount, setUnreadCount] = useState<number>(0)
   const [showNotifications, setShowNotifications] = useState(false)
 
+  // Activity feed state (Phase 1-3 Enhancement)
+  const [workerActivity, setWorkerActivity] = useState<any[]>([])
+
   // "How This Works" modal state
   const [showHowItWorksModal, setShowHowItWorksModal] = useState(false)
 
@@ -104,6 +107,40 @@ const WorkerDashboard: React.FC = () => {
   }, [walletAddress])
 
   /**
+   * Fetch worker activity feed (Phase 1-3 Enhancement)
+   * Shows recent activity from worker perspective across all organizations
+   */
+  const fetchWorkerActivity = async () => {
+    if (!walletAddress) return
+
+    try {
+      console.log('[WORKER_ACTIVITY] Fetching activity for worker:', walletAddress)
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
+      const response = await fetch(`${backendUrl}/api/workers/activity/${walletAddress}`)
+      const data = await response.json()
+
+      if (data.success && data.data) {
+        setWorkerActivity(data.data)
+        console.log('[WORKER_ACTIVITY] Fetched', data.data.length, 'activity events')
+      } else {
+        console.error('[WORKER_ACTIVITY_ERROR]', data.error?.message || 'FAILED TO FETCH ACTIVITY')
+      }
+    } catch (error: any) {
+      console.error('[WORKER_ACTIVITY_ERROR]', error)
+      // Don't show alert - just log error
+    }
+  }
+
+  // Fetch worker activity on mount and periodically
+  useEffect(() => {
+    fetchWorkerActivity()
+
+    // Poll for new activity every 60 seconds
+    const interval = setInterval(fetchWorkerActivity, 60000)
+    return () => clearInterval(interval)
+  }, [walletAddress])
+
+  /**
    * Helper: Check if closing channel has passed expiration time
    * Worker protection: Alerts workers when channels expire so they can finalize
    */
@@ -124,6 +161,55 @@ const WorkerDashboard: React.FC = () => {
     const diff = exp - now
 
     if (diff <= 0) return 'EXPIRED'
+
+    const hours = Math.floor(diff / (1000 * 60 * 60))
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+
+    if (hours > 24) {
+      const days = Math.floor(hours / 24)
+      return `${days} day${days !== 1 ? 's' : ''} remaining`
+    } else if (hours > 0) {
+      return `${hours}h ${minutes}m remaining`
+    } else {
+      return `${minutes}m remaining`
+    }
+  }
+
+  /**
+   * Helper: Check if CancelAfter has expired (worker can force-close)
+   * CancelAfter is Ripple Epoch timestamp - convert to Unix for comparison
+   */
+  const isCancelAfterExpired = (channel: any): boolean => {
+    if (!channel.cancelAfter || channel.status !== 'active') {
+      return false
+    }
+    // Convert Ripple Epoch to Unix timestamp (milliseconds)
+    const cancelAfterUnix = (channel.cancelAfter + 946684800) * 1000
+    return Date.now() >= cancelAfterUnix
+  }
+
+  /**
+   * Helper: Check if CancelAfter is approaching (< 24 hours remaining)
+   * Warns workers that force-close deadline is coming soon
+   */
+  const isCancelAfterApproaching = (channel: any): boolean => {
+    if (!channel.cancelAfter || channel.status !== 'active') {
+      return false
+    }
+    const cancelAfterUnix = (channel.cancelAfter + 946684800) * 1000
+    const hoursRemaining = (cancelAfterUnix - Date.now()) / (1000 * 60 * 60)
+    return hoursRemaining > 0 && hoursRemaining <= 24
+  }
+
+  /**
+   * Helper: Calculate time remaining until CancelAfter expiration
+   * Shows workers when they can force-close channel
+   */
+  const getCancelAfterTimeRemaining = (cancelAfter: number): string => {
+    const cancelAfterUnix = (cancelAfter + 946684800) * 1000
+    const diff = cancelAfterUnix - Date.now()
+
+    if (diff <= 0) return 'CAN FORCE-CLOSE NOW'
 
     const hours = Math.floor(diff / (1000 * 60 * 60))
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
@@ -758,6 +844,59 @@ const WorkerDashboard: React.FC = () => {
                       </div>
                     )}
 
+                    {/* Worker Protection Alert - CancelAfter Force-Close */}
+                    {channel.status === 'active' && channel.cancelAfter && (isCancelAfterExpired(channel) || isCancelAfterApproaching(channel)) && (
+                      <div className={`mb-3 rounded-lg p-3 border-2 ${
+                        isCancelAfterExpired(channel)
+                          ? 'bg-green-50 border-green-500'
+                          : 'bg-blue-50 border-blue-500'
+                      }`}>
+                        <div className="flex items-start gap-2">
+                          <div className={`text-2xl flex-shrink-0 ${
+                            isCancelAfterExpired(channel) ? 'animate-pulse' : ''
+                          }`}>
+                            {isCancelAfterExpired(channel) ? '🛡️' : '⏰'}
+                          </div>
+                          <div className="flex-1">
+                            <p className={`text-xs font-extrabold uppercase tracking-wide mb-1 ${
+                              isCancelAfterExpired(channel) ? 'text-green-900' : 'text-blue-900'
+                            }`}>
+                              {isCancelAfterExpired(channel)
+                                ? '🛡️ WORKER PROTECTION ACTIVE - YOU CAN FORCE-CLOSE NOW!'
+                                : '⏰ WORKER PROTECTION APPROACHING'}
+                            </p>
+                            <div className={`text-[10px] space-y-1 ${
+                              isCancelAfterExpired(channel) ? 'text-green-800' : 'text-blue-800'
+                            }`}>
+                              {isCancelAfterExpired(channel) ? (
+                                <>
+                                  <p className="font-bold">
+                                    • CANCELAFTER DEADLINE REACHED - YOU CAN CLOSE WITHOUT EMPLOYER APPROVAL
+                                  </p>
+                                  <p className="font-bold">• CLICK "FORCE CLOSE" BELOW TO CLAIM YOUR {channel.balance?.toLocaleString() || '0'} XAH</p>
+                                  <p>• UNUSED ESCROW AUTOMATICALLY RETURNS TO EMPLOYER</p>
+                                  <p className="font-bold text-green-900">
+                                    • XRPL WORKER PROTECTION ENSURES YOU GET PAID
+                                  </p>
+                                </>
+                              ) : (
+                                <>
+                                  <p className="font-bold">
+                                    • {getCancelAfterTimeRemaining(channel.cancelAfter)} UNTIL FORCE-CLOSE AVAILABLE
+                                  </p>
+                                  <p>• AFTER DEADLINE, YOU CAN CLOSE CHANNEL WITHOUT EMPLOYER SIGNATURE</p>
+                                  <p>• PROTECTS WORKERS FROM UNRESPONSIVE EMPLOYERS</p>
+                                  <p className="font-bold text-blue-900">
+                                    • YOUR {channel.balance?.toLocaleString() || '0'} XAH IS SAFE
+                                  </p>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-2 gap-2 mb-3">
                       <div className="bg-white/60 rounded-lg p-2 border border-green-200">
                         <p className="text-xs text-gray-600 uppercase tracking-wide font-semibold mb-0.5">
@@ -845,9 +984,17 @@ const WorkerDashboard: React.FC = () => {
                         <button
                           onClick={() => handleCloseClick(channel)}
                           disabled={cancelingChannel === channel.channelId}
-                          className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white font-bold rounded text-xs uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className={`px-3 py-1 text-white font-bold rounded text-xs uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                            isCancelAfterExpired(channel)
+                              ? 'bg-green-500 hover:bg-green-600 animate-pulse'
+                              : 'bg-red-500 hover:bg-red-600'
+                          }`}
                         >
-                          {cancelingChannel === channel.channelId ? 'CLOSING...' : 'CLOSE CHANNEL'}
+                          {cancelingChannel === channel.channelId
+                            ? 'CLOSING...'
+                            : isCancelAfterExpired(channel)
+                            ? '🛡️ FORCE CLOSE'
+                            : 'CLOSE CHANNEL'}
                         </button>
                       )}
                     </div>
@@ -957,6 +1104,98 @@ const WorkerDashboard: React.FC = () => {
               </button>
             </div>
           </div>
+
+          {/* Recent Activity - Enhanced with Phase 1-3 */}
+          <div className="mt-8 bg-white rounded-2xl shadow-xl p-6 border-2 border-xah-blue/30">
+            <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-6">Recent Activity</h3>
+            <div className="space-y-3">
+              {workerActivity.length > 0 ? (
+                workerActivity.slice(0, 8).map((activity, index) => {
+                  // Phase 3: Priority-based styling
+                  const priorityStyles = {
+                    critical: {
+                      bg: 'bg-red-50 border-red-200',
+                      border: 'border-l-4 border-l-red-500',
+                      indicator: 'bg-red-500 animate-pulse',
+                      text: 'text-red-900'
+                    },
+                    warning: {
+                      bg: 'bg-yellow-50 border-yellow-200',
+                      border: 'border-l-4 border-l-yellow-500',
+                      indicator: 'bg-yellow-500',
+                      text: 'text-yellow-900'
+                    },
+                    notification: {
+                      bg: 'bg-blue-50 border-blue-200',
+                      border: 'border-l-4 border-l-blue-500',
+                      indicator: 'bg-blue-500',
+                      text: 'text-blue-900'
+                    },
+                    normal: {
+                      bg: 'bg-gray-50 border-gray-200',
+                      border: '',
+                      indicator: activity.status === 'active' ? 'bg-green-500' : 'bg-gray-400',
+                      text: 'text-gray-900'
+                    }
+                  }
+
+                  const style = priorityStyles[activity.priority as keyof typeof priorityStyles] || priorityStyles.normal
+
+                  return (
+                    <div
+                      key={index}
+                      className={`flex items-start gap-3 p-3 rounded-lg border transition-all hover:shadow-md ${style.bg} ${style.border}`}
+                    >
+                      <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${style.indicator}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className={`font-bold text-sm uppercase tracking-wide ${style.text}`}>
+                          {activity.organization}
+                        </p>
+                        <p className="text-xs text-gray-700 uppercase tracking-wide mt-0.5">
+                          {activity.action}
+                        </p>
+
+                        {/* Phase 2: Enhanced details */}
+                        {activity.actionDetails && (
+                          <p className="text-xs text-gray-600 mt-1 font-mono">
+                            {activity.actionDetails}
+                          </p>
+                        )}
+
+                        {activity.amount && (
+                          <p className="text-xs text-xah-blue font-bold uppercase tracking-wide mt-1">
+                            {activity.amount}
+                          </p>
+                        )}
+
+                        {/* Phase 2: Transaction hash link */}
+                        {activity.txHash && (
+                          <a
+                            href={`https://explorer.xahau.network/tx/${activity.txHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-600 hover:text-blue-800 underline mt-1 inline-block"
+                          >
+                            VIEW TX ↗
+                          </a>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide flex-shrink-0">
+                        {activity.time}
+                      </p>
+                    </div>
+                  )
+                })
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-sm text-gray-500 uppercase tracking-wide">NO RECENT ACTIVITY</p>
+                </div>
+              )}
+            </div>
+            <button className="w-full mt-4 bg-gray-200 hover:bg-gray-300 text-gray-900 font-bold py-3 px-4 rounded-lg text-sm uppercase tracking-wide transition-colors">
+              VIEW FULL HISTORY
+            </button>
+          </div>
         </div>
       </section>
 
@@ -989,57 +1228,96 @@ const WorkerDashboard: React.FC = () => {
                 </div>
               ) : (
                 <div className="divide-y divide-gray-200">
-                  {notifications.map((notif) => (
-                    <div
-                      key={notif.id}
-                      className={`p-4 transition-colors ${
-                        notif.isRead ? 'bg-white' : 'bg-blue-50'
-                      } hover:bg-gray-50`}
-                    >
-                      {/* Notification Header */}
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-2xl">📢</span>
-                          <span className="text-xs font-bold uppercase tracking-wide px-2 py-1 rounded bg-blue-100 text-blue-700">
-                            INFO
+                  {notifications.map((notif) => {
+                    // Map notification type to priority (from activity feed priority system)
+                    const getPriorityFromType = (type: string) => {
+                      if (type === 'error') return 'critical'
+                      if (type === 'warning') return 'warning'
+                      if (type === 'closure_request') return 'notification'
+                      return 'normal'
+                    }
+
+                    const priority = getPriorityFromType(notif.type || 'info')
+
+                    // Phase 3: Priority-based notification styling
+                    const priorityBadgeStyles = {
+                      critical: 'bg-red-100 text-red-700 border border-red-300',
+                      warning: 'bg-yellow-100 text-yellow-700 border border-yellow-300',
+                      notification: 'bg-blue-100 text-blue-700 border border-blue-300',
+                      normal: 'bg-gray-100 text-gray-700 border border-gray-300'
+                    }
+
+                    const priorityBgStyles = {
+                      critical: notif.isRead ? 'bg-white' : 'bg-red-50',
+                      warning: notif.isRead ? 'bg-white' : 'bg-yellow-50',
+                      notification: notif.isRead ? 'bg-white' : 'bg-blue-50',
+                      normal: notif.isRead ? 'bg-white' : 'bg-gray-50'
+                    }
+
+                    const priorityIcons = {
+                      critical: '🚨',
+                      warning: '⚠️',
+                      notification: '🔔',
+                      normal: '📢'
+                    }
+
+                    const priorityLabels = {
+                      critical: 'ERROR',
+                      warning: 'WARNING',
+                      notification: 'NOTIFICATION',
+                      normal: 'INFO'
+                    }
+
+                    return (
+                      <div
+                        key={notif.id}
+                        className={`p-4 transition-colors ${priorityBgStyles[priority as keyof typeof priorityBgStyles]} hover:bg-gray-50`}
+                      >
+                        {/* Notification Header */}
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-2xl">{priorityIcons[priority as keyof typeof priorityIcons]}</span>
+                            <span className={`text-xs font-bold uppercase tracking-wide px-2 py-1 rounded ${priorityBadgeStyles[priority as keyof typeof priorityBadgeStyles]}`}>
+                              {priorityLabels[priority as keyof typeof priorityLabels]}
+                            </span>
+                            {!notif.isRead && (
+                              <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                            )}
+                          </div>
+                          <span className="text-xs text-gray-400 uppercase tracking-wide">
+                            {new Date(notif.createdAt).toLocaleDateString()}
                           </span>
+                        </div>
+
+                        {/* Message */}
+                        <p className="text-sm text-gray-700 mb-3 uppercase tracking-wide">
+                          {notif.message}
+                        </p>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-2">
                           {!notif.isRead && (
-                            <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await workerNotificationsApi.markAsRead(notif.id, walletAddress!)
+                                  // Refresh notifications
+                                  const data = await workerNotificationsApi.getNotifications(walletAddress!)
+                                  setNotifications(data.notifications)
+                                  setUnreadCount(data.unreadCount)
+                                } catch (error) {
+                                  console.error('[MARK_READ_ERROR]', error)
+                                }
+                              }}
+                              className="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded text-xs uppercase tracking-wide transition-colors"
+                            >
+                              MARK AS READ
+                            </button>
                           )}
                         </div>
-                        <span className="text-xs text-gray-400 uppercase tracking-wide">
-                          {new Date(notif.createdAt).toLocaleDateString()}
-                        </span>
                       </div>
-
-                      {/* Message */}
-                      <p className="text-sm text-gray-700 mb-3 uppercase tracking-wide">
-                        {notif.message}
-                      </p>
-
-                      {/* Actions */}
-                      <div className="flex items-center gap-2">
-                        {!notif.isRead && (
-                          <button
-                            onClick={async () => {
-                              try {
-                                await workerNotificationsApi.markAsRead(notif.id, walletAddress!)
-                                // Refresh notifications
-                                const data = await workerNotificationsApi.getNotifications(walletAddress!)
-                                setNotifications(data.notifications)
-                                setUnreadCount(data.unreadCount)
-                              } catch (error) {
-                                console.error('[MARK_READ_ERROR]', error)
-                              }
-                            }}
-                            className="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded text-xs uppercase tracking-wide transition-colors"
-                          >
-                            MARK AS READ
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
 

@@ -338,14 +338,24 @@ router.get('/activity/:walletAddress', async (req, res) => {
 
     const organization = orgResult.rows[0]
 
-    // Get recent work sessions and payments
+    // Get recent work sessions, payments, channel events, and escrow transactions
+    // Phase 1: Added payment failures, channel closures, escrow refunds
+    // Phase 2: Added payment types, channel names, tx hashes, failure reasons
+    // Phase 3: Priority indicators for critical events
     const activityResult = await query(
       `(
+        -- Clock In Events
         SELECT
           'clock_in' as type,
           e.full_name as worker,
           ws.clock_in as timestamp,
-          NULL::numeric as amount
+          NULL::numeric as amount,
+          NULL::varchar as payment_type,
+          NULL::varchar as payment_status,
+          NULL::varchar as tx_hash,
+          NULL::varchar as job_name,
+          NULL::varchar as failure_reason,
+          'normal' as priority
         FROM work_sessions ws
         JOIN employees e ON ws.employee_id = e.id
         WHERE ws.organization_id = $1
@@ -354,11 +364,18 @@ router.get('/activity/:walletAddress', async (req, res) => {
       )
       UNION ALL
       (
+        -- Clock Out Events
         SELECT
           'clock_out' as type,
           e.full_name as worker,
           ws.clock_out as timestamp,
-          NULL::numeric as amount
+          NULL::numeric as amount,
+          NULL::varchar as payment_type,
+          NULL::varchar as payment_status,
+          NULL::varchar as tx_hash,
+          NULL::varchar as job_name,
+          NULL::varchar as failure_reason,
+          'normal' as priority
         FROM work_sessions ws
         JOIN employees e ON ws.employee_id = e.id
         WHERE ws.organization_id = $1 AND ws.clock_out IS NOT NULL
@@ -367,19 +384,151 @@ router.get('/activity/:walletAddress', async (req, res) => {
       )
       UNION ALL
       (
+        -- Successful Payments
         SELECT
           'payment' as type,
           e.full_name as worker,
           p.created_at as timestamp,
-          p.amount
+          p.amount,
+          p.payment_type,
+          p.payment_status,
+          p.tx_hash,
+          NULL::varchar as job_name,
+          NULL::varchar as failure_reason,
+          'normal' as priority
         FROM payments p
         JOIN employees e ON p.employee_id = e.id
-        WHERE p.organization_id = $1
+        WHERE p.organization_id = $1 AND p.payment_status = 'completed'
         ORDER BY p.created_at DESC
         LIMIT 5
       )
+      UNION ALL
+      (
+        -- Payment Failures (Phase 1 + Phase 3: Critical Alert)
+        SELECT
+          'payment_failed' as type,
+          e.full_name as worker,
+          p.created_at as timestamp,
+          p.amount,
+          p.payment_type,
+          p.payment_status,
+          p.tx_hash,
+          NULL::varchar as job_name,
+          CASE
+            WHEN p.payment_status = 'failed' THEN 'PAYMENT PROCESSING FAILED'
+            WHEN p.payment_status = 'cancelled' THEN 'PAYMENT CANCELLED'
+            ELSE 'UNKNOWN ERROR'
+          END as failure_reason,
+          'critical' as priority
+        FROM payments p
+        JOIN employees e ON p.employee_id = e.id
+        WHERE p.organization_id = $1 AND p.payment_status IN ('failed', 'cancelled')
+        ORDER BY p.created_at DESC
+        LIMIT 5
+      )
+      UNION ALL
+      (
+        -- Channel Closures (Phase 1 + Phase 2: Channel name included)
+        SELECT
+          'channel_closed' as type,
+          e.full_name as worker,
+          pc.closed_at as timestamp,
+          pc.off_chain_accumulated_balance as amount,
+          NULL::varchar as payment_type,
+          NULL::varchar as payment_status,
+          pc.closure_tx_hash as tx_hash,
+          pc.job_name,
+          NULL::varchar as failure_reason,
+          'normal' as priority
+        FROM payment_channels pc
+        JOIN employees e ON pc.employee_id = e.id
+        WHERE pc.organization_id = $1 AND pc.closed_at IS NOT NULL
+        ORDER BY pc.closed_at DESC
+        LIMIT 5
+      )
+      UNION ALL
+      (
+        -- Channel Created Events
+        SELECT
+          'channel_created' as type,
+          e.full_name as worker,
+          pc.created_at as timestamp,
+          pc.escrow_funded_amount as amount,
+          NULL::varchar as payment_type,
+          NULL::varchar as payment_status,
+          NULL::varchar as tx_hash,
+          pc.job_name,
+          NULL::varchar as failure_reason,
+          'normal' as priority
+        FROM payment_channels pc
+        JOIN employees e ON pc.employee_id = e.id
+        WHERE pc.organization_id = $1
+        ORDER BY pc.created_at DESC
+        LIMIT 5
+      )
+      UNION ALL
+      (
+        -- Channel Expirations (Phase 3: Warning indicator)
+        SELECT
+          'channel_expiring' as type,
+          e.full_name as worker,
+          pc.expiration_time as timestamp,
+          pc.off_chain_accumulated_balance as amount,
+          NULL::varchar as payment_type,
+          NULL::varchar as payment_status,
+          NULL::varchar as tx_hash,
+          pc.job_name,
+          NULL::varchar as failure_reason,
+          'warning' as priority
+        FROM payment_channels pc
+        JOIN employees e ON pc.employee_id = e.id
+        WHERE pc.organization_id = $1
+          AND pc.status = 'closing'
+          AND pc.expiration_time IS NOT NULL
+          AND pc.expiration_time <= NOW() + INTERVAL '24 hours'
+        ORDER BY pc.expiration_time DESC
+        LIMIT 5
+      )
+      UNION ALL
+      (
+        -- Escrow Refunds (Phase 1)
+        SELECT
+          'escrow_refund' as type,
+          'SYSTEM' as worker,
+          et.created_at as timestamp,
+          et.amount,
+          NULL::varchar as payment_type,
+          NULL::varchar as payment_status,
+          et.tx_hash,
+          NULL::varchar as job_name,
+          et.description as failure_reason,
+          'normal' as priority
+        FROM escrow_transactions et
+        WHERE et.organization_id = $1 AND et.transaction_type = 'refund'
+        ORDER BY et.created_at DESC
+        LIMIT 5
+      )
+      UNION ALL
+      (
+        -- Worker Deletions (Phase 3: Notification indicator)
+        SELECT
+          'worker_deleted' as type,
+          n.worker_name as worker,
+          n.created_at as timestamp,
+          NULL::numeric as amount,
+          NULL::varchar as payment_type,
+          NULL::varchar as payment_status,
+          NULL::varchar as tx_hash,
+          NULL::varchar as job_name,
+          n.message as failure_reason,
+          'notification' as priority
+        FROM ngo_notifications n
+        WHERE n.organization_id = $1 AND n.notification_type = 'worker_deleted'
+        ORDER BY n.created_at DESC
+        LIMIT 5
+      )
       ORDER BY timestamp DESC
-      LIMIT 10`,
+      LIMIT 20`,
       [organization.id]
     )
 
@@ -388,19 +537,65 @@ router.get('/activity/:walletAddress', async (req, res) => {
       const timestamp = new Date(a.timestamp)
       const diffMs = now.getTime() - timestamp.getTime()
       const diffMins = Math.floor(diffMs / 60000)
-      
+
       let timeAgo
-      if (diffMins < 1) timeAgo = 'Just now'
-      else if (diffMins < 60) timeAgo = `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`
-      else if (diffMins < 1440) timeAgo = `${Math.floor(diffMins / 60)} hour${Math.floor(diffMins / 60) > 1 ? 's' : ''} ago`
-      else timeAgo = `${Math.floor(diffMins / 1440)} day${Math.floor(diffMins / 1440) > 1 ? 's' : ''} ago`
+      if (diffMins < 1) timeAgo = 'JUST NOW'
+      else if (diffMins < 60) timeAgo = `${diffMins} MINUTE${diffMins > 1 ? 'S' : ''} AGO`
+      else if (diffMins < 1440) timeAgo = `${Math.floor(diffMins / 60)} HOUR${Math.floor(diffMins / 60) > 1 ? 'S' : ''} AGO`
+      else timeAgo = `${Math.floor(diffMins / 1440)} DAY${Math.floor(diffMins / 1440) > 1 ? 'S' : ''} AGO`
+
+      // Phase 2: Build action text with enhanced context
+      let action = ''
+      let actionDetails = null
+
+      switch (a.type) {
+        case 'clock_in':
+          action = 'CLOCKED IN'
+          break
+        case 'clock_out':
+          action = 'CLOCKED OUT'
+          break
+        case 'payment':
+          action = 'PAYMENT SENT'
+          actionDetails = a.payment_type ? `TYPE: ${a.payment_type.toUpperCase()}` : null
+          break
+        case 'payment_failed':
+          action = '⚠️ PAYMENT FAILED'
+          actionDetails = a.failure_reason
+          break
+        case 'channel_closed':
+          action = `CHANNEL CLOSED${a.job_name ? ': ' + a.job_name.toUpperCase() : ''}`
+          actionDetails = a.tx_hash ? `TX: ${a.tx_hash.substring(0, 8)}...` : null
+          break
+        case 'channel_created':
+          action = `CHANNEL CREATED${a.job_name ? ': ' + a.job_name.toUpperCase() : ''}`
+          break
+        case 'channel_expiring':
+          action = `⏰ CHANNEL EXPIRING${a.job_name ? ': ' + a.job_name.toUpperCase() : ''}`
+          break
+        case 'escrow_refund':
+          action = 'ESCROW REFUND'
+          actionDetails = a.failure_reason
+          break
+        case 'worker_deleted':
+          action = '🔔 WORKER PROFILE DELETED'
+          actionDetails = a.failure_reason
+          break
+        default:
+          action = a.type.toUpperCase()
+      }
 
       return {
         worker: a.worker,
-        action: a.type === 'clock_in' ? 'Clocked In' : a.type === 'clock_out' ? 'Clocked Out' : 'Payment Sent',
+        action,
+        actionDetails,
         amount: a.amount ? `${parseFloat(a.amount).toFixed(2)} XAH` : null,
         time: timeAgo,
-        status: a.type === 'clock_in' ? 'active' : 'completed'
+        status: a.type === 'clock_in' ? 'active' : 'completed',
+        priority: a.priority || 'normal',
+        txHash: a.tx_hash || null,
+        paymentType: a.payment_type || null,
+        jobName: a.job_name || null
       }
     })
 
@@ -937,7 +1132,7 @@ router.post('/:walletAddress/sync-all-channels', async (req, res) => {
                    status = 'closing',
                    expiration_time = to_timestamp($1),
                    escrow_funded_amount = $2,
-                   off_chain_accumulated_balance = $3,
+                   on_chain_balance = $3,
                    settle_delay = $4,
                    last_ledger_sync = NOW(),
                    updated_at = NOW()
@@ -951,7 +1146,7 @@ router.post('/:walletAddress/sync-all-channels', async (req, res) => {
                  SET
                    status = 'active',
                    escrow_funded_amount = $1,
-                   off_chain_accumulated_balance = $2,
+                   on_chain_balance = $2,
                    settle_delay = $3,
                    last_ledger_sync = NOW(),
                    updated_at = NOW()
@@ -982,6 +1177,7 @@ router.post('/:walletAddress/sync-all-channels', async (req, res) => {
                 hourly_rate,
                 max_daily_hours,
                 escrow_funded_amount,
+                on_chain_balance,
                 off_chain_accumulated_balance,
                 balance_update_frequency,
                 status,
@@ -990,7 +1186,7 @@ router.post('/:walletAddress/sync-all-channels', async (req, res) => {
                 last_ledger_sync,
                 created_at,
                 updated_at
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, to_timestamp($11), $12, NOW(), NOW(), NOW())`,
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, to_timestamp($12), $13, NOW(), NOW(), NOW())`,
               [
                 channelId,
                 organization.id,
@@ -999,7 +1195,8 @@ router.post('/:walletAddress/sync-all-channels', async (req, res) => {
                 0, // Default hourly rate - NGO must edit
                 8, // Default max daily hours
                 escrowAmountXah,
-                balanceXah,
+                balanceXah, // on_chain_balance from ledger
+                0, // off_chain_accumulated_balance starts at 0 (no completed sessions yet)
                 'Hourly', // Default frequency
                 'closing', // Status is closing because expiration exists
                 expirationTimestamp,
@@ -1017,6 +1214,7 @@ router.post('/:walletAddress/sync-all-channels', async (req, res) => {
                 hourly_rate,
                 max_daily_hours,
                 escrow_funded_amount,
+                on_chain_balance,
                 off_chain_accumulated_balance,
                 balance_update_frequency,
                 status,
@@ -1024,7 +1222,7 @@ router.post('/:walletAddress/sync-all-channels', async (req, res) => {
                 last_ledger_sync,
                 created_at,
                 updated_at
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW(), NOW())`,
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW(), NOW())`,
               [
                 channelId,
                 organization.id,
@@ -1033,7 +1231,8 @@ router.post('/:walletAddress/sync-all-channels', async (req, res) => {
                 0, // Default hourly rate - NGO must edit
                 8, // Default max daily hours
                 escrowAmountXah,
-                balanceXah,
+                balanceXah, // on_chain_balance from ledger
+                0, // off_chain_accumulated_balance starts at 0 (no completed sessions yet)
                 'Hourly', // Default frequency
                 'active', // Status is active (no expiration)
                 ledgerChannel.settle_delay || 0

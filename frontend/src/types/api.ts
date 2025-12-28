@@ -85,6 +85,9 @@ export interface PaymentChannel {
   expirationTime?: string          // Scheduled expiration time (ISO format) for channels in 'closing' status
   offChainAccumulatedBalance?: number // Optional: Off-chain balance field (worker earnings) for transparency
   onChainBalance?: number          // Optional: On-chain balance field (XRPL ledger Balance) for transparency
+  cancelAfter?: number | null      // Worker protection: Ripple Epoch timestamp when worker can force-close (null for legacy channels)
+  cancelAfterDate?: string         // Human-readable ISO date when worker can force-close
+  durationHours?: number           // Hours until worker can force-close (configured at channel creation)
 }
 
 /**
@@ -93,13 +96,48 @@ export interface PaymentChannel {
  *
  * Backend endpoint: GET /api/organizations/activity/:walletAddress
  * Component usage: NgoDashboard.tsx
+ *
+ * Enhanced with Phase 1-3 improvements:
+ * - Phase 1: Payment failures, channel closures, escrow refunds
+ * - Phase 2: Payment types, channel names, tx hashes, failure reasons
+ * - Phase 3: Priority indicators (critical, warning, notification, normal)
  */
 export interface Activity {
-  worker: string                   // Worker's full name
-  action: string                   // Activity description: 'Clocked In' | 'Clocked Out' | 'Payment Sent'
+  worker: string                   // Worker's full name (or 'SYSTEM' for system events)
+  action: string                   // Activity description with enhanced context (includes emoji for critical events)
+  actionDetails?: string | null    // Additional details (payment type, tx hash preview, failure reason)
   amount?: string | null           // Payment amount with unit (e.g., '15.50 XAH') - null for clock events
-  time: string                     // Human-readable time ago (e.g., '5 minutes ago')
+  time: string                     // Human-readable time ago (e.g., '5 MINUTES AGO')
   status: string                   // Activity status: 'active' | 'completed'
+  priority: 'critical' | 'warning' | 'notification' | 'normal'  // Phase 3: Priority for UI styling
+  txHash?: string | null           // XRPL transaction hash (64-char hex) for verification
+  paymentType?: string | null      // Payment type: 'hourly' | 'bonus' | 'adjustment' | 'refund'
+  jobName?: string | null          // Payment channel job name for channel events
+}
+
+/**
+ * Worker Activity Entry
+ * Recent activity feed for Worker Dashboard
+ *
+ * Backend endpoint: GET /api/workers/activity/:walletAddress
+ * Component usage: WorkerDashboard.tsx
+ *
+ * Enhanced with Phase 1-3 improvements (similar to NGO Activity):
+ * - Phase 1: Payment events (received/failed), channel assignments, closures
+ * - Phase 2: Payment types, channel names, tx hashes, detailed messages
+ * - Phase 3: Priority indicators (critical, warning, notification, normal)
+ */
+export interface WorkerActivity {
+  organization: string             // Organization name (or 'SYSTEM' for system events)
+  action: string                   // Activity description with enhanced context (includes emoji for critical events)
+  actionDetails?: string | null    // Additional details (payment type, tx hash preview, worked hours, messages)
+  amount?: string | null           // Payment/escrow amount with unit (e.g., '15.50 XAH') - null for clock events
+  time: string                     // Human-readable time ago (e.g., '5 MINUTES AGO')
+  status: string                   // Activity status: 'active' | 'completed'
+  priority: 'critical' | 'warning' | 'notification' | 'normal'  // Phase 3: Priority for UI styling
+  txHash?: string | null           // XRPL transaction hash (64-char hex) for verification
+  paymentType?: string | null      // Payment type: 'hourly' | 'bonus' | 'adjustment' | 'refund'
+  jobName?: string | null          // Payment channel job name for channel events
 }
 
 /**
