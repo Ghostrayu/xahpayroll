@@ -72,12 +72,12 @@ xahaupayroll/
 - Context providers nested: `AuthProvider > WalletProvider > Router`
 
 **Wallet Support**:
-- Xaman (QR code + deep linking via Xaman SDK)
-- Crossmark (browser extension)
-- GemWallet (browser extension)
-- Manual (seed/address input for testing)
+- Xaman (QR code + deep linking via Xaman SDK) - **PRIMARY WALLET**
+- Manual (seed/address input for testing only)
 
 Transaction signing is handled per-wallet in `utils/walletTransactions.ts` via `submitTransactionWithWallet()`.
+
+**Note**: As of 2025-12-30, the application exclusively supports Xaman wallet for production use. GemWallet and Crossmark support has been removed to streamline the user experience and focus on the most robust wallet integration.
 
 ### Backend Architecture
 
@@ -246,7 +246,7 @@ Payment channels use native XRPL `PaymentChannelCreate` transactions.
 1. NGO adds workers via "Add Worker" button (optional: scan Xaman QR code)
 2. NGO creates channel via `CreatePaymentChannelModal` (selects worker from dropdown)
 3. **Pre-flight validation**: System checks if worker's wallet is activated on ledger
-4. Transaction signed by connected wallet (Xaman/Crossmark/GemWallet)
+4. Transaction signed by connected wallet (Xaman or Manual)
 5. **Channel ID retrieval**: System queries Xahau ledger for real 64-char hex channel ID
 6. Channel details stored in database with real channel ID (not TEMP ID)
 7. Dashboard displays active channels and escrow balances
@@ -462,6 +462,101 @@ See `backend/claudedocs/SIMPLIFIED_CLOSURE_FLOW_2025_12_15.md` for complete impl
 
 See `PAYMENT_CHANNEL_TESTING.md` for detailed testing guide.
 
+**Wallet Support Streamlined (2025-12-30)** ✅
+
+**BREAKING CHANGE**: Removed GemWallet and Crossmark wallet support to focus exclusively on Xaman integration.
+
+**Motivation**:
+- Xaman provides the most robust and reliable XRPL wallet experience
+- Simplifies codebase maintenance and reduces bundle size
+- Eliminates cross-wallet compatibility issues
+- Focuses development resources on improving the primary wallet experience
+
+**What Changed**:
+1. **TypeScript Types**: `WalletProvider` type now only includes `'xaman' | 'manual'`
+2. **WalletContext**: Removed Crossmark and GemWallet connection logic
+3. **walletTransactions.ts**: Removed `submitWithGemWallet()` and `submitWithCrossmark()` functions
+4. **WalletSelectionModal**: Removed Crossmark and GemWallet options from UI
+5. **Dependencies**: Removed `@gemwallet/api` package from package.json
+6. **Assets**: Removed unused Crossmark logo image
+7. **Documentation**: Updated CLAUDE.md and TermsOfService.tsx to reflect Xaman-only support
+
+**Migration Path**:
+- Existing users with GemWallet or Crossmark: Must switch to Xaman wallet
+- No data migration needed - users simply reconnect with Xaman using same XRPL address
+- Manual wallet option remains available for testing/development purposes
+
+**Files Modified**:
+- `frontend/src/contexts/WalletContext.tsx` - Removed GemWallet/Crossmark cases from switch statements
+- `frontend/src/utils/walletTransactions.ts` - Removed wallet-specific submit functions
+- `frontend/src/components/WalletSelectionModal.tsx` - Removed wallet options and availability checks
+- `frontend/src/utils/paymentChannels.ts` - Updated comments
+- `frontend/src/components/CreatePaymentChannelModal.tsx` - Updated comments
+- `frontend/src/pages/TermsOfService.tsx` - Updated wallet requirements
+- `frontend/package.json` - Removed @gemwallet/api dependency
+- `frontend/src/assets/images/primary_128x128.png` - Deleted Crossmark logo
+- `CLAUDE.md` - Updated wallet support documentation
+
+**Testing Checklist**:
+- [ ] Verify Xaman wallet connection works via QR code
+- [ ] Verify manual wallet connection works for testing
+- [ ] Confirm no TypeScript errors for removed wallet types
+- [ ] Test payment channel creation with Xaman wallet
+- [ ] Test payment channel closure with Xaman wallet
+- [ ] Verify WalletSelectionModal only shows Xaman option
+- [ ] Run `npm install` to remove @gemwallet/api from node_modules
+- [ ] Build production bundle and verify reduced size
+
+---
+
+**Critical Fixes (2025-12-30)** ✅
+
+Four critical improvements to payment channel closure system:
+
+1. **SettleDelay Verification and Bug Fix**:
+   - **Problem**: Backend hardcoded `settleDelayHours: 24` instead of using database value
+   - **Impact**: If NGO set 48 hours at creation, UI incorrectly showed "24 hours" in success messages
+   - **Fix**: Changed `backend/routes/paymentChannels.js:1174` to use `channel.settle_delay / 3600`
+   - **Fix**: Updated `backend/routes/organizations.js` to include `settle_delay` in channel queries
+   - **Fix**: Updated `frontend/src/types/api.ts` CancelChannelData interface with `settleDelayHours`
+   - **Verification**: SettleDelay now correctly displays actual configured value (1-72 hours)
+
+2. **Button Label Consistency Across UI**:
+   - **Problem**: Modal used generic "CANCEL CHANNEL" regardless of closure type
+   - **Impact**: User confusion - channel list buttons said "REQUEST CLOSURE" but modal said "CANCEL CHANNEL"
+   - **Fix**: Updated `NgoDashboard.tsx` modal to match channel list button terminology:
+     - With balance: "REQUEST CLOSURE" (yellow button)
+     - No balance: "CLOSE CHANNEL" (red button)
+     - Expired: "FINALIZE CLOSURE" (orange button)
+   - **Verification**: Modal title, button text, and colors now consistent with channel list
+
+3. **Transaction Validation Race Condition Fix**:
+   - **Problem**: Frontend called confirm endpoint immediately after tx submission, but Xahau needs 3-5 seconds to validate
+   - **Impact**: False "TRANSACTION NOT VALIDATED" errors even when transaction succeeded on ledger
+   - **Fix**: Implemented polling mechanism in `paymentChannels.js:1311-1403`:
+     - MAX_RETRIES = 10
+     - INITIAL_DELAY = 1000ms, MAX_DELAY = 5000ms (exponential backoff)
+     - Handles `txnNotFound` errors gracefully
+     - Total timeout ~30 seconds
+   - **Verification**: Eliminates race condition, waits for network validation before confirming
+
+4. **Worker Dashboard "Balance Received" Fix**:
+   - **Problem**: Worker dashboard showed clickable "⏳ CLAIM EARLY" button for closing channels where XAH already sent
+   - **Root Cause**: When NGO requests closure with balance, PaymentChannelClaim Balance field sends XAH immediately
+   - **Impact**: Workers confused, clicking button triggered error: "CHANNEL IS CURRENTLY BEING CLOSED"
+   - **Fix**: Updated `WorkerDashboard.tsx:967-982` and banner styling:
+     - Non-expired closing channels: Non-clickable "✅ BALANCE RECEIVED" badge
+     - Warning banner: Changed from yellow warning to green success message
+     - Text: "NO ACTION REQUIRED - XAH ALREADY IN YOUR WALLET"
+     - Expired closing channels: Still show "🛡️ CLAIM NOW" button for worker-initiated finalization
+   - **Verification**: Workers clearly see payment received, no confusing action prompts
+
+**Technical Details**:
+- SettleDelay stored as INTEGER (seconds) in database, converted to hours for display: `settle_delay / 3600`
+- XRPL PaymentChannelClaim with Balance field sends XAH immediately when NGO requests closure
+- Channel status 'closing' means SettleDelay protection period is active, NOT that payment is pending
+- Transaction validation polling prevents race conditions with Xahau ledger close time (3-5 seconds)
+
 ## Important Files
 
 ### Configuration
@@ -638,7 +733,7 @@ Comprehensive worker profile deletion system with GDPR compliance, data export, 
 1. **Network Mismatch**: Frontend and backend must use same network (testnet vs mainnet)
 2. **Port Conflicts**: Frontend (3000), Backend (3001) - ensure ports are free
 3. **Database Connection**: PostgreSQL must be running before starting backend
-4. **Wallet Extensions**: Browser extensions (Crossmark, GemWallet) must be installed and unlocked
+4. **Xaman Wallet**: Xaman app must be installed on mobile device for QR code scanning
 5. **Environment Variables**: Copy `.env.example` to `.env` in both frontend and backend
 6. **Concurrent Startup**: Use `npm run dev` from root, not individual starts (avoids race conditions)
 

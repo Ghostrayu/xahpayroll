@@ -654,7 +654,8 @@ router.get('/payment-channels/:walletAddress', async (req, res) => {
         pc.escrow_funded_amount,
         pc.last_ledger_sync,
         pc.expiration_time,
-        pc.closure_tx_hash
+        pc.closure_tx_hash,
+        pc.settle_delay
        FROM payment_channels pc
        JOIN employees e ON pc.employee_id = e.id
        WHERE pc.organization_id = $1 AND pc.status IN ('active', 'closing')
@@ -699,6 +700,7 @@ router.get('/payment-channels/:walletAddress', async (req, res) => {
         lastLedgerSync: c.last_ledger_sync,
         expirationTime: c.expiration_time,
         closureTxHash: c.closure_tx_hash,
+        settleDelayHours: c.settle_delay ? (c.settle_delay / 3600) : 24, // Convert seconds to hours, default to 24 if not set
         hasInvalidChannelId: !channelId || (channelId.length !== 64 || !/^[0-9A-F]+$/i.test(channelId)) // Flag for frontend to display warning
       }
     })

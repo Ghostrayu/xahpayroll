@@ -1,10 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { Client, Wallet, dropsToXrp, xrpToDrops } from 'xrpl'
-// GemWallet API will be dynamically imported only when needed
 
 // Types
 export type NetworkType = 'testnet' | 'mainnet'
-export type WalletProvider = 'xaman' | 'crossmark' | 'gemwallet' | 'manual'
+export type WalletProvider = 'xaman' | 'manual'
 
 export interface WalletContextType {
   isConnected: boolean
@@ -332,77 +331,6 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
           }
           break
 
-        case 'crossmark':
-          // Check if Crossmark extension is installed
-          if (typeof window !== 'undefined' && (window as any).crossmark) {
-            const crossmark = (window as any).crossmark
-            
-            // Request address from Crossmark
-            const result = await crossmark.methods.signInAndWait()
-            
-            if (result && result.response && result.response.data && result.response.data.address) {
-              const walletAddress = result.response.data.address
-              await initializeClient(network)
-              await getBalanceForAddress(walletAddress, network)
-              
-              setWalletState(prev => ({
-                ...prev,
-                isConnected: true,
-                walletAddress,
-                network,
-                provider: 'crossmark',
-                isLoading: false,
-                error: null
-              }))
-            } else {
-              throw new Error('Failed to connect with Crossmark. Please approve the connection request.')
-            }
-          } else {
-            throw new Error('Crossmark extension not found. Please install it from https://crossmark.io')
-          }
-          break
-
-        case 'gemwallet':
-          // Dynamically import GemWallet API only when needed (reduces initial bundle size)
-          try {
-            console.log('Loading GemWallet API...')
-            const { getAddress: gemWalletGetAddress, isInstalled: gemWalletIsInstalled } = await import('@gemwallet/api')
-
-            // Check if GemWallet is installed
-            const installCheck = await gemWalletIsInstalled()
-
-            if (!installCheck.result.isInstalled) {
-              throw new Error('GemWallet extension not found. Please install it from https://gemwallet.app and refresh the page.')
-            }
-
-            // Get address from GemWallet
-            const response = await gemWalletGetAddress()
-
-            if (response.type === 'response' && response.result?.address) {
-              const walletAddress = response.result.address
-              await initializeClient(network)
-              await getBalanceForAddress(walletAddress, network)
-
-              setWalletState(prev => ({
-                ...prev,
-                isConnected: true,
-                walletAddress,
-                network,
-                provider: 'gemwallet',
-                isLoading: false,
-                error: null
-              }))
-            } else if (response.type === 'reject') {
-              throw new Error('Connection rejected. Please approve the request in GemWallet.')
-            } else {
-              throw new Error('Failed to get address from GemWallet.')
-            }
-          } catch (gemError: any) {
-            console.error('GemWallet connection error:', gemError)
-            throw new Error(gemError.message || 'Failed to connect with GemWallet. Please make sure the extension is installed.')
-          }
-          break
-
         case 'manual':
           // Manual connection with address or seed
           if (seed) {
@@ -521,26 +449,6 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
 
       // Sign and submit based on provider
       switch (walletState.provider) {
-        case 'crossmark':
-          if (typeof window !== 'undefined' && (window as any).crossmark) {
-            const crossmark = (window as any).crossmark
-            const signedTx = await crossmark.signAndSubmit(payment)
-            result = signedTx.response.data
-          } else {
-            throw new Error('Crossmark not available')
-          }
-          break
-
-        case 'gemwallet':
-          if (typeof window !== 'undefined' && (window as any).gemWallet) {
-            const gemWallet = (window as any).gemWallet
-            const signedTx = await gemWallet.signAndSubmit(payment)
-            result = signedTx
-          } else {
-            throw new Error('GemWallet not available')
-          }
-          break
-
         case 'manual':
           if (!walletInstance) {
             throw new Error('Manual wallet not initialized with seed. Cannot sign transactions.')
@@ -581,22 +489,6 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       const client = await initializeClient(walletState.network)
 
       switch (walletState.provider) {
-        case 'crossmark':
-          if (typeof window !== 'undefined' && (window as any).crossmark) {
-            const crossmark = (window as any).crossmark
-            const result = await crossmark.sign(transaction)
-            return result.response.data
-          }
-          throw new Error('Crossmark not available')
-
-        case 'gemwallet':
-          if (typeof window !== 'undefined' && (window as any).gemWallet) {
-            const gemWallet = (window as any).gemWallet
-            const result = await gemWallet.sign(transaction)
-            return result
-          }
-          throw new Error('GemWallet not available')
-
         case 'manual':
           if (!walletInstance) {
             throw new Error('Manual wallet not initialized with seed. Cannot sign transactions.')

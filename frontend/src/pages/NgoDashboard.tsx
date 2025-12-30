@@ -8,7 +8,6 @@ import Footer from '../components/Footer'
 import CreatePaymentChannelModal from '../components/CreatePaymentChannelModal'
 import AddWorkerModal from '../components/AddWorkerModal'
 import NGONotifications from '../components/NGONotifications'
-import UnclaimedBalanceWarningModal from '../components/UnclaimedBalanceWarningModal'
 import { ActiveWorkersSection } from '../components/ActiveWorkersSection'
 import { paymentChannelApi, organizationApi, notificationApi } from '../services/api'
 import { closePaymentChannel } from '../utils/paymentChannels'
@@ -22,8 +21,6 @@ const NgoDashboard: React.FC = () => {
   const [showEscrowModal, setShowEscrowModal] = useState(false)
   const [showAddWorkerModal, setShowAddWorkerModal] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
-  const [showUnclaimedWarning, setShowUnclaimedWarning] = useState(false)
-  const [unclaimedBalanceData, setUnclaimedBalanceData] = useState<any>(null)
   const [selectedChannel, setSelectedChannel] = useState<any>(null)
   const [cancelingChannel, setCancelingChannel] = useState<string | null>(null)
   const [syncingChannels, setSyncingChannels] = useState<Set<string>>(new Set())
@@ -193,6 +190,19 @@ const NgoDashboard: React.FC = () => {
    */
   const handleCancelClick = (channel: any) => {
     setSelectedChannel(channel)
+
+    // Determine if this will be scheduled or immediate closure
+    const hasBalance = (channel.balance || 0) > 0
+    const isExpired = channel.status === 'closing' && isChannelExpired(channel)
+
+    if (isExpired) {
+      // Finalizing an expired scheduled closure
+    } else if (hasBalance) {
+      // Scheduled closure (NGO with balance > 0)
+    } else {
+      // Immediate closure (NGO with balance = 0)
+    }
+
     setShowCancelConfirm(true)
   }
 
@@ -201,10 +211,8 @@ const NgoDashboard: React.FC = () => {
    * 1. Call API to get XRPL transaction details
    * 2. Execute XRPL PaymentChannelClaim transaction
    * 3. Confirm closure in database
-   *
-   * @param forceClose - If true, bypass unclaimed balance warning
    */
-  const handleCancelConfirm = async (forceClose: boolean = false) => {
+  const handleCancelConfirm = async () => {
     if (!selectedChannel || !walletAddress) {
       alert('MISSING WALLET ADDRESS OR CHANNEL SELECTION')
       return
@@ -214,38 +222,21 @@ const NgoDashboard: React.FC = () => {
 
     try {
       // Step 1: Get XRPL transaction details from backend
-      console.log('[CANCEL_FLOW] Step 1: Getting transaction details from backend', { forceClose })
+      console.log('[CANCEL_FLOW] Step 1: Getting transaction details from backend')
       const response = await paymentChannelApi.cancelPaymentChannel(
         selectedChannel.channelId,
         walletAddress,
-        'ngo',
-        forceClose
+        'ngo'
       )
 
-      if (!response.success) {
-        // Check if error is UNCLAIMED_BALANCE warning
-        if (response.error?.code === 'UNCLAIMED_BALANCE' && !forceClose) {
-          console.log('[CANCEL_FLOW] Unclaimed balance detected, showing warning modal')
-          setUnclaimedBalanceData({
-            unpaidBalance: response.error.unpaidBalance,
-            callerType: response.error.callerType
-          })
-          setShowCancelConfirm(false)
-          setShowUnclaimedWarning(true)
-          setCancelingChannel(null)
-          return
-        }
-
+      if (!response.success || !response.data) {
         throw new Error(response.error?.message || 'Failed to prepare cancellation')
       }
 
-      if (!response.data) {
-        throw new Error('NO DATA RETURNED FROM BACKEND')
-      }
-
       const { channel, xrplTransaction } = response.data
+      const isScheduledClosure = channel.closureType === 'scheduled'
 
-      console.log('[CANCEL_FLOW] Step 1 complete. Escrow return:', channel.escrowReturn, 'XAH')
+      console.log('[CANCEL_FLOW] Step 1 complete. Closure type:', isScheduledClosure ? 'SCHEDULED' : 'IMMEDIATE')
 
       // Step 2: Execute XRPL transaction
       console.log('[CANCEL_FLOW] Step 2: Executing XRPL PaymentChannelClaim transaction')
@@ -258,7 +249,7 @@ const NgoDashboard: React.FC = () => {
           publicKey: xrplTransaction.PublicKey,
           isSourceClosure: true, // NGO is the source (sender) of the payment channel
           sourceAddress: walletAddress,
-          destinationAddress: channel.workerWalletAddress
+          destinationAddress: channel.workerAddress
         },
         provider,
         network
@@ -272,50 +263,46 @@ const NgoDashboard: React.FC = () => {
 
       // Step 3: Confirm closure in database
       console.log('[CANCEL_FLOW] Step 3: Confirming closure in database')
-      const confirmResponse = await paymentChannelApi.confirmChannelClosure(
+      await paymentChannelApi.confirmChannelClosure(
         selectedChannel.channelId,
         txResult.hash,
         walletAddress,
         'ngo'
       )
 
-      console.log('[CANCEL_FLOW] Step 3 complete. Channel closed successfully')
+      console.log('[CANCEL_FLOW] Step 3 complete. Channel closure confirmed')
 
-      // Enhanced success messaging based on closure type
-      const isScheduledClosure = confirmResponse.data?.scheduledClosure || false
+      // Enhanced success messaging based on closure type from backend
       const escrowReturn = parseFloat(channel.escrowReturn || '0')
-      const workerPayment = parseFloat(channel.accumulatedBalance || '0')
+      const workerPayment = channel.balance || 0
 
       if (isScheduledClosure) {
-        // Scheduled closure (XRP remaining in channel)
-        const expirationTime = confirmResponse.data?.expirationTime
-        const expirationDate = expirationTime
-          ? new Date((expirationTime + 946684800) * 1000).toLocaleString()
-          : 'PENDING CONFIRMATION'
-
+        // Scheduled closure (NGO requested closure with unpaid balance)
+        const settleDelayHours = channel.settleDelayHours || 24 // Fallback to 24 if not provided
         alert(
-          `⏳ PAYMENT CHANNEL CLOSURE SCHEDULED!\n\n` +
-          `⚠️ CHANNEL WILL CLOSE AFTER SETTLE DELAY PERIOD\n\n` +
-          `SCHEDULED CLOSURE: ${expirationDate}\n` +
-          `ESCROW TO BE RETURNED: ${escrowReturn.toFixed(2)} XAH\n` +
-          `WORKER PAYMENT: ${workerPayment.toFixed(2)} XAH\n\n` +
-          `TRANSACTION: ${txResult.hash}\n\n` +
-          `NOTE: AFTER THE SETTLE DELAY PERIOD EXPIRES, THE ESCROW WILL BE AUTOMATICALLY RETURNED TO YOUR WALLET.`
+          `⏳ CLOSURE REQUESTED SUCCESSFULLY!\n\n` +
+          `CHANNEL STATUS: CLOSING\n\n` +
+          `⚠️ WORKER PROTECTION ACTIVE:\n` +
+          `• Worker has ${settleDelayHours} hours to claim wages\n` +
+          `• Accumulated balance: ${workerPayment.toFixed(2)} XAH\n\n` +
+          `AFTER ${settleDelayHours} HOURS:\n` +
+          `• You can click "FINALIZE CLOSURE"\n` +
+          `• Unused escrow returns: ${escrowReturn.toFixed(2)} XAH\n\n` +
+          `TRANSACTION: ${txResult.hash}`
         )
       } else if (escrowReturn === 0 && workerPayment > 0) {
-        // Immediate closure - worker earned all funds (zero XRP remaining)
+        // Immediate closure - worker earned all funds
         alert(
-          `✅ PAYMENT CHANNEL CLOSED IMMEDIATELY!\n\n` +
+          `✅ CHANNEL CLOSED IMMEDIATELY!\n\n` +
           `💚 WORKER EARNED ALL FUNDED AMOUNT\n\n` +
-          `ESCROW RETURNED TO NGO: 0 XAH (WORKER EARNED FULL ESCROW)\n` +
-          `WORKER PAYMENT: ${workerPayment.toFixed(2)} XAH\n\n` +
-          `TRANSACTION: ${txResult.hash}\n\n` +
-          `NOTE: WORKER EARNED THE FULL ESCROW AMOUNT. NO FUNDS REMAIN TO RETURN TO NGO.`
+          `WORKER PAYMENT: ${workerPayment.toFixed(2)} XAH\n` +
+          `ESCROW RETURNED: 0 XAH (Worker earned full escrow)\n\n` +
+          `TRANSACTION: ${txResult.hash}`
         )
       } else {
-        // Standard immediate closure
+        // Standard immediate closure (no balance, escrow returns)
         alert(
-          `✅ PAYMENT CHANNEL CLOSED SUCCESSFULLY!\n\n` +
+          `✅ CHANNEL CLOSED IMMEDIATELY!\n\n` +
           `ESCROW RETURNED: ${escrowReturn.toFixed(2)} XAH\n` +
           `WORKER PAYMENT: ${workerPayment.toFixed(2)} XAH\n\n` +
           `TRANSACTION: ${txResult.hash}`
@@ -325,9 +312,8 @@ const NgoDashboard: React.FC = () => {
       // Refresh data
       await refreshData()
 
-      // Close all modals
+      // Close modal
       setShowCancelConfirm(false)
-      setShowUnclaimedWarning(false)
 
     } catch (error: any) {
       console.error('[CANCEL_FLOW_ERROR]', error)
@@ -335,15 +321,7 @@ const NgoDashboard: React.FC = () => {
     } finally {
       setCancelingChannel(null)
       setSelectedChannel(null)
-      setUnclaimedBalanceData(null)
     }
-  }
-
-  /**
-   * Handle force close after unclaimed balance warning
-   */
-  const handleForceClose = async () => {
-    await handleCancelConfirm(true)
   }
 
   /**
@@ -869,14 +847,6 @@ const NgoDashboard: React.FC = () => {
                             {channel.hoursAccumulated.toFixed(1)}h
                           </p>
                         </div>
-                        <div className="bg-white/60 rounded-lg p-2 border border-gray-200">
-                          <p className="text-[10px] text-gray-600 uppercase tracking-wide font-semibold mb-0.5">
-                            Update Frequency
-                          </p>
-                          <p className="text-sm font-bold text-gray-900 uppercase">
-                            {channel.balanceUpdateFrequency}
-                          </p>
-                        </div>
                       </div>
 
                       <div className="flex items-center justify-between pt-2 border-t border-green-200">
@@ -913,15 +883,31 @@ const NgoDashboard: React.FC = () => {
                               disabled={cancelingChannel === channel.channelId}
                               className="px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded text-[10px] uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              {cancelingChannel === channel.channelId ? 'Finalizing...' : 'Finalize Closure'}
+                              {cancelingChannel === channel.channelId ? 'FINALIZING...' : 'FINALIZE CLOSURE'}
+                            </button>
+                          ) : channel.status === 'closing' ? (
+                            <button
+                              onClick={() => handleCancelClick(channel)}
+                              disabled={true}
+                              className="px-3 py-1 bg-yellow-500 text-white font-bold rounded text-[10px] uppercase tracking-wide transition-colors opacity-50 cursor-not-allowed"
+                            >
+                              CLOSING...
+                            </button>
+                          ) : (channel.balance || 0) > 0 ? (
+                            <button
+                              onClick={() => handleCancelClick(channel)}
+                              disabled={cancelingChannel === channel.channelId}
+                              className="px-3 py-1 bg-yellow-500 hover:bg-yellow-600 text-white font-bold rounded text-[10px] uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {cancelingChannel === channel.channelId ? 'REQUESTING...' : 'REQUEST CLOSURE'}
                             </button>
                           ) : (
                             <button
                               onClick={() => handleCancelClick(channel)}
-                              disabled={cancelingChannel === channel.channelId || channel.status === 'closing'}
+                              disabled={cancelingChannel === channel.channelId}
                               className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white font-bold rounded text-[10px] uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              {cancelingChannel === channel.channelId || channel.status === 'closing' ? 'Closing...' : 'Cancel Channel'}
+                              {cancelingChannel === channel.channelId ? 'CLOSING...' : 'CLOSE CHANNEL'}
                             </button>
                           )}
                         </div>
@@ -941,7 +927,6 @@ const NgoDashboard: React.FC = () => {
                     </p>
                     <ul className="text-xs text-gray-700 space-y-1 uppercase tracking-wide">
                       <li>• <strong>Off-chain tracking:</strong> Hours tracked in database, balance updates in real-time</li>
-                      <li>• <strong>Signed claims:</strong> Generated based on update frequency (hourly/30min/15min)</li>
                       <li>• <strong>Accumulating balance:</strong> Worker sees total accumulated amount grow over time</li>
                       <li>• <strong>Efficient:</strong> Only 2 on-chain transactions (open channel + close/claim at end)</li>
                       <li>• <strong>Worker claims:</strong> Workers can claim anytime, but claiming closes the channel</li>
@@ -1131,7 +1116,11 @@ const NgoDashboard: React.FC = () => {
           <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-2xl">
             <div className="mb-4">
               <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-2">
-                {isChannelExpired(selectedChannel) ? 'FINALIZE CHANNEL CLOSURE' : 'CANCEL PAYMENT CHANNEL'}
+                {isChannelExpired(selectedChannel)
+                  ? 'FINALIZE CHANNEL CLOSURE'
+                  : parseFloat(selectedChannel.balance || '0') > 0
+                    ? 'REQUEST CHANNEL CLOSURE'
+                    : 'CLOSE PAYMENT CHANNEL'}
               </h3>
               <p className="text-sm text-gray-700 uppercase">
                 {isChannelExpired(selectedChannel) ? (
@@ -1139,9 +1128,14 @@ const NgoDashboard: React.FC = () => {
                     FINALIZE THE EXPIRED PAYMENT CHANNEL FOR{' '}
                     <strong className="text-gray-900">{selectedChannel.worker}</strong>?
                   </>
+                ) : parseFloat(selectedChannel.balance || '0') > 0 ? (
+                  <>
+                    REQUEST SCHEDULED CLOSURE FOR{' '}
+                    <strong className="text-gray-900">{selectedChannel.worker}</strong>?
+                  </>
                 ) : (
                   <>
-                    ARE YOU SURE YOU WANT TO CANCEL THE PAYMENT CHANNEL FOR{' '}
+                    CLOSE THE PAYMENT CHANNEL FOR{' '}
                     <strong className="text-gray-900">{selectedChannel.worker}</strong>?
                   </>
                 )}
@@ -1219,44 +1213,32 @@ const NgoDashboard: React.FC = () => {
                 {isChannelExpired(selectedChannel) ? 'GO BACK' : 'KEEP CHANNEL'}
               </button>
               <button
-                onClick={() => handleCancelConfirm(false)}
+                onClick={() => handleCancelConfirm()}
                 disabled={cancelingChannel === selectedChannel.channelId}
                 className={`flex-1 px-4 py-2 text-white font-bold rounded uppercase tracking-wide text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                   isChannelExpired(selectedChannel)
                     ? 'bg-orange-500 hover:bg-orange-600'
-                    : 'bg-red-500 hover:bg-red-600'
+                    : (selectedChannel.balance || 0) > 0
+                      ? 'bg-yellow-500 hover:bg-yellow-600'
+                      : 'bg-red-500 hover:bg-red-600'
                 }`}
               >
                 {cancelingChannel === selectedChannel.channelId
-                  ? (isChannelExpired(selectedChannel) ? 'FINALIZING...' : 'CANCELING...')
-                  : (isChannelExpired(selectedChannel) ? 'FINALIZE CLOSURE' : 'CANCEL CHANNEL')
+                  ? (isChannelExpired(selectedChannel)
+                      ? 'FINALIZING...'
+                      : parseFloat(selectedChannel.balance || '0') > 0
+                        ? 'REQUESTING...'
+                        : 'CLOSING...')
+                  : (isChannelExpired(selectedChannel)
+                      ? 'FINALIZE CLOSURE'
+                      : parseFloat(selectedChannel.balance || '0') > 0
+                        ? 'REQUEST CLOSURE'
+                        : 'CLOSE CHANNEL')
                 }
               </button>
             </div>
           </div>
         </div>
-      )}
-
-      {/* Unclaimed Balance Warning Modal */}
-      {showUnclaimedWarning && selectedChannel && unclaimedBalanceData && (
-        <UnclaimedBalanceWarningModal
-          isOpen={showUnclaimedWarning}
-          onClose={() => {
-            setShowUnclaimedWarning(false)
-            setUnclaimedBalanceData(null)
-            setSelectedChannel(null)
-          }}
-          onForceClose={handleForceClose}
-          unpaidBalance={unclaimedBalanceData.unpaidBalance}
-          channelDetails={{
-            jobName: selectedChannel.jobName,
-            worker: selectedChannel.worker,
-            escrowBalance: selectedChannel.escrowBalance,
-            hoursAccumulated: selectedChannel.hoursAccumulated
-          }}
-          callerType={unclaimedBalanceData.callerType}
-          isClosing={cancelingChannel === selectedChannel.channelId}
-        />
       )}
     </div>
   )

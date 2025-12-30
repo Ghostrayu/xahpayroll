@@ -9,7 +9,7 @@ export interface TransactionResult {
 
 /**
  * Submit a transaction using the appropriate wallet provider
- * This handles GemWallet, Crossmark, Xaman, and Manual wallets
+ * This handles Xaman and Manual wallets
  */
 export const submitTransactionWithWallet = async (
   transaction: any,
@@ -23,12 +23,6 @@ export const submitTransactionWithWallet = async (
 
   try {
     switch (provider) {
-      case 'gemwallet':
-        return await submitWithGemWallet(transaction)
-
-      case 'crossmark':
-        return await submitWithCrossmark(transaction)
-
       case 'xaman':
         return await submitWithXaman(transaction, network, customDescription)
 
@@ -44,55 +38,6 @@ export const submitTransactionWithWallet = async (
       success: false,
       error: error.message || 'Failed to submit transaction'
     }
-  }
-}
-
-/**
- * Submit transaction using GemWallet
- */
-async function submitWithGemWallet(transaction: any): Promise<TransactionResult> {
-  try {
-    const { submitTransaction } = await import('@gemwallet/api')
-    
-    const result = await submitTransaction({
-      transaction: transaction
-    })
-
-    if (!result || result.type === 'reject') {
-      return { success: false, error: 'Transaction rejected by user' }
-    }
-
-    return {
-      success: true,
-      hash: result.result?.hash
-    }
-  } catch (error: any) {
-    return { success: false, error: error.message || 'GemWallet transaction failed' }
-  }
-}
-
-/**
- * Submit transaction using Crossmark
- */
-async function submitWithCrossmark(transaction: any): Promise<TransactionResult> {
-  try {
-    if (typeof window === 'undefined' || !(window as any).crossmark) {
-      return { success: false, error: 'Crossmark wallet not found' }
-    }
-
-    const crossmark = (window as any).crossmark
-    const result = await crossmark.signAndSubmit(transaction)
-
-    if (!result || result.response?.data?.resp === 'Rejected') {
-      return { success: false, error: 'Transaction rejected by user' }
-    }
-
-    return {
-      success: true,
-      hash: result.response?.data?.txHash || result.response?.data?.hash
-    }
-  } catch (error: any) {
-    return { success: false, error: error.message || 'Crossmark transaction failed' }
   }
 }
 

@@ -49,7 +49,7 @@ const TermsOfService: React.FC = () => {
               
               <h3 className="text-xl font-semibold text-gray-800 uppercase mb-3 mt-6">3.1 Wallet Requirements</h3>
               <ul className="list-disc list-inside text-gray-700 space-y-2 ml-4">
-                <li>Users must connect a compatible XRPL wallet (Xaman, Crossmark, or GemWallet)</li>
+                <li>Users must connect a compatible XRPL wallet (Xaman)</li>
                 <li>Users are solely responsible for maintaining the security of their wallet and private keys</li>
                 <li>XAH Payroll is a non-custodial service and does not store or have access to your private keys</li>
               </ul>

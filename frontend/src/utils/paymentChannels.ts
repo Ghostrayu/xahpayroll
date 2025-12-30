@@ -61,7 +61,7 @@ export const preparePaymentChannelTransaction = (
   }
 
   // PublicKey is required by XRPL but will be auto-filled by the wallet during signing
-  // Wallets like Xaman, Crossmark, and GemWallet automatically add the user's public key
+  // Xaman wallet automatically adds the user's public key
   if (params.publicKey) {
     tx.PublicKey = params.publicKey
   }

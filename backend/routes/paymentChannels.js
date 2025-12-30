@@ -724,7 +724,7 @@ router.post('/:channelId/claim', async (req, res) => {
 router.post('/:channelId/close', async (req, res) => {
   try {
     const { channelId } = req.params
-    const { organizationWalletAddress, workerWalletAddress, forceClose } = req.body
+    const { organizationWalletAddress, workerWalletAddress } = req.body
 
     // ============================================
     // STEP 1: INPUT VALIDATION
@@ -848,37 +848,59 @@ router.post('/:channelId/close', async (req, res) => {
     }
 
     // ============================================
-    // STEP 4.5: UNCLAIMED BALANCE WARNING (NGO ONLY)
+    // STEP 4.5: DETERMINE CLOSURE TYPE (SCHEDULED VS IMMEDIATE)
     // ============================================
+    // CRITICAL FIX (2025-12-29): Reflect XRPL native behavior in app
+    //
+    // XRPL Payment Channel Closure Behavior:
+    // 1. IMMEDIATE CLOSURE (NGO with balance = 0):
+    //    - Channel closes immediately
+    //    - Unused escrow returns to NGO
+    //    - No SettleDelay period
+    //
+    // 2. SCHEDULED CLOSURE (NGO with balance > 0):
+    //    - XRPL sets Expiration (SettleDelay period, typically 24 hours)
+    //    - Channel enters "closing" status
+    //    - Worker has time to claim accumulated balance
+    //    - After SettleDelay expires, NGO can finalize closure
+    //
+    // 3. WORKER CLOSURE (always immediate):
+    //    - Worker receives accumulated balance in same transaction
+    //    - Unused escrow returns to NGO
+    //    - Channel closes immediately
 
     const unpaidBalance = parseFloat(channel.off_chain_accumulated_balance) || 0
 
-    // CRITICAL: Only warn for NGO/Source closures
-    // Worker/Destination closures claim the balance IN THE SAME TRANSACTION
-    // via the Balance field in PaymentChannelClaim with tfClose flag
-    //
-    // XRPL Behavior:
-    // - Source (NGO) closure with balance > 0: Sets Expiration (delayed closure)
-    //   Worker must claim balance before channel expires or loses wages
-    // - Destination (Worker) closure: ALWAYS immediate, Balance transferred in same tx
-    //   Worker CANNOT close without receiving owed balance (enforced by XRPL)
-    if (unpaidBalance > 0 && !forceClose && !isWorker) {
-      const warningMessage = `WARNING: WORKER HAS ${unpaidBalance.toFixed(2)} XAH IN UNCLAIMED WAGES. ENSURE PAYMENT BEFORE CLOSING.`
+    const isScheduledClosure = unpaidBalance > 0 && isNGO
+    const isImmediateClosure = (unpaidBalance === 0 && isNGO) || isWorker
 
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: 'UNCLAIMED_BALANCE',
-          message: warningMessage,
-          unpaidBalance: unpaidBalance,
-          requiresForceClose: true,
-          callerType: 'ngo'
-        }
+    if (isScheduledClosure) {
+      console.log('[SCHEDULED_CLOSURE] NGO requesting closure with unpaid balance', {
+        channelId,
+        unpaidBalance,
+        settleDelayHours: channel.settle_delay / 3600,
+        workerProtected: true,
+        message: 'Channel will enter CLOSING status with SettleDelay'
+      })
+      // Continue to build transaction - XRPL will set SettleDelay
+      // Response will indicate scheduled closure
+    } else if (isImmediateClosure) {
+      console.log('[IMMEDIATE_CLOSURE] Immediate closure requested', {
+        channelId,
+        unpaidBalance,
+        closedBy: isWorker ? 'worker' : 'ngo',
+        message: 'Channel will close immediately'
       })
     }
 
-    // For worker closures, proceed directly to transaction preparation
-    // The Balance field ensures worker receives accumulated wages atomically
+    // Workers always get immediate closure with balance included in claim
+    if (isWorker && unpaidBalance > 0) {
+      console.log('[WORKER_CLOSURE] Worker closing channel with accumulated balance', {
+        channelId,
+        unpaidBalance,
+        message: 'Balance will be transferred in same transaction'
+      })
+    }
 
     // ============================================
     // STEP 5: DETERMINE BALANCE SOURCE
@@ -934,13 +956,24 @@ router.post('/:channelId/close', async (req, res) => {
           })
         }
       } catch (error) {
-        // Fallback to database balance if ledger query fails
-        console.error('[LEDGER_BALANCE_FALLBACK] Failed to query ledger, using database balance', {
+        // CRITICAL FIX (2025-12-29): DO NOT fall back to database for expired channels
+        // Ledger is the source of truth for security (race condition protection)
+        // Falling back defeats the security mechanism and allows database manipulation
+        console.error('[LEDGER_BALANCE_CRITICAL] FAILED TO QUERY LEDGER FOR EXPIRED CHANNEL', {
           channelId,
           error: error.message,
-          databaseBalance
+          impact: 'SECURITY VALIDATION BYPASSED - CANNOT VERIFY BALANCE',
+          action: 'BLOCKING CLOSURE'
         })
-        accumulatedBalance = databaseBalance
+
+        return res.status(500).json({
+          success: false,
+          error: {
+            code: 'LEDGER_QUERY_FAILED',
+            message: 'CANNOT VERIFY BALANCE FROM LEDGER. PLEASE RETRY IN A FEW MOMENTS OR CONTACT SUPPORT.',
+            details: error.message
+          }
+        })
       }
     } else {
       // NORMAL OPERATION: Active channel or worker closure
@@ -1062,6 +1095,41 @@ router.post('/:channelId/close', async (req, res) => {
       timestamp: new Date().toISOString()
     })
 
+    // ============================================
+    // CRITICAL FIX (2025-12-29): VALIDATE PUBLICKEY REQUIREMENT
+    // ============================================
+    // XRPL requires PublicKey field for PaymentChannelClaim with tfClose when:
+    // 1. Closing before SettleDelay expires (immediate closure)
+    // 2. Any closure with accumulated balance > 0
+    //
+    // If PublicKey is required but missing, transaction will fail with temBAD_SIGNATURE
+    // Better to catch this here and return clear error than let XRPL reject
+    const requiresPublicKey = parseFloat(balanceDrops) > 0 || !isExpired
+
+    if (requiresPublicKey && !publicKey) {
+      console.error('[PUBLICKEY_VALIDATION_ERROR] PublicKey required but not available', {
+        channelId,
+        balanceDrops,
+        isExpired,
+        isNGO,
+        isWorker,
+        reason: parseFloat(balanceDrops) > 0 ? 'Balance > 0' : 'Not expired (immediate closure)'
+      })
+
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: 'MISSING_PUBLIC_KEY',
+          message: 'PUBLIC KEY REQUIRED FOR THIS CLOSURE TYPE BUT NOT FOUND ON LEDGER. CHANNEL MAY BE IN INVALID STATE. PLEASE CONTACT SUPPORT.',
+          details: {
+            channelId,
+            closureType: isExpired ? 'expired' : 'immediate',
+            hasBalance: parseFloat(balanceDrops) > 0
+          }
+        }
+      })
+    }
+
     // Build XRPL transaction object
     const xrplTransaction = {
       TransactionType: 'PaymentChannelClaim',
@@ -1070,7 +1138,7 @@ router.post('/:channelId/close', async (req, res) => {
       Flags: 0x00020000 // tfClose flag (131072 decimal) - closes channel
     }
 
-    // Add PublicKey if available (required for worker closures)
+    // Add PublicKey if available (validated above when required)
     if (publicKey) {
       xrplTransaction.PublicKey = publicKey
     }
@@ -1101,7 +1169,9 @@ router.post('/:channelId/close', async (req, res) => {
           accumulatedBalance: accumulatedBalance,
           escrowReturn: escrowReturn,
           hoursAccumulated: parseFloat(channel.hours_accumulated) || 0,
-          hourlyRate: parseFloat(channel.hourly_rate) || 0
+          hourlyRate: parseFloat(channel.hourly_rate) || 0,
+          closureType: isScheduledClosure ? 'scheduled' : 'immediate', // NEW: Reflects XRPL behavior
+          settleDelayHours: isScheduledClosure ? (channel.settle_delay / 3600) : 0 // NEW: Use actual SettleDelay from database (convert seconds to hours)
         },
         // XRPL transaction details for PaymentChannelClaim
         // NOTE: Amount field is NOT included - escrow returns automatically on close
@@ -1238,27 +1308,87 @@ router.post('/:channelId/close/confirm', async (req, res) => {
       await client.connect()
       console.log('[CONFIRM_CLOSURE] Connected to Xahau:', process.env.XRPL_NETWORK || 'testnet')
 
-      const txResponse = await client.request({
-        command: 'tx',
-        transaction: txHash,
-        binary: false
-      })
+      // ============================================
+      // CRITICAL FIX (2025-12-30): POLL FOR TRANSACTION VALIDATION
+      // ============================================
+      // Xahau needs 3-5 seconds to validate transactions and include them in a ledger
+      // Frontend submits transaction → waits for hash → immediately calls confirm
+      // But transaction may not be validated yet, causing false "NOT_VALIDATED" errors
+      // Solution: Poll for validation with exponential backoff (max 30 seconds)
 
-      const tx = txResponse.result
-      txValidated = tx.validated
-      txResult = tx.meta?.TransactionResult
+      const MAX_RETRIES = 10
+      const INITIAL_DELAY = 1000 // 1 second
+      const MAX_DELAY = 5000 // 5 seconds
+      let attempt = 0
+      let delay = INITIAL_DELAY
 
-      console.log('[CONFIRM_CLOSURE] Transaction query result', {
+      console.log('[CONFIRM_CLOSURE] Polling for transaction validation', {
         txHash: txHash.substring(0, 20) + '...',
-        validated: txValidated,
-        result: txResult
+        maxRetries: MAX_RETRIES,
+        initialDelay: INITIAL_DELAY,
+        maxDelay: MAX_DELAY
       })
+
+      while (attempt < MAX_RETRIES) {
+        try {
+          const txResponse = await client.request({
+            command: 'tx',
+            transaction: txHash,
+            binary: false
+          })
+
+          const tx = txResponse.result
+          txValidated = tx.validated
+          txResult = tx.meta?.TransactionResult
+
+          console.log('[CONFIRM_CLOSURE] Transaction query result', {
+            txHash: txHash.substring(0, 20) + '...',
+            attempt: attempt + 1,
+            validated: txValidated,
+            result: txResult
+          })
+
+          // If validated, break out of polling loop
+          if (txValidated) {
+            console.log('[CONFIRM_CLOSURE] Transaction validated after', attempt + 1, 'attempts ✅')
+            break
+          }
+
+          // Not validated yet, wait and retry
+          attempt++
+          if (attempt < MAX_RETRIES) {
+            console.log('[CONFIRM_CLOSURE] Transaction not validated yet, retrying in', delay, 'ms', {
+              attempt: attempt + 1,
+              maxRetries: MAX_RETRIES
+            })
+            await new Promise(resolve => setTimeout(resolve, delay))
+            delay = Math.min(delay * 1.5, MAX_DELAY) // Exponential backoff with cap
+          }
+        } catch (txError) {
+          // Transaction not found yet - this is normal for very recent transactions
+          if (txError.message?.includes('txnNotFound') || txError.data?.error === 'txnNotFound') {
+            attempt++
+            if (attempt < MAX_RETRIES) {
+              console.log('[CONFIRM_CLOSURE] Transaction not found on ledger yet, retrying in', delay, 'ms', {
+                attempt: attempt + 1,
+                maxRetries: MAX_RETRIES
+              })
+              await new Promise(resolve => setTimeout(resolve, delay))
+              delay = Math.min(delay * 1.5, MAX_DELAY)
+            }
+          } else {
+            // Different error - rethrow
+            throw txError
+          }
+        }
+      }
 
       // VALIDATION CHECK: Transaction must be validated AND successful
       if (!txValidated) {
-        console.error('[CONFIRM_CLOSURE] Transaction not validated by network', {
+        console.error('[CONFIRM_CLOSURE] Transaction not validated after polling', {
           txHash,
-          channelId
+          channelId,
+          attempts: attempt
         })
         await client.disconnect()
         return res.status(400).json({
@@ -1267,7 +1397,7 @@ router.post('/:channelId/close/confirm', async (req, res) => {
             message: 'TRANSACTION NOT VALIDATED BY NETWORK',
             code: 'NOT_VALIDATED',
             txHash,
-            details: 'The transaction was submitted but not accepted by Xahau validators. Channel remains active.'
+            details: `The transaction was submitted but not validated after ${attempt} attempts over ${(attempt * INITIAL_DELAY) / 1000} seconds. Channel remains active.`
           }
         })
       }

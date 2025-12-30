@@ -16,8 +16,6 @@ interface CreatePaymentChannelModalProps {
   onSuccess?: () => void
 }
 
-type PaymentFrequency = 'hourly' | 'every-30min' | 'every-15min' | 'continuous'
-
 interface PaymentChannelConfig {
   jobName: string
   workerAddress: string
@@ -27,7 +25,6 @@ interface PaymentChannelConfig {
   startDate: string
   endDate: string
   totalFundingAmount: string
-  paymentFrequency: PaymentFrequency
   settleDelay: string
   paymentStructure: 'accumulating' | 'fixed'
   autoRelease: boolean
@@ -46,7 +43,6 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
     startDate: new Date().toISOString().split('T')[0],
     endDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 2 days default
     totalFundingAmount: '',
-    paymentFrequency: 'hourly',
     settleDelay: '24',
     paymentStructure: 'accumulating',
     durationHours: '24', // Default: 24 hours (worker can force-close after 1 day)
@@ -270,8 +266,7 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
         amount: fundingAmountXah,
         amountDrops: fundingAmountDrops,
         expiration: expirationTime,
-        settleDelay: settleDelaySeconds,
-        balanceUpdateFrequency: config.paymentFrequency
+        settleDelay: settleDelaySeconds
       })
 
       // Step 0: PRE-FLIGHT VALIDATION - Check if worker account exists on ledger
@@ -316,7 +311,7 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
 
       console.log('Xaman description:', xamanDescription)
 
-      // Step 2: Submit transaction using the connected wallet (GemWallet, Crossmark, Xaman, or Manual)
+      // Step 2: Submit transaction using the connected wallet (Xaman or Manual)
       const txResult = await submitTransactionWithWallet(paymentChannelTx, provider, network, xamanDescription)
 
       if (!txResult.success) {
@@ -364,9 +359,6 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
               channelId: channelId,
               settleDelay: settleDelaySeconds,
               expiration: expirationTime,
-              balanceUpdateFrequency: config.paymentFrequency === 'hourly' ? 'Hourly' :
-                                       config.paymentFrequency === 'every-30min' ? 'Every 30 Minutes' :
-                                       config.paymentFrequency === 'every-15min' ? 'Every 15 Minutes' : 'Continuous',
               durationHours: parseFloat(config.durationHours) // Worker protection: hours until force-close
             })
           })
@@ -723,26 +715,6 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
             <h3 className="text-lg font-bold text-gray-900 uppercase tracking-tight">
               Channel Settings
             </h3>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase mb-2">
-                Claim Generation Frequency
-              </label>
-              <select
-                value={config.paymentFrequency}
-                onChange={(e) => handleInputChange('paymentFrequency', e.target.value as PaymentFrequency)}
-                className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-xah-blue focus:outline-none"
-              >
-                <option value="hourly">Every Hour (Recommended)</option>
-                <option value="every-30min">Every 30 Minutes</option>
-                <option value="every-15min">Every 15 Minutes</option>
-              </select>
-              <p className="text-xs text-gray-500 mt-1 uppercase">
-                {config.paymentFrequency === 'hourly' && '✓ Generate new signed claim every completed hour (most efficient)'}
-                {config.paymentFrequency === 'every-30min' && '✓ Generate new signed claim every 30 minutes (more frequent updates)'}
-                {config.paymentFrequency === 'every-15min' && '✓ Generate new signed claim every 15 minutes (maximum frequency)'}
-              </p>
-            </div>
 
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase mb-2">

@@ -88,6 +88,8 @@ export interface PaymentChannel {
   cancelAfter?: number | null      // Worker protection: Ripple Epoch timestamp when worker can force-close (null for legacy channels)
   cancelAfterDate?: string         // Human-readable ISO date when worker can force-close
   durationHours?: number           // Hours until worker can force-close (configured at channel creation)
+  closureType?: 'scheduled' | 'immediate' // NEW: Type of closure (scheduled = NGO with balance, immediate = NGO with no balance or worker)
+  settleDelayHours?: number        // NEW: Worker protection period for scheduled closures (typically 24 hours, 0 for immediate)
 }
 
 /**
@@ -199,6 +201,7 @@ export interface CancelChannelData {
     channelId: string              // XRPL payment channel ID
     escrowReturn: number           // XAH to be returned to NGO wallet
     accumulatedBalance: number     // XAH to be paid to worker
+    settleDelayHours?: number      // Worker protection period in hours (for scheduled closures)
   }
   xrplTransaction: {
     Balance: string                // Worker's accumulated balance in drops

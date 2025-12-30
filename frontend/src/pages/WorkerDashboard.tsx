@@ -276,8 +276,7 @@ const WorkerDashboard: React.FC = () => {
       const response = await paymentChannelApi.cancelPaymentChannel(
         selectedChannel.channelId,
         walletAddress,
-        'worker',
-        forceClose
+        'worker'
       )
 
       if (!response.success) {
@@ -799,24 +798,24 @@ const WorkerDashboard: React.FC = () => {
                       <div className={`mb-3 rounded-lg p-3 border-2 ${
                         isChannelExpired(channel)
                           ? 'bg-red-50 border-red-500'
-                          : 'bg-yellow-50 border-yellow-500'
+                          : 'bg-green-50 border-green-500'
                       }`}>
                         <div className="flex items-start gap-2">
                           <div className={`text-2xl flex-shrink-0 ${
                             isChannelExpired(channel) ? 'animate-pulse' : ''
                           }`}>
-                            {isChannelExpired(channel) ? '🚨' : '⚠️'}
+                            {isChannelExpired(channel) ? '🚨' : '✅'}
                           </div>
                           <div className="flex-1">
                             <p className={`text-xs font-extrabold uppercase tracking-wide mb-1 ${
-                              isChannelExpired(channel) ? 'text-red-900' : 'text-yellow-900'
+                              isChannelExpired(channel) ? 'text-red-900' : 'text-green-700'
                             }`}>
                               {isChannelExpired(channel)
                                 ? '⏰ CHANNEL EXPIRED - CLAIM YOUR WAGES NOW!'
-                                : '⏳ CHANNEL SCHEDULED FOR CLOSURE'}
+                                : '✅ PAYMENT RECEIVED - CHANNEL FINALIZING'}
                             </p>
                             <div className={`text-[10px] space-y-1 ${
-                              isChannelExpired(channel) ? 'text-red-800' : 'text-yellow-800'
+                              isChannelExpired(channel) ? 'text-red-800' : 'text-green-800'
                             }`}>
                               {isChannelExpired(channel) ? (
                                 <>
@@ -828,13 +827,13 @@ const WorkerDashboard: React.FC = () => {
                                 </>
                               ) : (
                                 <>
-                                  <p className="font-bold">
-                                    • YOU HAVE {getTimeRemaining(channel.expirationTime)} TO CLAIM
+                                  <p className="font-bold text-green-700">
+                                    ✅ YOUR ACCUMULATED BALANCE HAS BEEN SENT: {channel.balance?.toLocaleString() || '0'} XAH
                                   </p>
-                                  <p>• EMPLOYER INITIATED CLOSURE - SETTLELAY PERIOD ACTIVE</p>
-                                  <p>• AFTER EXPIRATION, EITHER PARTY CAN FINALIZE</p>
-                                  <p className="font-bold text-yellow-900">
-                                    • RECOMMEND CLAIMING BEFORE EXPIRATION TO PROTECT YOUR {channel.balance?.toLocaleString() || '0'} XAH
+                                  <p>• EMPLOYER INITIATED SCHEDULED CLOSURE - SETTLELAY PROTECTION ACTIVE</p>
+                                  <p>• CHANNEL WILL AUTO-FINALIZE IN {getTimeRemaining(channel.expirationTime)}</p>
+                                  <p className="font-bold">
+                                    • NO ACTION REQUIRED - XAH ALREADY IN YOUR WALLET
                                   </p>
                                 </>
                               )}
@@ -965,21 +964,21 @@ const WorkerDashboard: React.FC = () => {
 
                       {/* Context-aware claim/close button */}
                       {channel.status === 'closing' ? (
-                        <button
-                          onClick={() => handleCloseClick(channel)}
-                          disabled={cancelingChannel === channel.channelId}
-                          className={`px-3 py-1 text-white font-bold rounded text-xs uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                            isChannelExpired(channel)
-                              ? 'bg-orange-500 hover:bg-orange-600 animate-pulse'
-                              : 'bg-yellow-500 hover:bg-yellow-600'
-                          }`}
-                        >
-                          {cancelingChannel === channel.channelId
-                            ? 'CLAIMING...'
-                            : isChannelExpired(channel)
-                            ? '🛡️ CLAIM NOW'
-                            : '⏳ CLAIM EARLY'}
-                        </button>
+                        isChannelExpired(channel) ? (
+                          <button
+                            onClick={() => handleCloseClick(channel)}
+                            disabled={cancelingChannel === channel.channelId}
+                            className="px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded text-xs uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed animate-pulse"
+                          >
+                            {cancelingChannel === channel.channelId
+                              ? 'CLAIMING...'
+                              : '🛡️ CLAIM NOW'}
+                          </button>
+                        ) : (
+                          <div className="px-3 py-1 bg-green-100 border border-green-500 text-green-700 font-bold rounded text-xs uppercase tracking-wide">
+                            ✅ BALANCE RECEIVED
+                          </div>
+                        )
                       ) : (
                         <button
                           onClick={() => handleCloseClick(channel)}

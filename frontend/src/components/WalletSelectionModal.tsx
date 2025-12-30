@@ -3,9 +3,7 @@ import { useWallet, WalletProvider } from '../contexts/WalletContext'
 import { useAuth, UserType } from '../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import MultiStepSignupModal from './MultiStepSignupModal'
-import crossmarkLogo from '../assets/images/primary_128x128.png'
 import xamanLogo from '../assets/images/App icon 512px.png'
-// GemWallet API will be dynamically imported for availability check
 
 interface WalletSelectionModalProps {
   isOpen: boolean
@@ -33,31 +31,6 @@ const WalletSelectionModal: React.FC<WalletSelectionModalProps> = ({ isOpen, onC
   const [foundProfile, setFoundProfile] = useState<any>(null)
   const [showProfileFound, setShowProfileFound] = useState(false)
 
-  // Check if browser extensions are available
-  const isCrossmarkAvailable = typeof window !== 'undefined' && !!(window as any).crossmark
-  
-  // GemWallet detection - dynamically imported to reduce initial bundle
-  const [isGemWalletAvailable, setIsGemWalletAvailable] = React.useState(false)
-
-  React.useEffect(() => {
-    const checkGemWallet = async () => {
-      try {
-        // Dynamically import GemWallet API only for availability check
-        const { isInstalled: gemWalletIsInstalled } = await import('@gemwallet/api')
-        const result = await gemWalletIsInstalled()
-        console.log('GemWallet isInstalled result:', result)
-        const isInstalled = result?.result?.isInstalled === true
-        console.log('GemWallet available:', isInstalled)
-        setIsGemWalletAvailable(isInstalled)
-      } catch (error) {
-        console.log('GemWallet check error:', error)
-        // If the check fails, assume it's not installed
-        setIsGemWalletAvailable(false)
-      }
-    }
-    checkGemWallet()
-  }, [])
-
   const walletOptions: WalletOption[] = [
     {
       id: 'xaman',
@@ -65,20 +38,6 @@ const WalletSelectionModal: React.FC<WalletSelectionModalProps> = ({ isOpen, onC
       logo: xamanLogo,
       description: 'Scan QR with mobile app',
       available: true // Always available - uses QR code
-    },
-    {
-      id: 'crossmark',
-      name: 'Crossmark',
-      logo: crossmarkLogo,
-      description: 'Browser extension wallet',
-      available: isCrossmarkAvailable
-    },
-    {
-      id: 'gemwallet',
-      name: 'GemWallet',
-      icon: '💎',
-      description: 'Browser extension wallet',
-      available: isGemWalletAvailable
     }
   ]
 
@@ -342,28 +301,7 @@ const WalletSelectionModal: React.FC<WalletSelectionModalProps> = ({ isOpen, onC
                     alt="Xaman logo"
                     className="w-5 h-5 object-contain"
                   />
-                  Download Xaman (Recommended) →
-                </a>
-                <a
-                  href="https://crossmark.io"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-xah-blue hover:text-primary-700 font-semibold uppercase transition-colors"
-                >
-                  <img 
-                    src={crossmarkLogo} 
-                    alt="Crossmark logo"
-                    className="w-5 h-5 object-contain"
-                  />
-                  Install Crossmark →
-                </a>
-                <a
-                  href="https://gemwallet.app"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block text-xah-blue hover:text-primary-700 font-semibold uppercase"
-                >
-                  💎 Install GemWallet →
+                  Download Xaman →
                 </a>
               </div>
             </div>
