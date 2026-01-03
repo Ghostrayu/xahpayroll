@@ -11,6 +11,7 @@ import NGONotifications from '../components/NGONotifications'
 import { ActiveWorkersSection } from '../components/ActiveWorkersSection'
 import { paymentChannelApi, organizationApi, notificationApi } from '../services/api'
 import { closePaymentChannel } from '../utils/paymentChannels'
+import { getTransactionExplorerUrl } from '../utils/networkUtils'
 
 type DashboardTab = 'overview' | 'notifications'
 
@@ -1010,7 +1011,7 @@ const NgoDashboard: React.FC = () => {
                           {/* Phase 2: Transaction hash link */}
                           {activity.txHash && (
                             <a
-                              href={`https://explorer.xahau.network/tx/${activity.txHash}`}
+                              href={getTransactionExplorerUrl(activity.txHash, network)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-xs text-blue-600 hover:text-blue-800 underline mt-1 inline-block"

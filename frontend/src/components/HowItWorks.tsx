@@ -11,39 +11,39 @@ const HowItWorks: React.FC = () => {
   const steps: Step[] = [
     {
       number: 1,
-      title: 'NGO/EMPLOYER DEPOSITS XAH INTO ESCROW',
-      description: 'EMPLOYER FUNDS THE ESCROW WALLET WITH XAH TOKENS TO COVER WORKER PAYMENTS.',
+      title: 'NGO/EMPLOYER CREATES PAYMENT CHANNEL',
+      description: 'EMPLOYER CREATES ON-CHAIN PAYMENT CHANNEL WITH XAH ESCROW LOCKED ON XAHAU LEDGER.',
       role: 'employer',
     },
     {
       number: 2,
-      title: 'WORKER STARTS LOGGING HOURS',
-      description: 'WORKER CONNECTS WALLET AND CLICKS "START SHIFT" VIA THE WEB INTERFACE.',
+      title: 'WORKER LOGS HOURS VIA DASHBOARD',
+      description: 'WORKER CLOCKS IN/OUT THROUGH WEB INTERFACE. SESSIONS TRACKED OFF-CHAIN FOR PERFORMANCE.',
       role: 'worker',
     },
     {
       number: 3,
-      title: 'PAYMENT CHANNEL HOOK VERIFIES ACTIVITY',
-      description: 'SMART CONTRACT HOOKS VALIDATE WORKER ACTIVITY AND NGO AUTHORIZATION.',
+      title: 'OFF-CHAIN BALANCE ACCUMULATION',
+      description: 'SYSTEM ACCUMULATES WORKER EARNINGS IN DATABASE AFTER EACH SESSION (HOURLY RATE × HOURS WORKED).',
       role: 'system',
     },
     {
       number: 4,
-      title: 'HOURLY TIMER TRIGGERS PAYMENT RELEASE',
-      description: 'AUTOMATED SCHEDULER RELEASES PAYMENT EVERY HOUR BASED ON WORK LOGGED.',
+      title: 'NGO/WORKER REQUESTS CHANNEL CLOSURE',
+      description: 'EITHER PARTY INITIATES PAYMENT CHANNEL CLOSURE. SETTLEDELAY PROTECTS WORKER DURING TRANSITION.',
       role: 'system',
     },
     {
       number: 5,
-      title: 'XAH TRANSFERRED TO WORKER WALLET',
-      description: 'PAYMENT AUTOMATICALLY TRANSFERRED FROM ESCROW TO WORKER\'S WALLET.',
+      title: 'ON-CHAIN PAYMENTCHANNELCLAIM TRANSACTION',
+      description: 'ACCUMULATED BALANCE PAID TO WORKER VIA XRPL TRANSACTION. UNUSED ESCROW RETURNS TO NGO AUTOMATICALLY.',
       role: 'worker',
     },
     {
       number: 6,
-      title: 'SESSION ENDS ON TIMEOUT OR MANUAL STOP',
-      description: 'WORKER ENDS SHIFT MANUALLY OR AUTOMATIC TIMEOUT TERMINATES SESSION.',
-      role: 'worker',
+      title: 'LEDGER VERIFICATION & DATABASE SYNC',
+      description: 'SYSTEM VERIFIES TRANSACTION ON XAHAU LEDGER. NETWORK-AWARE EXPLORER LINKS ENABLE TRANSPARENT VERIFICATION.',
+      role: 'system',
     },
   ]
 
@@ -69,7 +69,7 @@ const HowItWorks: React.FC = () => {
             </h2>
           </div>
           <p className="text-base text-gray-700 max-w-3xl mx-auto uppercase leading-relaxed tracking-wide font-semibold">
-            SIMPLE, AUTOMATED PAYMENT FLOW FROM ESCROW DEPOSIT TO HOURLY PAYOUTS
+            OFF-CHAIN BALANCE ACCUMULATION + ON-CHAIN PAYMENT CHANNEL CLOSURE WITH WORKER PROTECTION VIA SETTLEDELAY
           </p>
         </div>
 

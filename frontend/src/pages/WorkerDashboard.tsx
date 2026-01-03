@@ -9,6 +9,7 @@ import UnclaimedBalanceWarningModal from '../components/UnclaimedBalanceWarningM
 import { WorkSessionTimer } from '../components/WorkSessionTimer'
 import { paymentChannelApi, workerApi, workerNotificationsApi } from '../services/api'
 import { closePaymentChannel, verifyChannelClosure } from '../utils/paymentChannels'
+import { getTransactionExplorerUrl, getAccountExplorerUrl } from '../utils/networkUtils'
 
 const WorkerDashboard: React.FC = () => {
   const { userName } = useAuth()
@@ -1170,7 +1171,7 @@ const WorkerDashboard: React.FC = () => {
                         {/* Phase 2: Transaction hash link */}
                         {activity.txHash && (
                           <a
-                            href={`https://explorer.xahau.network/tx/${activity.txHash}`}
+                            href={getTransactionExplorerUrl(activity.txHash, network)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-xs text-blue-600 hover:text-blue-800 underline mt-1 inline-block"
@@ -1512,11 +1513,7 @@ const WorkerDashboard: React.FC = () => {
                   📊 VIEW YOUR TRANSACTION HISTORY
                 </p>
                 <a
-                  href={
-                    network === 'mainnet'
-                      ? `https://explorer.xahau.network/${walletAddress}`
-                      : `https://explorer.xahau-test.net/${walletAddress}`
-                  }
+                  href={getAccountExplorerUrl(walletAddress, network)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-4 py-2 bg-xah-blue hover:bg-primary-700 text-white font-bold rounded-lg transition-colors uppercase text-sm"
