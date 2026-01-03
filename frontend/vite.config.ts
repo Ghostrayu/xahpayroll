@@ -23,7 +23,7 @@ export default defineConfig({
           }
 
           // Separate wallet integration libraries
-          if (id.includes('node_modules/@gemwallet') || id.includes('node_modules/xumm-sdk')) {
+          if (id.includes('node_modules/xumm-sdk')) {
             return 'wallet-integrations'
           }
 

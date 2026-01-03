@@ -47,7 +47,7 @@ When a payment channel is closed:
    - Click "Confirm Cancellation"
 
 2. **Sign Transaction**:
-   - Xaman/Crossmark/GemWallet prompts for signature
+   - Xaman app (or Manual mode for testing) prompts for signature
    - Sign the PaymentChannelClaim transaction
    - Wait for transaction confirmation
 

@@ -191,7 +191,7 @@ while (attempts < maxAttempts) {
 **Manual Test Steps**:
 1. ✅ Start backend: `npm run dev:backend`
 2. ✅ Start frontend: `npm run dev:frontend`
-3. ✅ Connect NGO wallet (Crossmark/GemWallet/Manual for quick test)
+3. ✅ Connect NGO wallet (Xaman for production, Manual mode for quick testing)
 4. ✅ Create payment channel with testnet XAH
 5. ✅ Click "Cancel Channel" button
 6. ✅ Sign transaction with wallet

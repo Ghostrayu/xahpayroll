@@ -79,11 +79,10 @@ Transaction Flow: NO return_url (polling waits for completion)
 - [ ] **VERIFY**: Channel removed from dashboard
 - [ ] Query ledger to confirm channel removed
 
-### Manual Testing Checklist (Other Wallets)
-- [ ] Test with Crossmark (should work same as before)
-- [ ] Test with GemWallet (should work same as before)
-- [ ] Test with Manual wallet (should work same as before)
-- [ ] All wallets should complete 3-step flow
+### Manual Testing Checklist (Manual Mode)
+- [ ] Test with Manual wallet mode (testing only)
+- [ ] Verify manual mode still completes 3-step flow
+- [ ] Ensure no regressions in manual transaction signing
 
 ### Code Review Checklist
 - [x] return_url removed from walletTransactions.ts
@@ -265,7 +264,7 @@ router.post('/create-signin', async (req, res) => {
 ### Testing Protocol
 1. **Required Test**: Xaman mobile app QR code flow
 2. **Required Test**: Xaman web interface flow
-3. **Regression Test**: Crossmark, GemWallet, Manual wallets
+3. **Regression Test**: Manual wallet mode (testing only)
 4. **Regression Test**: Sign-in flow with Xaman
 
 ## Next Steps

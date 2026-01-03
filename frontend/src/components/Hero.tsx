@@ -48,7 +48,7 @@ const Hero: React.FC = () => {
               <div className="mb-8">
                 <h3 className="text-xl font-bold text-gray-900 mb-4 uppercase tracking-wide">FOR WORKERS</h3>
                 <p className="text-sm text-gray-700 uppercase leading-loose tracking-wide">
-                  CLOCK IN, LOG HOURS, GET PAID AUTOMATICALLY EVERY HOUR DIRECTLY TO YOUR WALLET
+                  VIEW YOUR PAYMENT CHANNELS, CLOCK IN AND OUT TO LOG HOURS, RECEIVE PAYMENT WHEN CHANNELS CLOSE
                 </p>
               </div>
               <Link to="/worker" className="btn-primary text-base px-10 py-4 uppercase w-full tracking-wide inline-block">
@@ -61,7 +61,7 @@ const Hero: React.FC = () => {
               <div className="mb-8">
                 <h3 className="text-xl font-bold text-gray-900 mb-4 uppercase tracking-wide">FOR NGOS/EMPLOYERS</h3>
                 <p className="text-sm text-gray-700 uppercase leading-loose tracking-wide">
-                  CONFIGURE PAYMENT RULES, FUND ESCROW WALLET, AND MONITOR AUTOMATED PAYOUTS IN REAL-TIME
+                  ADD WORKERS, CREATE PAYMENT CHANNELS WITH XAH ESCROW, MONITOR WORK SESSIONS AND BALANCES
                 </p>
               </div>
               <Link to="/ngo" className="btn-secondary text-base px-10 py-4 uppercase w-full tracking-wide inline-block">

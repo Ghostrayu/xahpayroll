@@ -55,25 +55,24 @@ This will:
 
 ## 📱 Testing Wallet Connection
 
-### Option 1: Xaman (Mobile Wallet)
-1. Click "Connect Wallet"
-2. Select "Xaman (Xumm)"
-3. Scan QR code with Xaman mobile app
-4. Approve the sign-in
+### Xaman (Primary Wallet - RECOMMENDED FOR PRODUCTION)
+1. Install Xaman app from https://xaman.app
+2. Create or import your wallet
+3. Click "Connect Wallet" on XAH Payroll
+4. Scan QR code with Xaman mobile app (or click deep link on desktop)
+5. Approve the sign-in in Xaman app
 
-### Option 2: Crossmark (Browser Extension) - Recommended
-1. Install Crossmark from https://crossmark.io
-2. Set up your wallet
-3. Click "Connect Wallet"
-4. Select "Crossmark"
-5. Approve in the extension popup
+**WHY XAMAN?**
+- ✅ Most secure option (enterprise-grade security)
+- ✅ Works on any device (QR code scanning)
+- ✅ Official XRPL Foundation supported
+- ✅ Hardware security module (HSM) support
+- ✅ Biometric authentication
 
-### Option 3: GemWallet (Browser Extension)
-1. Install GemWallet from https://gemwallet.app
-2. Set up your wallet
-3. Click "Connect Wallet"
-4. Select "GemWallet"
-5. Approve in the extension popup
+### Manual Mode (Testing Only - NOT FOR PRODUCTION)
+- Direct seed/address input for development and debugging
+- ⚠️ NEVER use with real funds or production wallets
+- ⚠️ Only for testnet development
 
 ## 🎯 What's Next?
 
@@ -113,7 +112,7 @@ This will:
 
 ### Wallet connection fails
 - **Xaman**: Ensure backend is running and API credentials are valid
-- **Crossmark/GemWallet**: Ensure browser extension is installed and unlocked
+- **Manual Mode**: Verify seed/address format is correct
 
 ### CORS errors
 - Make sure backend is running on port 3001
@@ -128,10 +127,11 @@ This will:
 
 ## 💡 Pro Tips
 
-1. **Use Crossmark for testing** - It's faster than Xaman for development
-2. **Keep both terminals visible** - Watch backend and frontend logs simultaneously
-3. **Check browser console** - Useful for debugging wallet connections
-4. **Test on testnet first** - Use testnet XAH before going to mainnet
+1. **Use Xaman for production** - Enterprise-grade security and official XRPL support
+2. **Use Manual mode for quick testing** - Faster iteration during development
+3. **Keep both terminals visible** - Watch backend and frontend logs simultaneously
+4. **Check browser console** - Useful for debugging wallet connections
+5. **Test on testnet first** - Use testnet XAH before going to mainnet
 
 ## 🆘 Need Help?
 
