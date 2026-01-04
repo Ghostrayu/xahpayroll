@@ -17,7 +17,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 TEST_DB_USER="${DB_USER:-xahpayroll_user}"
 TEST_DB_HOST="${DB_HOST:-localhost}"
 TEST_DB_PORT="${DB_PORT:-5432}"
-TEST_DB_PASSWORD="${DB_PASSWORD:-xahpayroll_secure_2024}"
+TEST_DB_PASSWORD="${DB_PASSWORD:-your_database_password_here}"
 TEST_DB_NAME="xahpayroll_backup_verify_test"
 
 # Backup file and format

@@ -156,9 +156,10 @@ pgdata/
 *.sqlite3
 *.db
 
-# Database backups
+# Database backups (SECURITY: Never commit production data)
 backups/
 *.backup
+*.sql
 
 # =====================================================
 # DOCKER

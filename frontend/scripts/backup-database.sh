@@ -19,7 +19,7 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 DB_USER="${DB_USER:-xahpayroll_user}"
 DB_HOST="${DB_HOST:-localhost}"
 DB_PORT="${DB_PORT:-5432}"
-DB_PASSWORD="${DB_PASSWORD:-xahpayroll_secure_2024}"
+DB_PASSWORD="${DB_PASSWORD:-your_database_password_here}"
 
 # Determine environment
 ENVIRONMENT="${1:-dev}"

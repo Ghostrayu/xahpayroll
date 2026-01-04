@@ -11,6 +11,7 @@ DOCUMENTS/
 ├── DATABASE_SETUP.md                   # Database setup guide
 ├── DEPLOYMENT_COMPARISON.md            # Deployment strategy comparison
 ├── NETWORK_CONFIG.md                   # Network switching instructions
+├── OPEN_SOURCE_PREPARATION.md          # Open source preparation checklist
 ├── QUICKSTART.md                       # Quick start guide
 ├── QUICK_REFERENCE.md                  # Quick reference guide
 ├── TERMS_OF_SERVICE.md                 # Terms of service
@@ -37,6 +38,7 @@ The following documentation files remain at the project root for easy access:
 
 - **Getting Started**: See `QUICKSTART.md` or root `README.md`
 - **Database Setup**: See `DATABASE_SETUP.md` (comprehensive guide with details)
+- **Open Source Preparation**: See `OPEN_SOURCE_PREPARATION.md` for complete checklist
 - **Testing**: See `TEST_QUICK_VALIDATION.md` or `TEST_COMPREHENSIVE_SUITE.md`
 - **Backend Documentation**: See `backend/` subdirectory
 - **Frontend Documentation**: See `frontend/` subdirectory

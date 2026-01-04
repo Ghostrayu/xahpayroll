@@ -370,6 +370,8 @@ See `PAYMENT_CHANNEL_TESTING.md` for detailed testing guide.
 - All wallet signing happens client-side via wallet providers
 - Database credentials should be rotated between environments
 
+**Security Contact**: For security vulnerabilities or concerns, email admin@xahpayroll.xyz or create a private security advisory on GitHub. See SECURITY.md for full reporting guidelines.
+
 ## Code Style Conventions
 
 ### Text Capitalization - ALL USER-FACING TEXT
