@@ -154,7 +154,7 @@ Routes are protected based on user type via `ProtectedRoute` component.
 
 ## Database Setup
 
-PostgreSQL 14+ required. Setup instructions in `DATABASE_SETUP.md` and `setup_database.sql`.
+PostgreSQL 14+ required. Setup instructions in `DOCUMENTS/DATABASE_SETUP.md` and `setup_database.sql`.
 
 ```bash
 # Initialize database
@@ -321,11 +321,11 @@ See `PAYMENT_CHANNEL_TESTING.md` for detailed testing guide.
 
 ### Documentation
 - `README.md` - Full project documentation
-- `CONTEXT_IMPLEMENTATION.md` - React Context implementation checklist
+- `DOCUMENTS/CONTEXT_IMPLEMENTATION.md` - React Context implementation checklist
 - `PAYMENT_CHANNEL_TESTING.md` - Payment channel testing guide
-- `NETWORK_CONFIG.md` - Network switching instructions
-- `DATABASE_SETUP.md` - Database setup guide
-- `WALLET_INTEGRATION.md` - Wallet integration details
+- `DOCUMENTS/NETWORK_CONFIG.md` - Network switching instructions
+- `DOCUMENTS/DATABASE_SETUP.md` - Database setup guide
+- `DOCUMENTS/WALLET_INTEGRATION.md` - Wallet integration details
 
 ### Core Application Files
 - `frontend/src/App.tsx` - Route definitions and provider nesting

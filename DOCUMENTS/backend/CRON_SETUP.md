@@ -419,7 +419,7 @@ const hardDeleteJobId = startHardDeleteJob()
 **After** (server.js):
 ```javascript
 // NOTE: Scheduled jobs now run via system cron
-// See: backend/jobs/runHardDelete.js and backend/CRON_SETUP.md
+// See: backend/jobs/runHardDelete.js and DOCUMENTS/backend/CRON_SETUP.md
 ```
 
 ### Benefits

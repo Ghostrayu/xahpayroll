@@ -132,7 +132,7 @@ const startServer = async () => {
     await initializeDatabase()
 
     // NOTE: Scheduled jobs run via system cron (independent of server)
-    // See: backend/jobs/runHardDelete.js and backend/CRON_SETUP.md for configuration
+    // See: backend/jobs/runHardDelete.js and DOCUMENTS/backend/CRON_SETUP.md for configuration
 
     // Start Express server
     app.listen(PORT, () => {
