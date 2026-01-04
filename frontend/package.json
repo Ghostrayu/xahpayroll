@@ -1,9 +1,21 @@
 {
   "name": "xahpayroll-frontend",
   "version": "1.0.0",
+  "description": "XAH Payroll Frontend - React application for decentralized hourly payroll management",
   "type": "module",
   "private": true,
+  "author": "Good Money Collective",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Ghostrayu/xahpayroll.git",
+    "directory": "frontend"
+  },
+  "homepage": "https://github.com/Ghostrayu/xahpayroll#readme",
+  "bugs": {
+    "url": "https://github.com/Ghostrayu/xahpayroll/issues",
+    "email": "admin@xahpayroll.xyz"
+  },
   "dependencies": {
     "@types/node": "^20.10.0",
     "@types/react": "^18.2.45",

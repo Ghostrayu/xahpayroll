@@ -28,6 +28,15 @@
   ],
   "author": "Good Money Collective",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Ghostrayu/xahpayroll.git"
+  },
+  "homepage": "https://github.com/Ghostrayu/xahpayroll#readme",
+  "bugs": {
+    "url": "https://github.com/Ghostrayu/xahpayroll/issues",
+    "email": "admin@xahpayroll.xyz"
+  },
   "devDependencies": {
     "concurrently": "^9.2.1"
   }

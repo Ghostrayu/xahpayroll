@@ -252,3 +252,4 @@ api-docs/generated/
 # Local configuration overrides
 config.local.js
 config.override.js
+claudedocs/GITHUB_RELEASE_INSTRUCTIONS.md
