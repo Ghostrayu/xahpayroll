@@ -210,7 +210,7 @@ XAH Payroll is a decentralized hourly payroll system built on the XAH Ledger (Xa
 │  ┌────────────────────────────────────────────────────┐    │
 │  │          EXTERNAL INTEGRATIONS                     │    │
 │  │                                                    │    │
-│  │  Xaman API                    Xahau Ledger         │    │
+│  │  Xaman API                    Xahau                │    │
 │  │  • Create payloads            • Create channels    │    │
 │  │  • Check status               • Close channels     │    │
 │  │  • WebSocket events           • Query balances     │    │
@@ -335,9 +335,9 @@ Key Relationships:
 ### 2. Payment Channel Creation Flow
 
 ```
-┌────────────┐   ┌──────────────┐   ┌──────────┐   ┌──────────────┐
-│ NGO CLIENT │   │   BACKEND    │   │ DATABASE │   │ XAHAU LEDGER │
-└─────┬──────┘   └──────┬───────┘   └────┬─────┘   └──────┬───────┘
+┌────────────┐   ┌──────────────┐   ┌──────────┐   ┌──────────┐
+│ NGO CLIENT │   │   BACKEND    │   │ DATABASE │   │  XAHAU   │
+└─────┬──────┘   └──────┬───────┘   └────┬─────┘   └────┬─────┘
       │                 │                 │                │
       │ 1. Select worker from dropdown   │                │
       │    (worker must be added to org) │                │
@@ -451,9 +451,9 @@ IMPORTANT: No ledger transaction occurs during clock-out!
 ### 4. Payment Channel Closure Flow
 
 ```
-┌────────────┐   ┌──────────────┐   ┌──────────┐   ┌──────────────┐
-│NGO/WORKER  │   │   BACKEND    │   │ DATABASE │   │ XAHAU LEDGER │
-└─────┬──────┘   └──────┬───────┘   └────┬─────┘   └──────┬───────┘
+┌────────────┐   ┌──────────────┐   ┌──────────┐   ┌──────────┐
+│NGO/WORKER  │   │   BACKEND    │   │ DATABASE │   │  XAHAU   │
+└─────┬──────┘   └──────┬───────┘   └────┬─────┘   └────┬─────┘
       │                 │                 │                │
       │ 1. Click "Cancel Channel"         │                │
       ├────────────────►│                 │                │

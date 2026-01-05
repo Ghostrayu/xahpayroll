@@ -12,7 +12,7 @@ const HowItWorks: React.FC = () => {
     {
       number: 1,
       title: 'NGO/EMPLOYER CREATES PAYMENT CHANNEL',
-      description: 'EMPLOYER CREATES ON-CHAIN PAYMENT CHANNEL WITH XAH ESCROW LOCKED ON XAHAU LEDGER.',
+      description: 'EMPLOYER CREATES ON-CHAIN PAYMENT CHANNEL WITH XAH ESCROW LOCKED ON XAHAU.',
       role: 'employer',
     },
     {
@@ -42,7 +42,7 @@ const HowItWorks: React.FC = () => {
     {
       number: 6,
       title: 'LEDGER VERIFICATION & DATABASE SYNC',
-      description: 'SYSTEM VERIFIES TRANSACTION ON XAHAU LEDGER. NETWORK-AWARE EXPLORER LINKS ENABLE TRANSPARENT VERIFICATION.',
+      description: 'SYSTEM VERIFIES TRANSACTION ON XAHAU. NETWORK-AWARE EXPLORER LINKS ENABLE TRANSPARENT VERIFICATION.',
       role: 'system',
     },
   ]

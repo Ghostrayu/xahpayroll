@@ -1,5 +1,5 @@
 /**
- * Verify Channel 4 Balance on Xahau Ledger
+ * Verify Channel 4 Balance on Xahau
  *
  * Checks if the 0.29 XAH accumulated balance for Channel 4 is stale database data
  * by querying the actual closure transaction on Xahau testnet.

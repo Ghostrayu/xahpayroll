@@ -68,7 +68,7 @@ async function claimExpiredChannels() {
     });
 
     // ============================================
-    // STEP 2: CONNECT TO XAHAU LEDGER
+    // STEP 2: CONNECT TO XAHAU
     // ============================================
     await client.connect();
     console.log('\n🔗 Connected to Xahau ledger');

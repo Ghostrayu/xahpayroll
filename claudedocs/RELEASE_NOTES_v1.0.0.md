@@ -75,8 +75,8 @@ XAH Payroll v1.0.0 is the first production-ready release of our decentralized ho
 - **JWT Authentication** with session management
 
 ### Blockchain
-- **Xahau Ledger** (XAH) integration
-- **Payment Channels** for efficient single-transaction settlement
+- **Xahau** (XRPL sidechain) integration with XAH currency
+- **XRPL Payment Channels** for efficient single-transaction settlement
 - **Xaman Wallet** integration (exclusive)
 
 ---

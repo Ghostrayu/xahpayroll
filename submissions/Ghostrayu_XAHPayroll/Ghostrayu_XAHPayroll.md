@@ -6,7 +6,7 @@
 **XAH Payroll - Decentralized Hourly Payroll System**
 
 ### BRIEF DESCRIPTION
-XAH Payroll is a production-ready decentralized payroll system built on the Xahau Ledger (XAH) that enables NGOs and employers to manage hourly wage payments through XRPL payment channels. The system provides automated time tracking, secure escrow-based payments, and real-time hourly payment distribution to workers.
+XAH Payroll is a production-ready decentralized payroll system built on Xahau (an XRPL sidechain) that enables NGOs and employers to manage hourly wage payments through XRPL payment channels. The system provides automated time tracking, secure escrow-based payments, and real-time hourly payment distribution to workers.
 
 **Key Features**:
 - ⏱️ **Automated Time Tracking**: Workers clock in/out with automatic hourly calculation
@@ -19,7 +19,7 @@ XAH Payroll is a production-ready decentralized payroll system built on the Xaha
 **Technical Stack**:
 - Frontend: React 18 + TypeScript + Vite + TailwindCSS
 - Backend: Node.js + Express + PostgreSQL 14+
-- Blockchain: Xahau Ledger (XRPL) with native payment channels
+- Blockchain: Xahau (XRPL sidechain) with native payment channels
 - Wallet: Xaman (XUMM) exclusive integration
 
 ---
@@ -133,7 +133,7 @@ The project does not use Xahau Hooks. All blockchain interactions use standard X
 ## PROJECT HIGHLIGHTS
 
 ### INNOVATION
-- **First open source hourly payroll system** on Xahau Ledger
+- **First open source hourly payroll system** on Xahau
 - **Native payment channel implementation** for efficient microtransactions
 - **Multi-organization worker support** enabling flexible employment relationships
 - **Comprehensive documentation** with 500+ lines of architecture documentation
@@ -179,7 +179,7 @@ The project does not use Xahau Hooks. All blockchain interactions use standard X
    - Indexed queries for performance
    - Automatic schema initialization
 
-4. **Blockchain Integration** (Xahau Ledger)
+4. **Blockchain Integration** (Xahau)
    - XRPL payment channels for escrow
    - Client-side transaction signing
    - WebSocket connectivity (wss://xahau.network or wss://xahau-test.net)

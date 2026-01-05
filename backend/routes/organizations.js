@@ -1076,7 +1076,7 @@ router.post('/:walletAddress/sync-all-channels', async (req, res) => {
       return res.status(500).json({
         success: false,
         error: {
-          message: 'FAILED TO QUERY XAHAU LEDGER',
+          message: 'FAILED TO QUERY XAHAU',
           details: ledgerError.message
         }
       })

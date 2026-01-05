@@ -1,5 +1,5 @@
 /**
- * Check Transaction Status on Xahau Ledger
+ * Check Transaction Status on Xahau
  *
  * Usage: node scripts/check-transaction.js [txHash]
  */

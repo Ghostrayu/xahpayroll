@@ -1,5 +1,5 @@
 /**
- * Check Payment Channel Status on Xahau Ledger
+ * Check Payment Channel Status on Xahau
  *
  * This script queries the actual ledger to see if a channel still exists
  * and what its current balance/status is
