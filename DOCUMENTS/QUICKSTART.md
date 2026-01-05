@@ -88,7 +88,7 @@ This will:
 2. Complete your profile and accept Terms of Service
 3. Navigate to Worker Dashboard
 4. Start logging hours
-5. Receive automatic hourly payments
+5. Receive payment when channel closes (all accumulated earnings in single transaction)
 
 ### For NGOs/Employers:
 1. Connect your wallet (must not be registered as Employee)

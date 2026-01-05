@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-XAH Payroll is a decentralized hourly payroll system built on the XAH Ledger (Xahau). It enables automatic hourly wage payments through XRP/XAH payment channels, with multi-wallet support and role-based access control.
+XAH Payroll is a decentralized hourly payroll system built on the XAH Ledger (Xahau). It enables hourly wage tracking and payment settlement through XRP/XAH payment channels, with Xaman wallet integration and role-based access control.
+
+**CRITICAL PAYMENT FLOW**: Workers are NOT paid hourly in real-time. Earnings accumulate in the database during work sessions, and workers receive a SINGLE payment when the payment channel is closed. Only two ledger transactions occur: channel creation and channel closure.
 
 ## Development Commands
 
@@ -141,10 +143,11 @@ This is enforced at the database and application level. Users must use separate 
 
 ### Payment Channel Flow
 1. NGO/Employer creates payment channel with worker (selected from dropdown)
-2. Channel funded with XAH escrow
-3. Worker logs hours via dashboard
-4. Hourly payments released automatically from channel
-5. Timeout/inactivity ends session and returns unused escrow
+2. Channel funded with XAH escrow (ledger transaction)
+3. Worker logs hours via dashboard (database only - no ledger transactions)
+4. Earnings accumulate in database with each completed work session
+5. Channel closure releases ALL accumulated earnings to worker in SINGLE payment (ledger transaction)
+6. Unused escrow automatically returns to NGO/Employer
 
 ### User Types
 - `employee` - Workers who receive payments

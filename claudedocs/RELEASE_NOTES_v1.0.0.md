@@ -18,7 +18,7 @@ XAH Payroll v1.0.0 is the first production-ready release of our decentralized ho
 - **Decentralized Hourly Payroll**: Automatic wage payments via XAH payment channels
 - **Xaman Wallet Integration**: Enterprise-grade wallet support with QR code scanning and deep linking
 - **Worker Management**: Multi-organization support with easy onboarding
-- **Real-Time Tracking**: Live work session monitoring and payment channel status
+- **Real-Time Tracking**: Live work session monitoring and balance accumulation status
 - **Enterprise Security**: Comprehensive security documentation and best practices
 
 ### Payment Channel System
@@ -76,7 +76,7 @@ XAH Payroll v1.0.0 is the first production-ready release of our decentralized ho
 
 ### Blockchain
 - **Xahau Ledger** (XAH) integration
-- **Payment Channels** for hourly payments
+- **Payment Channels** for efficient single-transaction settlement
 - **Xaman Wallet** integration (exclusive)
 
 ---
@@ -204,4 +204,4 @@ Built with:
 
 **Thank you for your interest in XAH Payroll!**
 
-*Decentralizing hourly payments, one worker at a time.* 🌍💼
+*Decentralizing payroll with transparent wage tracking and secure settlement.* 🌍💼
