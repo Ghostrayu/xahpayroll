@@ -1,66 +1,66 @@
-# XAH Payroll - Quick Start Guide
+# XAH PAYROLL - QUICK START GUIDE
 
-## 🚀 Get Started in 3 Steps
+## 🚀 GET STARTED IN 3 STEPS
 
-### Step 1: Install Dependencies
+### STEP 1: INSTALL DEPENDENCIES
 
 ```bash
 npm run install:all
 ```
 
-This will install dependencies for:
-- Root project
-- Frontend (React + Vite + Multi-Wallet Support)
-- Backend (Express + PostgreSQL + Xaman API)
+THIS WILL INSTALL DEPENDENCIES FOR:
+- ROOT PROJECT
+- FRONTEND (REACT + VITE + MULTI-WALLET SUPPORT)
+- BACKEND (EXPRESS + POSTGRESQL + XAMAN API)
 
-### Step 2: Configure Environment
+### STEP 2: CONFIGURE ENVIRONMENT
 
-#### Backend Configuration
+#### BACKEND CONFIGURATION
 ```bash
 cd backend
 cp .env.example .env
 ```
 
-Edit `backend/.env` and add your Xaman API credentials:
+EDIT `BACKEND/.ENV` AND ADD YOUR XAMAN API CREDENTIALS:
 ```env
 XAMAN_API_KEY=your_xaman_api_key_here
 XAMAN_API_SECRET=your_xaman_api_secret_here
 ```
 
-Get your credentials from: https://apps.xumm.dev/
+GET YOUR CREDENTIALS FROM: https://apps.xumm.dev/
 
-#### Frontend Configuration
+#### FRONTEND CONFIGURATION
 ```bash
 cd frontend
 cp .env.example .env
 ```
 
-The frontend `.env` should already have:
+THE FRONTEND `.ENV` SHOULD ALREADY HAVE:
 ```env
 VITE_BACKEND_URL=http://localhost:3001
 ```
 
-### Step 3: Start Development
+### STEP 3: START DEVELOPMENT
 
-From the root directory:
+FROM THE ROOT DIRECTORY:
 
 ```bash
 npm run dev
 ```
 
-This will:
-- ✅ Start the backend API server on `http://localhost:3001`
-- ✅ Start the frontend dev server on `http://localhost:3000`
-- ✅ Automatically open your browser to the app
+THIS WILL:
+- ✅ START THE BACKEND API SERVER ON `http://localhost:3001`
+- ✅ START THE FRONTEND DEV SERVER ON `http://localhost:3000`
+- ✅ AUTOMATICALLY OPEN YOUR BROWSER TO THE APP
 
-## 📱 Testing Wallet Connection
+## 📱 TESTING WALLET CONNECTION
 
-### Xaman (Primary Wallet - RECOMMENDED FOR PRODUCTION)
-1. Install Xaman app from https://xaman.app
-2. Create or import your wallet
-3. Click "Connect Wallet" on XAH Payroll
-4. Scan QR code with Xaman mobile app (or click deep link on desktop)
-5. Approve the sign-in in Xaman app
+### XAMAN (PRIMARY WALLET - RECOMMENDED FOR PRODUCTION)
+1. INSTALL XAMAN APP FROM https://xaman.app
+2. CREATE OR IMPORT YOUR WALLET
+3. CLICK "CONNECT WALLET" ON XAH PAYROLL
+4. SCAN QR CODE WITH XAMAN MOBILE APP (OR CLICK DEEP LINK ON DESKTOP)
+5. APPROVE THE SIGN-IN IN XAMAN APP
 
 **WHY XAMAN?**
 - ✅ Most secure option (enterprise-grade security)
@@ -83,61 +83,60 @@ This will:
 - If your wallet is already registered as NGO/Employer, you cannot use it for Employee
 - Switching between NGO and Employer is allowed (both are organization types)
 
-### For Workers:
-1. Connect your wallet (must not be registered as NGO/Employer)
-2. Complete your profile and accept Terms of Service
-3. Navigate to Worker Dashboard
-4. Start logging hours
-5. Receive payment when channel closes (all accumulated earnings in single transaction)
+### FOR WORKERS:
+1. CONNECT YOUR WALLET (MUST NOT BE REGISTERED AS NGO/EMPLOYER)
+2. COMPLETE YOUR PROFILE AND ACCEPT TERMS OF SERVICE
+3. NAVIGATE TO WORKER DASHBOARD
+4. START LOGGING HOURS
+5. RECEIVE PAYMENT WHEN CHANNEL CLOSES (ALL ACCUMULATED EARNINGS IN SINGLE TRANSACTION)
 
-### For NGOs/Employers:
-1. Connect your wallet (must not be registered as Employee)
-2. Complete your organization profile and accept Terms of Service
-3. Navigate to NGO Dashboard
-4. Add workers
-5. Fund escrow
-6. Monitor payments
+### FOR NGOS/EMPLOYERS:
+1. CONNECT YOUR WALLET (MUST NOT BE REGISTERED AS EMPLOYEE)
 
-## 🔧 Troubleshooting
+## TROUBLESHOOTING
 
-### Backend won't start
-- Check that port 3001 is not in use
-- Verify Xaman API credentials in `backend/.env`
-- Run `cd backend && npm install` to ensure dependencies are installed
+### BACKEND WON'T START
+- CHECK THAT PORT 3001 IS NOT IN USE
+- VERIFY XAMAN API CREDENTIALS IN `BACKEND/.ENV`
+- RUN `CD BACKEND && NPM INSTALL` TO ENSURE DEPENDENCIES ARE INSTALLED
 
-### Frontend won't start
-- Check that port 3000 is not in use
-- Verify `VITE_BACKEND_URL` in `frontend/.env`
-- Run `cd frontend && npm install` to ensure dependencies are installed
+### FRONTEND WON'T START
+- CHECK THAT PORT 3000 IS NOT IN USE
+- VERIFY `VITE_BACKEND_URL` IN `FRONTEND/.ENV`
+- RUN `CD FRONTEND && NPM INSTALL` TO ENSURE DEPENDENCIES ARE INSTALLED
 
-### Wallet connection fails
-- **Xaman**: Ensure backend is running and API credentials are valid
-- **Manual Mode**: Verify seed/address format is correct
+### WALLET CONNECTION FAILS
+- **XAMAN**: ENSURE BACKEND IS RUNNING AND API CREDENTIALS ARE VALID
+- **MANUAL MODE**: VERIFY SEED/ADDRESS FORMAT IS CORRECT
 
-### CORS errors
-- Make sure backend is running on port 3001
-- Check that `FRONTEND_URL` in `backend/.env` matches your frontend URL
+### CORS ERRORS
+- MAKE SURE BACKEND IS RUNNING ON PORT 3001
+- CHECK THAT `FRONTEND_URL` IN `BACKEND/.ENV` MATCHES YOUR FRONTEND URL
 
-## 📚 Additional Resources
+## ADDITIONAL RESOURCES
 
-- [Backend API Documentation](./backend/README.md)
-- [Main README](./README.md)
-- [Xaman Developer Docs](https://xumm.readme.io/)
-- [XRPL Documentation](https://xrpl.org/)
+- [BACKEND API DOCUMENTATION](./BACKEND/README.MD)
+- [MAIN README](./README.MD)
+- [XAMAN DEVELOPER DOCS](https://xumm.readme.io/)
+- [XRPL DOCUMENTATION](https://xrpl.org/)
 
-## 💡 Pro Tips
+## PRO TIPS
 
-1. **Use Xaman for production** - Enterprise-grade security and official XRPL support
+1. **USE XAMAN FOR PRODUCTION** - ENTERPRISE-GRADE SECURITY AND OFFICIAL XRPL SUPPORT
+2. **USE MANUAL MODE FOR QUICK TESTING** - FASTER ITERATION DURING DEVELOPMENT
+3. **KEEP BOTH TERMINALS VISIBLE** - WATCH BACKEND AND FRONTEND LOGS SIMULTANEOUSLY
+4. **CHECK BROWSER CONSOLE** - USEFUL FOR DEBUGGING WALLET CONNECTIONS
+5. **TEST ON TESTNET FIRST** - USE TESTNET XAH BEFORE GOING TO MAINNET
 2. **Use Manual mode for quick testing** - Faster iteration during development
 3. **Keep both terminals visible** - Watch backend and frontend logs simultaneously
 4. **Check browser console** - Useful for debugging wallet connections
 5. **Test on testnet first** - Use testnet XAH before going to mainnet
 
-## 🆘 Need Help?
+## 🆘 NEED HELP?
 
-- Check the browser console (F12) for errors
-- Check terminal output for backend errors
-- Verify all environment variables are set correctly
+- CHECK THE BROWSER CONSOLE (F12) FOR ERRORS
+- CHECK TERMINAL OUTPUT FOR BACKEND ERRORS
+- VERIFY ALL ENVIRONMENT VARIABLES ARE SET CORRECTLY
 - Ensure you're using Node.js v18 or higher
 
 Happy coding! 🎉
