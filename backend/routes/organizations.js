@@ -2,6 +2,7 @@ const express = require('express')
 const router = express.Router()
 const { query } = require('../database/db')
 const { Client } = require('xrpl')
+const { generateNGODataPDF } = require('../utils/pdfGenerator')
 
 /**
  * Helper function to get Xahau network URL based on environment
@@ -946,6 +947,41 @@ router.delete('/:organizationId/notifications/clear-read', async (req, res) => {
       error: 'FAILED TO CLEAR READ NOTIFICATIONS',
       details: error.message
     })
+  }
+})
+
+/**
+ * GET /api/organizations/export-data
+ * Export organization data to PDF
+ * Requires organization to be authenticated
+ */
+router.get('/export-data', async (req, res) => {
+  try {
+    const { walletAddress } = req.query
+
+    if (!walletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'WALLET ADDRESS REQUIRED'
+      })
+    }
+
+    // Generate and stream PDF directly to response
+    // No cloud storage - on-the-fly generation
+    console.log(`📄 [PDF_EXPORT] Generating organization PDF for: ${walletAddress}`)
+    await generateNGODataPDF(walletAddress, res)
+  } catch (error) {
+    console.error('[EXPORT_DATA_ERROR]', error)
+
+    // Only send JSON error if headers not yet sent
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: 'EXPORT_FAILED',
+        message: 'FAILED TO EXPORT DATA. PLEASE TRY AGAIN.',
+        details: error.message
+      })
+    }
   }
 })
 

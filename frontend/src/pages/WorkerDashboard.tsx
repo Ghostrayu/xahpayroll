@@ -37,6 +37,9 @@ const WorkerDashboard: React.FC = () => {
   // "How This Works" modal state
   const [showHowItWorksModal, setShowHowItWorksModal] = useState(false)
 
+  // Download data state
+  const [downloadingData, setDownloadingData] = useState(false)
+
   /**
    * Fetch worker payment channels
    *
@@ -573,6 +576,52 @@ const WorkerDashboard: React.FC = () => {
     }
   }
 
+  /**
+   * Handle download data button click
+   * Generates and downloads worker profile data as PDF
+   */
+  const handleDownloadData = async () => {
+    if (!walletAddress) {
+      alert('WALLET ADDRESS NOT AVAILABLE')
+      return
+    }
+
+    setDownloadingData(true)
+
+    try {
+      console.log('[DOWNLOAD_DATA] Generating PDF export...')
+
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
+      const response = await fetch(`${backendUrl}/api/workers/export-data?walletAddress=${encodeURIComponent(walletAddress)}`)
+
+      if (!response.ok) {
+        throw new Error('FAILED TO GENERATE PDF EXPORT')
+      }
+
+      // Create blob from response
+      const blob = await response.blob()
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `xah_payroll_worker_${walletAddress.substring(0, 10)}_${Date.now()}.pdf`
+      document.body.appendChild(link)
+      link.click()
+
+      // Cleanup
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+      console.log('[DOWNLOAD_DATA] PDF downloaded successfully')
+    } catch (error: any) {
+      console.error('[DOWNLOAD_DATA_ERROR]', error)
+      alert(`❌ FAILED TO DOWNLOAD DATA:\n\n${error.message}`)
+    } finally {
+      setDownloadingData(false)
+    }
+  }
+
   return (
     <div className="min-h-screen x-pattern-bg-light">
       <Navbar />
@@ -630,14 +679,23 @@ const WorkerDashboard: React.FC = () => {
             </Link>
           </div>
 
-          {/* Settings and Notifications Buttons */}
-          <div className="mt-6 flex items-center gap-3">
+          {/* Settings, Download Data, and Notifications Buttons */}
+          <div className="mt-6 flex items-center gap-3 flex-wrap">
             <Link
               to="/worker/settings"
               className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-sm"
             >
               ⚙️ ACCOUNT SETTINGS
             </Link>
+
+            {/* Download Data Button */}
+            <button
+              onClick={handleDownloadData}
+              disabled={downloadingData}
+              className="inline-flex items-center gap-2 bg-purple-100 hover:bg-purple-200 text-purple-700 font-bold py-3 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {downloadingData ? '📄 DOWNLOADING...' : '📄 DOWNLOAD DATA'}
+            </button>
 
             {/* Notifications Button with Badge */}
             <button

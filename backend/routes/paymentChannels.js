@@ -1480,41 +1480,161 @@ router.post('/:channelId/close/confirm', async (req, res) => {
       }
     }
 
-    // Update channel with appropriate status
-    // Clear off_chain_accumulated_balance (worker was paid via XRPL transaction)
-    // Do NOT touch on_chain_balance (will sync from ledger separately)
-    const updateResult = await query(
-      `UPDATE payment_channels
-      SET
-        status = $1::VARCHAR,
-        closure_tx_hash = $2,
-        closed_at = CASE WHEN $1::VARCHAR = 'closed' THEN NOW() ELSE NULL END,
-        expiration_time = $3::TIMESTAMP,
-        off_chain_accumulated_balance = 0,
-        last_ledger_sync = NOW(),
-        last_validation_at = NOW(),
-        updated_at = NOW()
-      WHERE channel_id = $4
-      RETURNING *`,
-      [finalStatus, txHash, expirationTime, channelId]
-    )
+    // ============================================
+    // STEP 5: EXTRACT PAYMENT AMOUNT FROM TRANSACTION
+    // ============================================
+    // Extract the actual amount paid to worker from XRPL transaction
+    // PaymentChannelClaim transactions have Balance field indicating amount delivered
 
-    if (updateResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: { message: 'FAILED TO UPDATE CHANNEL' }
+    let amountPaidXAH = 0
+
+    try {
+      // Re-query the transaction to get full details including Balance
+      await client.connect()
+      const txDetailsResponse = await client.request({
+        command: 'tx',
+        transaction: txHash,
+        binary: false
       })
+      const txDetails = txDetailsResponse.result
+
+      // Extract Balance from transaction (in drops)
+      const balanceDrops = txDetails.Balance || txDetails.meta?.deliveredAmount || '0'
+      amountPaidXAH = parseInt(balanceDrops) / 1_000_000
+
+      console.log('[CONFIRM_CLOSURE] Extracted payment amount from transaction', {
+        channelId,
+        txHash: txHash.substring(0, 20) + '...',
+        balanceDrops,
+        amountPaidXAH
+      })
+
+      await client.disconnect()
+    } catch (extractError) {
+      console.error('[CONFIRM_CLOSURE] Failed to extract payment amount, using accumulated balance', {
+        error: extractError.message,
+        channelId
+      })
+      // Fallback: use accumulated balance from database
+      amountPaidXAH = parseFloat(channel.off_chain_accumulated_balance) || 0
     }
 
-    const updatedChannel = updateResult.rows[0]
+    // ============================================
+    // STEP 6: UPDATE CHANNEL AND CREATE PAYMENT RECORD (TRANSACTION)
+    // ============================================
+    // Use database transaction to ensure atomicity
+    // Both channel update and payment record creation must succeed or both fail
 
-    console.log('[CONFIRM_CLOSURE] Channel status updated', {
-      channelId,
-      txHash,
-      finalStatus: updatedChannel.status,
-      closedAt: updatedChannel.closed_at,
-      expirationTime: updatedChannel.expiration_time
-    })
+    let updatedChannel
+    let paymentRecord
+
+    try {
+      await query('BEGIN')
+
+      // Update channel with appropriate status
+      // Clear off_chain_accumulated_balance (worker was paid via XRPL transaction)
+      // Do NOT touch on_chain_balance (will sync from ledger separately)
+      const updateResult = await query(
+        `UPDATE payment_channels
+        SET
+          status = $1::VARCHAR,
+          closure_tx_hash = $2,
+          closed_at = CASE WHEN $1::VARCHAR = 'closed' THEN NOW() ELSE NULL END,
+          expiration_time = $3::TIMESTAMP,
+          off_chain_accumulated_balance = 0,
+          last_ledger_sync = NOW(),
+          last_validation_at = NOW(),
+          updated_at = NOW()
+        WHERE channel_id = $4
+        RETURNING *`,
+        [finalStatus, txHash, expirationTime, channelId]
+      )
+
+      if (updateResult.rows.length === 0) {
+        throw new Error('FAILED TO UPDATE CHANNEL')
+      }
+
+      updatedChannel = updateResult.rows[0]
+
+      console.log('[CONFIRM_CLOSURE] Channel status updated', {
+        channelId,
+        txHash,
+        finalStatus: updatedChannel.status,
+        closedAt: updatedChannel.closed_at,
+        expirationTime: updatedChannel.expiration_time
+      })
+
+      // Create payment record ONLY if channel is immediately closed
+      // (not in 'closing' state with SettleDelay)
+      if (finalStatus === 'closed' && amountPaidXAH > 0) {
+        console.log('[CONFIRM_CLOSURE] Creating payment record', {
+          channelId,
+          amountPaidXAH,
+          employeeId: channel.employee_id,
+          organizationId: channel.organization_id
+        })
+
+        const paymentResult = await query(
+          `INSERT INTO payments (
+            employee_id,
+            organization_id,
+            amount,
+            currency,
+            payment_type,
+            tx_hash,
+            from_wallet,
+            to_wallet,
+            payment_status,
+            payment_channel_id,
+            paid_at,
+            created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+          RETURNING *`,
+          [
+            channel.employee_id,
+            channel.organization_id,
+            amountPaidXAH,
+            'XAH',
+            'channel_closure',
+            txHash,
+            channel.escrow_wallet_address, // NGO wallet
+            channel.employee_wallet_address, // Worker wallet
+            'completed',
+            channelId
+          ]
+        )
+
+        paymentRecord = paymentResult.rows[0]
+
+        console.log('[CONFIRM_CLOSURE] Payment record created ✅', {
+          paymentId: paymentRecord.id,
+          amount: paymentRecord.amount,
+          txHash: paymentRecord.tx_hash
+        })
+      } else if (finalStatus === 'closing') {
+        console.log('[CONFIRM_CLOSURE] Channel in closing state - payment record will be created on final closure')
+      } else if (amountPaidXAH === 0) {
+        console.log('[CONFIRM_CLOSURE] No payment amount - skipping payment record creation')
+      }
+
+      await query('COMMIT')
+      console.log('[CONFIRM_CLOSURE] Database transaction committed ✅')
+
+    } catch (dbError) {
+      await query('ROLLBACK')
+      console.error('[CONFIRM_CLOSURE] Database transaction rolled back', {
+        error: dbError.message,
+        channelId
+      })
+      return res.status(500).json({
+        success: false,
+        error: {
+          message: 'FAILED TO UPDATE DATABASE',
+          code: 'DATABASE_ERROR',
+          details: dbError.message
+        }
+      })
+    }
 
     // Generate appropriate message based on final status
     const message = updatedChannel.status === 'closed'

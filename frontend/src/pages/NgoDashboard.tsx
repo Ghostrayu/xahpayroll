@@ -29,6 +29,7 @@ const NgoDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview')
   const [organizationId, setOrganizationId] = useState<number | null>(null)
   const [unreadCount, setUnreadCount] = useState<number>(0)
+  const [downloadingData, setDownloadingData] = useState(false)
 
   // Use data from context with fallback defaults
   const stats = orgStats || {
@@ -474,6 +475,51 @@ const NgoDashboard: React.FC = () => {
     }
   }
 
+  /**
+   * Handle download organization data as PDF
+   */
+  const handleDownloadData = async () => {
+    if (!walletAddress) {
+      alert('WALLET ADDRESS NOT AVAILABLE')
+      return
+    }
+
+    setDownloadingData(true)
+
+    try {
+      console.log('[DOWNLOAD_DATA] Generating PDF export...')
+
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
+      const response = await fetch(`${backendUrl}/api/organizations/export-data?walletAddress=${encodeURIComponent(walletAddress)}`)
+
+      if (!response.ok) {
+        throw new Error('FAILED TO GENERATE PDF EXPORT')
+      }
+
+      // Create blob from response
+      const blob = await response.blob()
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `xah_payroll_organization_${walletAddress.substring(0, 10)}_${Date.now()}.pdf`
+      document.body.appendChild(link)
+      link.click()
+
+      // Cleanup
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+      console.log('[DOWNLOAD_DATA] PDF downloaded successfully')
+    } catch (error: any) {
+      console.error('[DOWNLOAD_DATA_ERROR]', error)
+      alert(`❌ FAILED TO DOWNLOAD DATA:\n\n${error.message}`)
+    } finally {
+      setDownloadingData(false)
+    }
+  }
+
   return (
     <div className="min-h-screen x-pattern-bg-light">
       <Navbar />
@@ -567,22 +613,32 @@ const NgoDashboard: React.FC = () => {
           </div>
 
           {/* Quick Actions */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <button 
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <button
               onClick={() => setShowAddWorkerModal(true)}
               className="bg-xah-blue hover:bg-primary-700 text-white font-bold py-4 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-lg"
             >
               ➕ ADD WORKER
             </button>
-            <button 
+            <button
               onClick={() => setShowEscrowModal(true)}
               className="bg-green-500 hover:bg-green-600 text-white font-bold py-4 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-lg"
             >
               ⚡ OPEN PAYMENT CHANNEL
             </button>
-            <button className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-4 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-lg">
-              ⚙️ SETTINGS
+            <button
+              onClick={handleDownloadData}
+              disabled={downloadingData}
+              className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-4 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {downloadingData ? '📄 DOWNLOADING...' : '📄 DOWNLOAD DATA'}
             </button>
+            <Link
+              to="/ngo/settings"
+              className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-4 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-lg text-center block"
+            >
+              ⚙️ SETTINGS
+            </Link>
           </div>
         </div>
       </div>
