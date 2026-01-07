@@ -108,6 +108,12 @@ $RECYCLE.BIN/
 # Serena AI Assistant (development context)
 .serena/
 
+# Claude AI Assistant (development context, session memories, local configs)
+.claude/
+claudedocs/
+SuperClaude_Framework/
+CLAUDE.md
+
 # IntelliJ IDEA
 .idea/
 *.iml
@@ -252,4 +258,3 @@ api-docs/generated/
 # Local configuration overrides
 config.local.js
 config.override.js
-claudedocs/GITHUB_RELEASE_INSTRUCTIONS.md
