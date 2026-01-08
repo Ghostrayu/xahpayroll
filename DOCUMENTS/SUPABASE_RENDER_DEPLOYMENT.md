@@ -96,25 +96,38 @@ Paid Render:        No Cold Starts = <100ms
 
 ### 2. GET DATABASE CONNECTION STRING
 
-**CRITICAL**: Use **Transaction Pooler** connection string for Render deployment (IPv4-only, optimized for serverless).
+**RECOMMENDED**: Use **Supabase Pooler** connection string for Render deployment (IPv4-only, optimized for cloud platforms).
 
 1. In Supabase dashboard: **Settings** → **Database**
 2. Scroll to **Connection string** section
 3. Select **Connection Pooling** tab (NOT "URI")
-4. Choose **Transaction** mode (NOT Session mode)
+4. Choose **Session** mode (recommended) OR **Transaction** mode
 5. Copy the connection string:
    ```
-   postgresql://postgres.[PROJECT-ID]:[YOUR-PASSWORD]@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+   # Session Pooler (Port 5432) - RECOMMENDED
+   postgresql://postgres.[PROJECT-ID]:[YOUR-PASSWORD]@aws-1-us-east-1.pooler.supabase.com:5432/postgres
+
+   # Transaction Pooler (Port 6543) - Alternative
+   postgresql://postgres.[PROJECT-ID]:[YOUR-PASSWORD]@aws-1-us-east-1.pooler.supabase.com:6543/postgres
    ```
 6. **IMPORTANT**: Replace `[YOUR-PASSWORD]` with your actual database password
-7. **PORT**: Must be `6543` (transaction pooler), NOT `5432` (direct connection)
+7. **REGION**: May be `aws-0` or `aws-1` - use EXACT string from Supabase dashboard
 8. Save this string securely (needed for Render backend)
 
-**Why Transaction Pooler?**
+**Session vs Transaction Pooler**:
+
+| Feature | Session (Port 5432) | Transaction (Port 6543) |
+|---------|---------------------|-------------------------|
+| **Prepared Statements** | ✅ Supported | ❌ Not supported |
+| **Session State** | ✅ Maintained | ❌ Lost |
+| **Use Case** | Standard apps | Stateless serverless |
+| **Recommendation** | ✅ **RECOMMENDED** | Alternative |
+
+**Why Supabase Pooler?**
 - ✅ IPv4-only (avoids ENETUNREACH errors on Render)
-- ✅ Optimized for serverless/stateless environments
 - ✅ Connection pooling (handles thousands of connections)
-- ✅ Faster cold starts and lower latency
+- ✅ Optimized for cloud platforms like Render
+- ✅ Faster cold starts compared to direct connection
 
 ### 3. INITIALIZE DATABASE SCHEMA
 
@@ -198,9 +211,10 @@ psql "postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co:5432/po
 Click "Advanced" → "Add Environment Variable" for each:
 
 ```bash
-# DATABASE - Supabase Transaction Pooler Connection String (from Phase 1)
-# CRITICAL: Use Transaction Pooler (port 6543), NOT direct connection (port 5432)
-DATABASE_URL=postgresql://postgres.[PROJECT-ID]:[YOUR-PASSWORD]@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+# DATABASE - Supabase Pooler Connection String (from Phase 1)
+# RECOMMENDED: Use Session Pooler (port 5432) - supports prepared statements
+# Copy EXACT string from Supabase dashboard (region may be aws-0 or aws-1)
+DATABASE_URL=postgresql://postgres.[PROJECT-ID]:[YOUR-PASSWORD]@aws-1-us-east-1.pooler.supabase.com:5432/postgres
 DB_NAME=postgres
 
 # XAMAN WALLET INTEGRATION - REQUIRED FOR WALLET AUTHENTICATION
@@ -538,29 +552,64 @@ address: '2600:1f18:...' (IPv6 address)
 - Direct Supabase connections (port 5432) attempt IPv6 first
 - Connection fails before falling back to IPv4
 
-**Solution**: Use Supabase **Transaction Pooler** (IPv4-only)
+**Solution**: Use Supabase **Pooler** (IPv4-only)
 
 1. ✅ Go to Supabase dashboard → **Settings** → **Database**
 2. ✅ Select **Connection Pooling** tab (NOT "URI")
-3. ✅ Choose **Transaction** mode
-4. ✅ Copy connection string (port `6543`, NOT `5432`):
+3. ✅ Choose **Session** mode (recommended) OR **Transaction** mode
+4. ✅ Copy connection string **EXACTLY** as shown:
    ```
-   postgresql://postgres.[PROJECT-ID]:[PASSWORD]@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+   # Session Pooler (port 5432) - RECOMMENDED
+   postgresql://postgres.[PROJECT-ID]:[PASSWORD]@aws-1-us-east-1.pooler.supabase.com:5432/postgres
+
+   # OR Transaction Pooler (port 6543) - Alternative
+   postgresql://postgres.[PROJECT-ID]:[PASSWORD]@aws-1-us-east-1.pooler.supabase.com:6543/postgres
    ```
-5. ✅ Update `DATABASE_URL` in Render environment variables
-6. ✅ Redeploy backend
+5. ✅ **CRITICAL**: Use exact region (`aws-0` or `aws-1`) from Supabase
+6. ✅ Update `DATABASE_URL` in Render environment variables
+7. ✅ Redeploy backend
 
 **Why This Works**:
-- Transaction pooler uses IPv4-only endpoints
-- Optimized for serverless environments (Render free tier)
+- Pooler uses IPv4-only endpoints (Render compatible)
+- Session pooler supports prepared statements (better compatibility)
+- Optimized for cloud platforms
 - Better connection pooling and performance
-- Faster cold starts
 
 **Verification**:
 ```bash
 # After redeployment, check logs
 ✅ Connected to PostgreSQL database
 🚀 XAH Payroll Backend running on port 3001
+```
+
+### PREPARED STATEMENTS ERROR (TRANSACTION POOLER ONLY)
+
+**Symptom**: Error message in logs (only if using Transaction Pooler on port 6543):
+```
+Does not support PREPARE statements
+error: Cannot use PREPARE statement in transaction pooling mode
+```
+
+**Root Cause**:
+- **Transaction Pooler** (port 6543) uses PgBouncer in transaction mode
+- PgBouncer doesn't maintain session state
+- Prepared statements (PREPARE) require session persistence
+
+**Solution**: Use **Session Pooler** (port 5432) instead! ✅
+
+Session Pooler fully supports prepared statements and is the recommended choice for most applications.
+
+**Alternative**: If you must use Transaction Pooler:
+- Add `?pgbouncer=true` to your `DATABASE_URL`
+- This disables prepared statements in the PostgreSQL client
+
+**Recommended DATABASE_URL**:
+```bash
+# Session Pooler (5432) - NO prepared statement issues
+postgresql://postgres.[PROJECT-ID]:[PASSWORD]@aws-1-us-east-1.pooler.supabase.com:5432/postgres
+
+# Transaction Pooler (6543) - Add pgbouncer parameter if needed
+postgresql://postgres.[PROJECT-ID]:[PASSWORD]@aws-1-us-east-1.pooler.supabase.com:6543/postgres?pgbouncer=true
 ```
 
 ### DATABASE CONNECTION ERRORS

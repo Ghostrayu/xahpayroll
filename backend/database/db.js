@@ -1,7 +1,7 @@
 const { Pool } = require('pg')
 const { URL } = require('url')
 
-// Parse DATABASE_URL and force IPv4 to avoid Render's IPv6 routing issues
+// Parse DATABASE_URL and configure for Supabase Pooler (Session or Transaction mode)
 const getDatabaseConfig = () => {
   if (process.env.DATABASE_URL) {
     // Parse the DATABASE_URL connection string
@@ -19,6 +19,10 @@ const getDatabaseConfig = () => {
       // CRITICAL: Force IPv4 to prevent ENETUNREACH on Render
       // Render's infrastructure doesn't support IPv6, causing connection failures
       family: 4, // Force IPv4 (AF_INET) - prevents IPv6 connection attempts
+
+      // Query timeout for long-running queries
+      statement_timeout: 60000, // 60 second query timeout
+
       max: 20,
       idleTimeoutMillis: 30000,
     }
