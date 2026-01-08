@@ -110,10 +110,10 @@ Paid Render:        No Cold Starts = <100ms
 
 **Option A: Via SQL Editor (Recommended)**:
 1. In Supabase dashboard: **SQL Editor** → **New query**
-2. Copy contents of `backend/database/setup_database.sql`
+2. Copy contents of `backend/database/schema.sql`
 3. Paste into SQL Editor
 4. Click **Run** (or press Ctrl+Enter)
-5. Verify success: **Database** → **Tables** should show 15 tables
+5. Verify success: **Database** → **Tables** should show 13 tables
 
 **Option B: Via psql (Local)**:
 ```bash
@@ -124,28 +124,35 @@ cd /path/to/xahaupayroll
 psql "postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres"
 
 # Run initialization script
-\i backend/database/setup_database.sql
+\i backend/database/schema.sql
 
 # Verify tables
 \dt
-# Should show 15 tables
+# Should show 13 tables
 
 # Exit
 \q
 ```
 
+**Note**: `schema.sql` is the production-ready schema file used by `npm run init-db`.
+
 ### 4. VERIFY DATABASE
 
 1. In Supabase dashboard: **Table Editor**
-2. You should see tables:
+2. You should see 13 tables:
    - `users`
    - `organizations`
    - `employees`
    - `payment_channels`
    - `work_sessions`
    - `payments`
-   - `sessions`
-   - (and 8 more)
+   - `escrow_transactions`
+   - `payment_configurations`
+   - `activity_logs`
+   - `notifications`
+   - `ngo_notifications`
+   - `deletion_logs`
+   - `api_keys`
 
 ---
 

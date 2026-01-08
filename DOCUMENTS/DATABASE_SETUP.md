@@ -170,7 +170,9 @@ openssl rand -base64 32
 
 ## CURRENT DATABASE SCHEMA
 
-The XAH Payroll database consists of **15 tables** with the following structure:
+**Canonical Source**: `backend/database/schema.sql` (production-ready schema used by `npm run init-db`)
+
+The XAH Payroll database consists of **13 tables** with the following structure:
 
 ### Core Tables
 
@@ -235,21 +237,13 @@ The XAH Payroll database consists of **15 tables** with the following structure:
 - Notifications for NGO/employer users
 - Worker-related events and alerts
 
-#### 12. **worker_notifications** - Worker-specific notifications
-- Notifications for employee users
-- Payment and work session alerts
-
-#### 13. **activity_logs** - Audit trail
+#### 12. **activity_logs** - Audit trail
 - Tracks all user actions in the system
 - IP addresses, user agents, and metadata
 
-#### 14. **deletion_logs** - User deletion tracking
+#### 13. **deletion_logs** - User deletion tracking
 - Records of deleted user profiles
 - GDPR compliance and data retention
-
-#### 15. **api_keys** - API access keys
-- Programmatic access to the system
-- Permissions and expiration management
 
 ---
 
@@ -418,11 +412,10 @@ psql -U xahpayroll_user -d xahpayroll_dev -h localhost
 -- List all tables
 \dt
 
--- Expected output: 15 tables
--- activity_logs, api_keys, deletion_logs, employees, escrow_transactions,
--- ngo_notifications, notifications, organizations, payment_channels,
--- payment_configurations, payments, sessions, users, work_sessions,
--- worker_notifications
+-- Expected output: 13 tables
+-- users, organizations, employees, work_sessions, payments,
+-- escrow_transactions, payment_configurations, activity_logs,
+-- notifications, payment_channels, deletion_logs, ngo_notifications
 ```
 
 ### Verify Table Structure

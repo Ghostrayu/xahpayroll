@@ -157,10 +157,12 @@ Routes are protected based on user type via `ProtectedRoute` component.
 
 ## Database Setup
 
-PostgreSQL 14+ required. Setup instructions in `DOCUMENTS/DATABASE_SETUP.md` and `setup_database.sql`.
+**Canonical Schema**: `backend/database/schema.sql` (13 tables, production-ready)
+
+PostgreSQL 14+ required. Setup instructions in `DOCUMENTS/DATABASE_SETUP.md`.
 
 ```bash
-# Initialize database
+# Initialize database (uses schema.sql automatically)
 cd backend
 npm run init-db
 
@@ -168,10 +170,12 @@ npm run init-db
 npm run test:db
 ```
 
-**Security Note**: `setup_database.sql` contains placeholder password `CHANGE_THIS_PASSWORD`. Generate a secure password before running:
+**Security Note**: Database credentials should be configured in `backend/.env`. Never commit passwords to version control. Generate secure passwords:
 ```bash
 openssl rand -base64 32
 ```
+
+**Note**: `setup_database.sql` is a legacy file (outdated, missing 3 critical tables). Always use `schema.sql` via `npm run init-db`.
 
 ### Database Diagnostic Commands
 

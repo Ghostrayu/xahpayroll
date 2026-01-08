@@ -4,6 +4,7 @@
   "description": "XAH Payroll Backend API - Decentralized Hourly Payroll System",
   "main": "server.js",
   "scripts": {
+    "build": "npm install",
     "start": "node --no-deprecation server.js",
     "dev": "nodemon --no-deprecation server.js",
     "init-db": "node scripts/init-db.js",
