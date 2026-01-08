@@ -7,9 +7,15 @@ const pool = new Pool(
     ? {
         connectionString: process.env.DATABASE_URL,
         ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+        connectionTimeoutMillis: 5000, // Increased timeout for network issues
+        // Force IPv4 to avoid IPv6 routing issues on Render
+        // Render's infrastructure may not support IPv6, causing ENETUNREACH errors
+        options: '-c search_path=public',
+        // Use host options to force IPv4 resolution
+        host: process.env.DATABASE_URL.match(/@([^:]+):/)?.[1], // Extract host from URL
+        family: 4, // Force IPv4 (AF_INET) - prevents IPv6 connection attempts
         max: 20,
         idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 2000,
       }
     : {
         host: process.env.DB_HOST || 'localhost',
