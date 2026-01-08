@@ -1,0 +1,57 @@
+# Netlify Configuration for XAH Payroll Frontend
+# Deployment settings for GOOD MONEY COLLECTIVE team
+
+[build]
+  # Base directory for build
+  base = "frontend"
+
+  # Build command
+  command = "npm run build"
+
+  # Publish directory (relative to base)
+  publish = "dist"
+
+[build.environment]
+  # Node.js version
+  NODE_VERSION = "18"
+
+  # NPM version
+  NPM_VERSION = "9"
+
+# Redirect rules for React Router (SPA)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  force = false
+
+# Custom headers for security
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    X-XSS-Protection = "1; mode=block"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(), microphone=(), camera=()"
+
+# Cache static assets
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Production context (main branch)
+[context.production]
+  command = "npm run build"
+
+[context.production.environment]
+  NODE_ENV = "production"
+
+# Deploy preview context (pull requests)
+[context.deploy-preview]
+  command = "npm run build"
+
+# Branch deploy context
+[context.branch-deploy]
+  command = "npm run build"
