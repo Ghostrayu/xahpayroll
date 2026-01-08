@@ -1,33 +1,44 @@
 const { Pool } = require('pg')
+const { URL } = require('url')
+
+// Parse DATABASE_URL and force IPv4 to avoid Render's IPv6 routing issues
+const getDatabaseConfig = () => {
+  if (process.env.DATABASE_URL) {
+    // Parse the DATABASE_URL connection string
+    // Format: postgresql://user:password@host:port/database
+    const dbUrl = new URL(process.env.DATABASE_URL)
+
+    return {
+      host: dbUrl.hostname, // Extract hostname (forces IPv4 DNS resolution)
+      port: dbUrl.port || 5432,
+      database: dbUrl.pathname.slice(1), // Remove leading '/'
+      user: dbUrl.username,
+      password: dbUrl.password,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      connectionTimeoutMillis: 5000,
+      // CRITICAL: Force IPv4 to prevent ENETUNREACH on Render
+      // Render's infrastructure doesn't support IPv6, causing connection failures
+      family: 4, // Force IPv4 (AF_INET) - prevents IPv6 connection attempts
+      max: 20,
+      idleTimeoutMillis: 30000,
+    }
+  }
+
+  // Fallback to individual environment variables (local development)
+  return {
+    host: process.env.DB_HOST || 'localhost',
+    port: process.env.DB_PORT || 5432,
+    database: process.env.DB_NAME || 'xahpayroll',
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD,
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 2000,
+  }
+}
 
 // Create PostgreSQL connection pool
-// Prioritize DATABASE_URL (for Supabase/Render) over individual parameters (for local dev)
-const pool = new Pool(
-  process.env.DATABASE_URL
-    ? {
-        connectionString: process.env.DATABASE_URL,
-        ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-        connectionTimeoutMillis: 5000, // Increased timeout for network issues
-        // Force IPv4 to avoid IPv6 routing issues on Render
-        // Render's infrastructure may not support IPv6, causing ENETUNREACH errors
-        options: '-c search_path=public',
-        // Use host options to force IPv4 resolution
-        host: process.env.DATABASE_URL.match(/@([^:]+):/)?.[1], // Extract host from URL
-        family: 4, // Force IPv4 (AF_INET) - prevents IPv6 connection attempts
-        max: 20,
-        idleTimeoutMillis: 30000,
-      }
-    : {
-        host: process.env.DB_HOST || 'localhost',
-        port: process.env.DB_PORT || 5432,
-        database: process.env.DB_NAME || 'xahpayroll',
-        user: process.env.DB_USER || 'postgres',
-        password: process.env.DB_PASSWORD,
-        max: 20,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 2000,
-      }
-)
+const pool = new Pool(getDatabaseConfig())
 
 // Test database connection
 pool.on('connect', () => {

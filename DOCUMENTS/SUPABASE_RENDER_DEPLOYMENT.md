@@ -96,15 +96,25 @@ Paid Render:        No Cold Starts = <100ms
 
 ### 2. GET DATABASE CONNECTION STRING
 
+**CRITICAL**: Use **Transaction Pooler** connection string for Render deployment (IPv4-only, optimized for serverless).
+
 1. In Supabase dashboard: **Settings** → **Database**
 2. Scroll to **Connection string** section
-3. Select **URI** tab
-4. Copy the connection string:
+3. Select **Connection Pooling** tab (NOT "URI")
+4. Choose **Transaction** mode (NOT Session mode)
+5. Copy the connection string:
    ```
-   postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres
+   postgresql://postgres.[PROJECT-ID]:[YOUR-PASSWORD]@aws-0-us-east-1.pooler.supabase.com:6543/postgres
    ```
-5. **IMPORTANT**: Replace `[YOUR-PASSWORD]` with your actual database password
-6. Save this string securely (needed for Render backend)
+6. **IMPORTANT**: Replace `[YOUR-PASSWORD]` with your actual database password
+7. **PORT**: Must be `6543` (transaction pooler), NOT `5432` (direct connection)
+8. Save this string securely (needed for Render backend)
+
+**Why Transaction Pooler?**
+- ✅ IPv4-only (avoids ENETUNREACH errors on Render)
+- ✅ Optimized for serverless/stateless environments
+- ✅ Connection pooling (handles thousands of connections)
+- ✅ Faster cold starts and lower latency
 
 ### 3. INITIALIZE DATABASE SCHEMA
 
@@ -188,8 +198,9 @@ psql "postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co:5432/po
 Click "Advanced" → "Add Environment Variable" for each:
 
 ```bash
-# DATABASE - Supabase Connection String (from Phase 1)
-DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres
+# DATABASE - Supabase Transaction Pooler Connection String (from Phase 1)
+# CRITICAL: Use Transaction Pooler (port 6543), NOT direct connection (port 5432)
+DATABASE_URL=postgresql://postgres.[PROJECT-ID]:[YOUR-PASSWORD]@aws-0-us-east-1.pooler.supabase.com:6543/postgres
 DB_NAME=postgres
 
 # XAMAN WALLET INTEGRATION - REQUIRED FOR WALLET AUTHENTICATION
@@ -511,6 +522,45 @@ Add to `frontend/src/App.tsx`:
     WAKING UP SERVER (FREE TIER)... THIS MAY TAKE 30-60 SECONDS
   </p>
 </div>
+```
+
+### IPv6 NETWORK UNREACHABLE (ENETUNREACH)
+
+**Symptom**: Backend fails to start with error:
+```
+Error: connect ENETUNREACH 2600:1f18:...:5432
+code: 'ENETUNREACH'
+address: '2600:1f18:...' (IPv6 address)
+```
+
+**Root Cause**:
+- Render's infrastructure doesn't support IPv6 routing
+- Direct Supabase connections (port 5432) attempt IPv6 first
+- Connection fails before falling back to IPv4
+
+**Solution**: Use Supabase **Transaction Pooler** (IPv4-only)
+
+1. ✅ Go to Supabase dashboard → **Settings** → **Database**
+2. ✅ Select **Connection Pooling** tab (NOT "URI")
+3. ✅ Choose **Transaction** mode
+4. ✅ Copy connection string (port `6543`, NOT `5432`):
+   ```
+   postgresql://postgres.[PROJECT-ID]:[PASSWORD]@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+   ```
+5. ✅ Update `DATABASE_URL` in Render environment variables
+6. ✅ Redeploy backend
+
+**Why This Works**:
+- Transaction pooler uses IPv4-only endpoints
+- Optimized for serverless environments (Render free tier)
+- Better connection pooling and performance
+- Faster cold starts
+
+**Verification**:
+```bash
+# After redeployment, check logs
+✅ Connected to PostgreSQL database
+🚀 XAH Payroll Backend running on port 3001
 ```
 
 ### DATABASE CONNECTION ERRORS
