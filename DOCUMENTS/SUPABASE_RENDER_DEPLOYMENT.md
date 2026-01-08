@@ -192,6 +192,11 @@ Click "Advanced" → "Add Environment Variable" for each:
 DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres
 DB_NAME=postgres
 
+# XAMAN WALLET INTEGRATION - REQUIRED FOR WALLET AUTHENTICATION
+# Get credentials from: https://apps.xumm.dev/
+XAMAN_API_KEY=[your_xaman_api_key]
+XAMAN_API_SECRET=[your_xaman_api_secret]
+
 # XAHAU NETWORK
 XRPL_NETWORK=mainnet
 
@@ -225,6 +230,19 @@ openssl rand -base64 32
 # Generate SESSION_SECRET
 openssl rand -base64 32
 ```
+
+**Get Xaman API Credentials**:
+1. Visit https://apps.xumm.dev/
+2. Sign in with your Xaman wallet (mainnet or testnet matching XRPL_NETWORK)
+3. Click "Create New Application"
+4. Fill in application details:
+   - **Name**: `XAH Payroll Mainnet` (or `XAH Payroll Testnet`)
+   - **Description**: `Decentralized hourly payroll system`
+   - **Redirect URLs**: Add your Netlify frontend URL
+5. Save application and copy:
+   - **API Key**: Use for `XAMAN_API_KEY`
+   - **API Secret**: Use for `XAMAN_API_SECRET`
+6. ⚠️ **SECURITY**: Never commit these credentials to Git!
 
 ### 5. DEPLOY BACKEND
 
@@ -638,6 +656,7 @@ Render Starter: $7/month
 - [ ] Web service created (backend folder)
 - [ ] Environment variables configured
 - [ ] DATABASE_URL set to Supabase connection string
+- [ ] XAMAN_API_KEY and XAMAN_API_SECRET configured (from https://apps.xumm.dev/)
 - [ ] JWT/Session secrets generated
 - [ ] Initial deployment successful
 - [ ] Health check passes (`/health` returns 200)
