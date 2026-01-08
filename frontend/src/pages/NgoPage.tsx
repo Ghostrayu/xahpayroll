@@ -45,7 +45,7 @@ const NgoPage: React.FC = () => {
                 <span className="text-xah-blue">PAYROLL DASHBOARD</span>
               </h1>
               <p className="text-sm text-gray-700 max-w-3xl mx-auto uppercase leading-relaxed tracking-wide font-semibold mb-8">
-                FUND ESCROW, MANAGE WORKERS, AND TRACK PAYMENTS WITH COMPLETE TRANSPARENCY AND CRYPTOGRAPHIC SECURITY
+                CREATE PAYMENT CHANNELS WITH ESCROW, MANAGE WORKERS, TRACK HOURS OFF-CHAIN, AND SETTLE ALL EARNINGS IN SINGLE TRANSACTIONS
               </p>
               <button 
                 onClick={handleLogin}

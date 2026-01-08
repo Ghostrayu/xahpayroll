@@ -34,8 +34,8 @@ const WorkerWorkflow: React.FC = () => {
     },
     {
       number: 6,
-      title: 'RECEIVE HOURLY PAYMENTS',
-      description: 'GET PAID AUTOMATICALLY EVERY HOUR DIRECTLY TO YOUR WALLET VIA PAYMENT CHANNELS',
+      title: 'EARNINGS ACCUMULATE',
+      description: 'YOUR EARNINGS ACCUMULATE IN THE DATABASE AS YOU WORK - NO HOURLY TRANSACTIONS',
       icon: '💰'
     },
     {
@@ -46,8 +46,8 @@ const WorkerWorkflow: React.FC = () => {
     },
     {
       number: 8,
-      title: 'CLOCK OUT WHEN DONE',
-      description: 'END YOUR SHIFT MANUALLY OR AUTOMATIC TIMEOUT AFTER INACTIVITY PERIOD',
+      title: 'RECEIVE FINAL PAYMENT',
+      description: 'WHEN THE PAYMENT CHANNEL CLOSES, YOU RECEIVE ALL ACCUMULATED EARNINGS IN A SINGLE TRANSACTION',
       icon: '🛑'
     }
   ]
@@ -63,7 +63,7 @@ const WorkerWorkflow: React.FC = () => {
             </h2>
           </div>
           <p className="text-base text-gray-700 max-w-3xl mx-auto uppercase leading-relaxed tracking-wide font-semibold">
-            COMPLETE STEP-BY-STEP PROCESS FOR EMPLOYEES TO LOG HOURS AND RECEIVE AUTOMATIC PAYMENTS
+            COMPLETE STEP-BY-STEP PROCESS FOR EMPLOYEES TO LOG HOURS AND RECEIVE PAYMENT WHEN CHANNELS CLOSE
           </p>
         </div>
 
@@ -101,9 +101,9 @@ const WorkerWorkflow: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="text-center">
               <div className="text-4xl mb-4">⚡</div>
-              <h4 className="font-bold text-gray-900 mb-2 uppercase text-sm tracking-wide">INSTANT PAYMENTS</h4>
+              <h4 className="font-bold text-gray-900 mb-2 uppercase text-sm tracking-wide">SINGLE TRANSACTION SETTLEMENT</h4>
               <p className="text-xs text-gray-700 uppercase tracking-wide leading-relaxed">
-                RECEIVE XAH PAYMENTS AUTOMATICALLY EVERY HOUR WITHOUT WAITING FOR PAYDAY
+                RECEIVE ALL ACCUMULATED EARNINGS IN ONE TRANSACTION WHEN PAYMENT CHANNEL CLOSES
               </p>
             </div>
             <div className="text-center">
@@ -142,12 +142,12 @@ const WorkerWorkflow: React.FC = () => {
             <div>
               <div className="text-sm text-gray-700 uppercase tracking-wide font-semibold mb-2">TOTAL EARNED</div>
               <div className="text-4xl font-extrabold text-xah-blue mb-2">80 XAH</div>
-              <div className="text-xs text-gray-600 uppercase tracking-wide">PAID HOURLY</div>
+              <div className="text-xs text-gray-600 uppercase tracking-wide">PAID WHEN CHANNEL CLOSES</div>
             </div>
           </div>
           <div className="mt-8 text-center">
             <p className="text-xs text-gray-700 uppercase tracking-wide leading-relaxed">
-              💡 PAYMENTS RELEASED AUTOMATICALLY EVERY HOUR - NO WAITING UNTIL END OF WEEK OR MONTH
+              💡 EARNINGS ACCUMULATE OFF-CHAIN - RECEIVE ALL FUNDS IN SINGLE TRANSACTION WHEN CHANNEL CLOSES
             </p>
           </div>
         </div>

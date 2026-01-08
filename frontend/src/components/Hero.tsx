@@ -15,6 +15,28 @@ const Hero: React.FC = () => {
               DECENTRALIZED HOURLY PAYROLL SOLUTION
             </p>
 
+            {/* Revolutionary Insight Box */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-xah-blue/30 rounded-lg py-5 px-6 mb-6 mx-auto max-w-3xl relative z-10 shadow-lg">
+              <div className="flex items-start gap-3">
+                <div className="text-3xl flex-shrink-0">💡</div>
+                <div className="text-left">
+                  <p className="text-base md:text-lg font-bold text-xah-blue uppercase mb-2 tracking-wide">
+                    THE REVOLUTION: NO BANKS. NO DELAYS. NO MIDDLEMEN.
+                  </p>
+                  <p className="text-sm md:text-base text-gray-700 leading-relaxed mb-3">
+                    WORKERS RECEIVE PAYMENT IN <span className="font-bold text-xah-blue">&lt;5 SECONDS</span> FOR <span className="font-bold text-xah-blue">$0.001</span> PER TRANSACTION.
+                    YOUR MONEY, YOUR WALLET, YOUR CONTROL. BLOCKCHAIN-SECURED ESCROW PROTECTS BOTH WORKERS AND EMPLOYERS.
+                  </p>
+                  <p className="text-sm md:text-base text-gray-700 leading-relaxed mb-3">
+                    <span className="font-bold text-xah-blue">COMPLETE DATA INTEGRITY:</span> IMMUTABLE BLOCKCHAIN AUDIT TRAILS + EXPORTABLE PDF RECORDS ENSURE TRANSPARENT, VERIFIABLE PAYMENT HISTORY FOR BOTH ORGANIZATIONS AND EMPLOYEES.
+                  </p>
+                  <p className="text-sm md:text-base text-gray-700 leading-relaxed">
+                    <span className="font-bold text-xah-blue">OUR MISSION:</span> XAH PAYROLL AIMS TO REVOLUTIONIZE PAYROLL SYSTEMS GLOBALLY BY PROVIDING A FOUNDATION FOR XRPL DEVELOPERS TO BUILD UPON - HAPPY CODING!
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Temporary Service Notice */}
             <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-lg py-4 px-6 mb-8 mx-auto max-w-3xl relative z-10">
               <p className="text-sm md:text-base text-gray-800 leading-relaxed">
@@ -37,7 +59,7 @@ const Hero: React.FC = () => {
                 >
                   OPEN SOURCE REPO
                 </a>
-                {' '}TO DEPLOY YOUR OWN LIVE INSTANCE FOR FREE. (AS OF 1/5/2026 THIS REPO IS STILL UNDER DEVELOPMENT - CHECK BACK IN A FEW DAYS) 
+                {' '}TO DEPLOY YOUR OWN LIVE INSTANCE FOR FREE. (AS OF 1/5/2026 THIS REPO IS STILL UNDER DEVELOPMENT - CHECK BACK IN A FEW DAYS)
               </p>
             </div>
 

@@ -43,7 +43,7 @@ const WorkerPage: React.FC = () => {
                 <span className="text-xah-blue">DASHBOARD</span>
               </h1>
               <p className="text-sm text-gray-700 max-w-3xl mx-auto uppercase leading-relaxed tracking-wide font-semibold mb-8">
-                CLOCK IN, LOG HOURS, AND RECEIVE AUTOMATIC XAH PAYMENTS DIRECTLY TO YOUR WALLET EVERY HOUR
+                CLOCK IN, LOG HOURS, AND RECEIVE ALL ACCUMULATED XAH EARNINGS IN A SINGLE TRANSACTION WHEN PAYMENT CHANNEL CLOSES
               </p>
               <button 
                 onClick={handleLogin}
