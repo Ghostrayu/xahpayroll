@@ -45,6 +45,12 @@ const HowItWorks: React.FC = () => {
       description: 'SYSTEM VERIFIES TRANSACTION ON XAHAU. NETWORK-AWARE EXPLORER LINKS ENABLE TRANSPARENT VERIFICATION.',
       role: 'system',
     },
+    {
+      number: 7,
+      title: 'EXPORT PDF AUDIT RECORDS',
+      description: 'WORKERS AND NGOS EXPORT COMPLETE PAYMENT HISTORY, WORK SESSIONS, AND CHANNEL DETAILS AS PDF REPORTS FOR PERMANENT RECORD-KEEPING AND COMPLIANCE.',
+      role: 'system',
+    },
   ]
 
   const getRoleColor = (role: Step['role']): string => {
