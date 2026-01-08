@@ -14,12 +14,38 @@ const Hero: React.FC = () => {
             <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 leading-tight uppercase tracking-tight relative z-10 mb-8">
               DECENTRALIZED HOURLY PAYROLL SOLUTION
             </p>
-            
+
+            {/* Temporary Service Notice */}
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-lg py-4 px-6 mb-8 mx-auto max-w-3xl relative z-10">
+              <p className="text-sm md:text-base text-gray-800 leading-relaxed">
+                <span className="font-bold text-amber-700 uppercase">⚠️ TEMPORARY SERVICE:</span>{' '}
+                THIS PAGE SERVES ONLY TO SHOWCASE THE POWER OF XAHAU AND WILL BE PUBLICLY SUSPENDED FOLLOWING THE CLOSURE OF THE{' '}
+                <a
+                  href="https://xahau.network/contest/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xah-blue font-bold underline hover:text-blue-700 transition-colors"
+                >
+                  XAHAU DEV CONTEST
+                </a>
+                . VISIT THE{' '}
+                <a
+                  href="https://github.com/Ghostrayu/xahpayroll"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xah-blue font-bold underline hover:text-blue-700 transition-colors"
+                >
+                  OPEN SOURCE REPO
+                </a>
+                {' '}TO DEPLOY YOUR OWN LIVE INSTANCE FOR FREE. (AS OF 1/5/2026 THIS REPO IS STILL UNDER DEVELOPMENT - CHECK BACK IN A FEW DAYS) 
+              </p>
+            </div>
+
             {/* Badges */}
-            <div className="flex flex-wrap gap-4 justify-center items-center">
-              <a 
-                href="https://xahau.network/" 
-                target="_blank" 
+            <div className="flex flex-wrap gap-4 justify-center items-center relative z-10">
+              <a
+                href="https://xahau.network/"
+                target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center px-5 py-2.5 bg-xah-blue/10 rounded-full hover:bg-xah-blue/20 transition-colors duration-200"
               >
@@ -27,10 +53,10 @@ const Hero: React.FC = () => {
                   ⚡ POWERED BY XAHAU (XRPL)
                 </span>
               </a>
-              
-              <a 
-                href="https://github.com/xahpayroll" 
-                target="_blank" 
+
+              <a
+                href="https://github.com/Ghostrayu/xahpayroll"
+                target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center px-5 py-2.5 bg-xah-blue/10 rounded-full hover:bg-xah-blue/20 transition-colors duration-200"
               >
