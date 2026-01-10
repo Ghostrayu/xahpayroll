@@ -12,6 +12,15 @@ router.post('/add', async (req, res) => {
   try {
     const { name, walletAddress, ngoWalletAddress } = req.body
 
+    // DEBUG: Log incoming request
+    console.log('[ADD_WORKER_REQUEST]', {
+      name,
+      walletAddress,
+      ngoWalletAddress,
+      ngoWalletAddressLength: ngoWalletAddress?.length,
+      ngoWalletAddressTrimmed: ngoWalletAddress?.trim()
+    })
+
     // Validate required fields
     if (!name || !walletAddress) {
       return res.status(400).json({
@@ -32,18 +41,34 @@ router.post('/add', async (req, res) => {
     let organizationId
 
     if (ngoWalletAddress) {
+      // Trim wallet address to remove any whitespace
+      const trimmedNgoWallet = ngoWalletAddress.trim()
+
       const orgResult = await query(
         `SELECT o.id
          FROM organizations o
          JOIN users u ON o.user_id = u.id
          WHERE u.wallet_address = $1`,
-        [ngoWalletAddress]
+        [trimmedNgoWallet]
       )
 
+      console.log('[ORG_LOOKUP_RESULT]', {
+        searchedWallet: trimmedNgoWallet,
+        foundRows: orgResult.rows.length,
+        foundOrgId: orgResult.rows[0]?.id
+      })
+
       if (orgResult.rows.length === 0) {
+        // Enhanced error message with debugging info
         return res.status(404).json({
           success: false,
-          error: { message: 'Organization not found. Please ensure you are signed in as an NGO/Employer.' }
+          error: {
+            message: 'Organization not found. Please ensure you are signed in as an NGO/Employer.',
+            debug: {
+              searchedWallet: trimmedNgoWallet,
+              walletLength: trimmedNgoWallet.length
+            }
+          }
         })
       }
 

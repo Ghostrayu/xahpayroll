@@ -49,8 +49,16 @@ const AddWorkerModal: React.FC<AddWorkerModalProps> = ({ isOpen, onClose, onSucc
     try {
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
 
-      if (!ngoWalletAddress) {
+      // Enhanced wallet validation
+      if (!ngoWalletAddress || ngoWalletAddress.trim() === '') {
         setError('PLEASE CONNECT YOUR WALLET FIRST')
+        setIsSubmitting(false)
+        return
+      }
+
+      // Validate NGO wallet address format
+      if (!ngoWalletAddress.match(/^r[1-9A-HJ-NP-Za-km-z]{24,34}$/)) {
+        setError('INVALID NGO WALLET ADDRESS. PLEASE RECONNECT YOUR WALLET.')
         setIsSubmitting(false)
         return
       }
@@ -69,7 +77,20 @@ const AddWorkerModal: React.FC<AddWorkerModalProps> = ({ isOpen, onClose, onSucc
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error?.message || 'Failed to add worker')
+
+        // Enhanced error handling with debug info
+        console.error('[ADD_WORKER_ERROR]', {
+          status: response.status,
+          error: errorData.error,
+          debug: errorData.error?.debug
+        })
+
+        // User-friendly error messages
+        if (response.status === 404) {
+          throw new Error('ORGANIZATION NOT FOUND. PLEASE CREATE YOUR ORGANIZATION PROFILE FIRST IN THE PROFILE SECTION.')
+        }
+
+        throw new Error(errorData.error?.message || 'FAILED TO ADD WORKER. PLEASE TRY AGAIN.')
       }
 
       // Success!
