@@ -280,22 +280,31 @@ CREATE TABLE IF NOT EXISTS payment_channels (
   job_name VARCHAR(255) NOT NULL,
   hourly_rate DECIMAL(10, 2) NOT NULL,
   escrow_funded_amount DECIMAL(20, 8) NOT NULL,
-  accumulated_balance DECIMAL(20, 8) DEFAULT 0,
+  accumulated_balance DECIMAL(20, 8) DEFAULT 0, -- Legacy balance field (kept for backward compatibility)
   hours_accumulated DECIMAL(10, 2) DEFAULT 0,
   balance_update_frequency VARCHAR(20) DEFAULT 'hourly' CHECK (balance_update_frequency IN ('hourly', '30min', '15min', '5min')),
   status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'closing', 'closed')),
-  public_key VARCHAR(128),
+  public_key VARCHAR(128), -- XRPL public key for channel
   settle_delay INTEGER DEFAULT 86400, -- In seconds (24 hours default)
-  cancel_after INTEGER,
+  cancel_after INTEGER, -- Optional cancel_after time for channel
   expiration_time TIMESTAMP, -- When settle delay period expires
-  closure_initiated_at TIMESTAMP, -- When closure was initiated
-  closure_tx_hash VARCHAR(128),
-  closed_at TIMESTAMP,
-  closure_reason VARCHAR(50),
+  closure_initiated_at TIMESTAMP, -- When closure was initiated (for SettleDelay tracking)
+  closure_tx_hash VARCHAR(128), -- Transaction hash of PaymentChannelClaim
+  closed_at TIMESTAMP, -- When channel was closed
+  closure_reason VARCHAR(50), -- Reason: manual, timeout, claim, expired
   last_ledger_sync TIMESTAMP, -- Last time ledger was checked for balance updates
-  off_chain_accumulated_balance DECIMAL(20, 8) DEFAULT 0, -- Off-chain balance tracking
+  off_chain_accumulated_balance DECIMAL(20, 8) DEFAULT 0, -- Off-chain balance tracking (primary balance field)
   created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
+  updated_at TIMESTAMP DEFAULT NOW(),
+  -- Additional production columns (2026-01-10)
+  channel_address VARCHAR(64), -- XRPL account address for payment channel
+  last_claim_amount DECIMAL(20, 8), -- Last claimed amount for reconciliation
+  last_claim_date TIMESTAMP, -- When last claim was made
+  legacy_accumulated_balance DECIMAL(20, 8) DEFAULT 0, -- For migrating from old balance tracking
+  validation_attempts INTEGER DEFAULT 0, -- Number of ledger validation attempts
+  last_validation_at TIMESTAMP, -- When channel was last validated against ledger
+  max_daily_hours DECIMAL(4, 2) DEFAULT 8.00, -- Maximum hours worker can log per day
+  on_chain_balance DECIMAL(20, 8) NOT NULL DEFAULT 0 -- Actual XRPL ledger balance (synced from chain)
 );
 
 COMMENT ON TABLE payment_channels IS 'XRPL payment channels for hourly worker payments';
