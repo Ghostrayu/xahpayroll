@@ -42,7 +42,7 @@ const Hero: React.FC = () => {
             <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-lg py-4 px-6 mb-8 mx-auto max-w-3xl relative z-10">
               <p className="text-sm md:text-base text-gray-800 leading-relaxed">
                 <span className="font-bold text-amber-700 uppercase">⚠️ TEMPORARY SERVICE:</span>{' '}
-                THIS PAGE SERVES ONLY TO SHOWCASE THE POWER OF XAHAU AND WILL BE PUBLICLY SUSPENDED FOLLOWING THE CLOSURE OF THE{' '}
+                THIS INSTANCE SERVES ONLY TO SHOWCASE THE POWER OF XAHAU AND WILL BE SUSPENDED FOLLOWING THE CLOSURE OF THE{' '}
                 <a
                   href="https://xahau.network/contest/"
                   target="_blank"
