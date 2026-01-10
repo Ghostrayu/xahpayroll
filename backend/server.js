@@ -27,6 +27,7 @@ app.use(helmet())
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173', // Vite dev server
+  'https://xahpayroll.xyz', // Production frontend
   process.env.FRONTEND_URL
 ].filter(Boolean) // Remove undefined values
 
@@ -35,9 +36,19 @@ app.use(cors({
     // Allow requests with no origin (like mobile apps, curl, Postman)
     if (!origin) return callback(null, true)
 
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    // Normalize origin by removing trailing slash for comparison
+    const normalizedOrigin = origin.replace(/\/$/, '')
+
+    // Check if normalized origin matches any allowed origin
+    const isAllowed = allowedOrigins.some(allowedOrigin => {
+      const normalizedAllowed = allowedOrigin.replace(/\/$/, '')
+      return normalizedOrigin === normalizedAllowed
+    })
+
+    if (isAllowed) {
       callback(null, true)
     } else {
+      console.log(`[CORS] BLOCKED ORIGIN: ${origin}`)
       callback(new Error('NOT ALLOWED BY CORS'))
     }
   },
