@@ -71,9 +71,17 @@ router.post('/', async (req, res) => {
     )
 
     if (existing.rows.length > 0) {
-      return res.status(409).json({
-        success: false,
-        error: { message: 'ORGANIZATION ALREADY EXISTS FOR THIS WALLET ADDRESS' }
+      // Idempotent behavior: Return existing organization (handles double-click/race conditions)
+      console.log('[ORG_ALREADY_EXISTS]', {
+        walletAddress: escrowWalletAddress,
+        organizationId: existing.rows[0].id,
+        note: 'Returning existing organization (idempotent)'
+      })
+
+      return res.json({
+        success: true,
+        data: { organization: existing.rows[0] },
+        message: 'ORGANIZATION ALREADY EXISTS (RETURNED EXISTING)'
       })
     }
 

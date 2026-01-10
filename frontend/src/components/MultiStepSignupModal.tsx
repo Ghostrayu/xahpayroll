@@ -65,6 +65,12 @@ export default function MultiStepSignupModal({
 
   // Handle final submission after terms acceptance
   const handleFinalSubmit = async () => {
+    // Prevent double-click/duplicate submissions
+    if (isSaving) {
+      console.log('[SUBMIT_BLOCKED] Already saving, ignoring duplicate submission')
+      return
+    }
+
     if (!userProfileData) {
       if (onError) onError('USER PROFILE DATA MISSING')
       return
