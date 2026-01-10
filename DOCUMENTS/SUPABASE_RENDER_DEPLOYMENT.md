@@ -338,8 +338,8 @@ CORS_ORIGINS=https://your-actual-app.netlify.app
 # Health check (may take 30-60s on first request - cold start)
 curl https://xahpayroll-mainnet-api.onrender.com/health
 
-# Test database connection
-curl https://xahpayroll-mainnet-api.onrender.com/api/users/test
+# Expected response:
+# {"status":"ok","timestamp":"2026-01-09T...","network":"mainnet","environment":"production"}
 
 # Subsequent requests should be instant
 ```

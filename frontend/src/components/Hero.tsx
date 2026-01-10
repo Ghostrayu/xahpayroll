@@ -1,5 +1,6 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
+import XamanLogo from '../assets/xaman-logo.png'
 
 const Hero: React.FC = () => {
   return (
@@ -84,6 +85,18 @@ const Hero: React.FC = () => {
               >
                 <span className="text-xah-blue font-bold text-base uppercase tracking-wide">
                   🔓 OPEN SOURCE
+                </span>
+              </a>
+
+              <a
+                href="https://xaman.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-xah-blue/10 rounded-full hover:bg-xah-blue/20 transition-colors duration-200"
+              >
+                <img src={XamanLogo} alt="XAMAN" className="w-6 h-6 object-contain" />
+                <span className="text-xah-blue font-bold text-base uppercase tracking-wide">
+                  BUILT WITH XAMAN
                 </span>
               </a>
             </div>
