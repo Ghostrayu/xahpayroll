@@ -11,10 +11,10 @@
  */
 
 import { useState } from 'react'
-import { userApi, workerDeletionApi } from '../services/api'
+import { userApi, workerDeletionApi, organizationApi } from '../services/api'
 import type { OrphanedRecordsStats } from '../types/api'
 import UserProfileStep, { UserProfileData } from './UserProfileStep'
-import OrganizationSetupStep from './OrganizationSetupStep'
+import OrganizationSetupStep, { OrganizationData } from './OrganizationSetupStep'
 import OrphanedRecordsModal from './OrphanedRecordsModal'
 
 interface MultiStepSignupModalProps {
@@ -32,6 +32,7 @@ export default function MultiStepSignupModal({
 }: MultiStepSignupModalProps) {
   const [currentStep, setCurrentStep] = useState<1 | 2>(1)
   const [userProfileData, setUserProfileData] = useState<UserProfileData | null>(null)
+  const [organizationData, setOrganizationData] = useState<OrganizationData | null>(null)
   const [showTermsOverlay, setShowTermsOverlay] = useState(false)
   const [acceptedTerms, setAcceptedTerms] = useState(false)
   const [termsError, setTermsError] = useState<string>()
@@ -55,7 +56,9 @@ export default function MultiStepSignupModal({
   }
 
   // Handle Step 2 completion (Organization Setup) - NGO/Employer only
-  const handleOrganizationSetupComplete = () => {
+  const handleOrganizationSetupComplete = (orgData: OrganizationData) => {
+    // Store organization data (will be created AFTER user is created)
+    setOrganizationData(orgData)
     // Show terms acceptance overlay for NGO/Employer
     setShowTermsOverlay(true)
   }
@@ -81,7 +84,7 @@ export default function MultiStepSignupModal({
   const saveUserProfile = async (data: UserProfileData) => {
     setIsSaving(true)
     try {
-      // Save user profile via API
+      // STEP 1: Create user profile FIRST
       const profileData = {
         walletAddress,
         displayName: data.displayName,
@@ -91,14 +94,33 @@ export default function MultiStepSignupModal({
       }
 
       const userResponse = await userApi.saveProfile(profileData)
+      console.log('[USER_CREATED]', { walletAddress, userType: data.userType })
 
-      console.log('[SIGNUP_SUCCESS]', {
-        userType: data.userType,
-        walletAddress,
-        organizationCreated: data.userType === 'ngo' || data.userType === 'employer',
-      })
+      // STEP 2: Create organization (ONLY for NGO/Employer, AFTER user exists)
+      if ((data.userType === 'ngo' || data.userType === 'employer') && organizationData) {
+        try {
+          await organizationApi.create({
+            organizationName: organizationData.organizationName,
+            escrowWalletAddress: walletAddress,
+            website: organizationData.website,
+            description: organizationData.description,
+          })
+          console.log('[ORG_CREATED]', {
+            walletAddress,
+            organizationName: organizationData.organizationName,
+            mapping: '1:1 mapping established'
+          })
+        } catch (orgError: any) {
+          console.error('[ORG_CREATE_ERROR]', orgError)
+          // If organization creation fails, show error but user is already created
+          const errorMessage = orgError.message || 'USER CREATED BUT ORGANIZATION CREATION FAILED. PLEASE CONTACT SUPPORT.'
+          if (onError) onError(errorMessage)
+          setIsSaving(false)
+          return
+        }
+      }
 
-      // Check for orphaned records (only for employees)
+      // STEP 3: Check for orphaned records (only for employees)
       if (data.userType === 'employee' && userResponse?.id) {
         try {
           const orphanedData = await workerDeletionApi.checkOrphanedRecords(walletAddress)
@@ -117,7 +139,13 @@ export default function MultiStepSignupModal({
         }
       }
 
-      // Complete signup flow (no orphaned records or not an employee)
+      console.log('[SIGNUP_SUCCESS]', {
+        userType: data.userType,
+        walletAddress,
+        organizationCreated: (data.userType === 'ngo' || data.userType === 'employer') && organizationData !== null,
+      })
+
+      // Complete signup flow
       onComplete()
     } catch (error: any) {
       console.error('[SIGNUP_ERROR]', error)

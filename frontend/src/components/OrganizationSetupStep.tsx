@@ -9,13 +9,17 @@
  */
 
 import { useState } from 'react'
-import { organizationApi } from '../services/api'
-import type { OrganizationCreateRequest } from '../types/api'
+
+export interface OrganizationData {
+  organizationName: string
+  website?: string
+  description?: string
+}
 
 interface OrganizationSetupStepProps {
   walletAddress: string
   organizationName: string // Pre-filled from step 1
-  onComplete: () => void
+  onComplete: (orgData: OrganizationData) => void
   onBack: () => void
 }
 
@@ -38,7 +42,7 @@ export default function OrganizationSetupStep({
     description: '',
   })
   const [errors, setErrors] = useState<FormErrors>({})
-  const [isSaving, setIsSaving] = useState(false)
+  const [isSaving] = useState(false) // Kept for UI state, actual saving happens in parent
 
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {}
@@ -70,47 +74,21 @@ export default function OrganizationSetupStep({
     e.preventDefault()
     if (!validateForm()) return
 
-    setIsSaving(true)
-    setErrors({})
-
-    try {
-      // CRITICAL: Create organization with escrow_wallet_address = user's wallet address
-      // This establishes the 1:1 mapping needed for payment channel creation
-      const requestData: OrganizationCreateRequest = {
-        organizationName: formData.organizationName,
-        escrowWalletAddress: walletAddress, // CRITICAL: Must match user's wallet_address
-        website: formData.website || undefined,
-        description: formData.description || undefined,
-      }
-
-      await organizationApi.create(requestData)
-
-      console.log('[ORG_CREATED_CLIENT]', {
-        walletAddress,
-        mapping: 'Client confirmed 1:1 mapping established',
-      })
-
-      // Call completion callback to proceed to dashboard
-      onComplete()
-    } catch (error: any) {
-      console.error('[ORG_CREATE_ERROR_CLIENT]', error)
-
-      // Handle specific error cases
-      let errorMessage = 'FAILED TO CREATE ORGANIZATION'
-
-      if (error.message) {
-        errorMessage = error.message
-      }
-
-      // Handle 409 conflict specifically
-      if (error.status === 409) {
-        errorMessage = 'AN ORGANIZATION ALREADY EXISTS FOR THIS WALLET ADDRESS'
-      }
-
-      setErrors({ submit: errorMessage })
-    } finally {
-      setIsSaving(false)
+    // Pass organization data back to parent (MultiStepSignupModal)
+    // Parent will create user FIRST, then organization
+    const orgData: OrganizationData = {
+      organizationName: formData.organizationName,
+      website: formData.website || undefined,
+      description: formData.description || undefined,
     }
+
+    console.log('[ORG_DATA_COLLECTED]', {
+      walletAddress,
+      organizationName: orgData.organizationName,
+      note: 'Organization data collected, will be created after user creation'
+    })
+
+    onComplete(orgData)
   }
 
   const handleChange = (
