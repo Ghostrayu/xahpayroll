@@ -812,9 +812,6 @@ const NgoDashboard: React.FC = () => {
                           Last updated: {channel.lastUpdate}
                         </div>
                         <div className="flex gap-2">
-                          <button className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded text-[10px] uppercase tracking-wide transition-colors">
-                            View Details
-                          </button>
                           <button
                             onClick={() => handleSyncChannel(channel)}
                             disabled={syncingChannels.has(channel.channelId || '') || wasRecentlySynced(channel.lastLedgerSync || null) || !channel.channelId}
@@ -986,9 +983,6 @@ const NgoDashboard: React.FC = () => {
                   </div>
                 )}
               </div>
-              <button className="w-full mt-4 bg-gray-200 hover:bg-gray-300 text-gray-900 font-bold py-3 px-4 rounded-lg text-sm uppercase tracking-wide transition-colors">
-                VIEW FULL HISTORY
-              </button>
             </div>
 
             {/* Workers */}

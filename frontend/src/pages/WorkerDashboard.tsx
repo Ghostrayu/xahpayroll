@@ -1051,9 +1051,6 @@ const WorkerDashboard: React.FC = () => {
                   </div>
                 )}
               </div>
-              <button className="w-full mt-4 bg-gray-200 hover:bg-gray-300 text-gray-900 font-bold py-3 px-4 rounded-lg text-sm uppercase tracking-wide transition-colors">
-                VIEW ALL WORK SESSIONS
-              </button>
             </div>
           </div>
 
@@ -1144,9 +1141,6 @@ const WorkerDashboard: React.FC = () => {
                 </div>
               )}
             </div>
-            <button className="w-full mt-4 bg-gray-200 hover:bg-gray-300 text-gray-900 font-bold py-3 px-4 rounded-lg text-sm uppercase tracking-wide transition-colors">
-              VIEW FULL HISTORY
-            </button>
           </div>
         </div>
       </section>

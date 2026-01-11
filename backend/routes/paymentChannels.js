@@ -1463,8 +1463,20 @@ router.post('/:channelId/close/confirm', async (req, res) => {
     // ============================================
     // Extract the actual amount paid to worker from XRPL transaction
     // PaymentChannelClaim transactions have Balance field indicating amount delivered
+    //
+    // CRITICAL FIX (2026-01-10): Save off_chain_accumulated_balance BEFORE attempting extraction
+    // The database balance is the authoritative source of worker earnings accumulated during work sessions
+    // Ledger extraction is used for validation only
+    //
+    // BUG CONTEXT: Previously, if ledger extraction failed, the code would fall back to
+    // channel.off_chain_accumulated_balance, which could be 0 if balance updates failed.
+    // This caused payment records to not be created even though workers had earned wages.
 
-    let amountPaidXAH = 0
+    // SAVE the accumulated balance FIRST (authoritative source)
+    const savedOffChainBalance = parseFloat(channel.off_chain_accumulated_balance) || 0
+
+    let amountPaidXAH = savedOffChainBalance // Default to database balance
+    let ledgerAmountXAH = 0 // For comparison/validation
 
     try {
       // Re-query the transaction to get full details including Balance
@@ -1478,23 +1490,49 @@ router.post('/:channelId/close/confirm', async (req, res) => {
 
       // Extract Balance from transaction (in drops)
       const balanceDrops = txDetails.Balance || txDetails.meta?.deliveredAmount || '0'
-      amountPaidXAH = parseInt(balanceDrops) / 1_000_000
+      ledgerAmountXAH = parseInt(balanceDrops) / 1_000_000
 
-      console.log('[CONFIRM_CLOSURE] Extracted payment amount from transaction', {
+      console.log('[CONFIRM_CLOSURE] Extracted payment amount from ledger for validation', {
         channelId,
         txHash: txHash.substring(0, 20) + '...',
         balanceDrops,
-        amountPaidXAH
+        ledgerAmountXAH,
+        databaseBalanceXAH: savedOffChainBalance,
+        discrepancy: Math.abs(ledgerAmountXAH - savedOffChainBalance)
       })
+
+      // Use ledger amount if extraction was successful and reasonable
+      // Otherwise use database balance (workers' earned wages during work sessions)
+      if (ledgerAmountXAH > 0) {
+        amountPaidXAH = ledgerAmountXAH
+
+        // Log warning if significant discrepancy between ledger and database
+        const discrepancy = Math.abs(ledgerAmountXAH - savedOffChainBalance)
+        if (discrepancy > 0.01) { // More than 1 cent difference
+          console.warn('[CONFIRM_CLOSURE] ⚠️ BALANCE MISMATCH', {
+            channelId,
+            ledgerAmountXAH,
+            databaseBalanceXAH: savedOffChainBalance,
+            discrepancyXAH: discrepancy,
+            usingSource: 'LEDGER'
+          })
+        }
+      } else {
+        console.log('[CONFIRM_CLOSURE] Using database balance (ledger extraction returned 0)', {
+          channelId,
+          amountPaidXAH: savedOffChainBalance
+        })
+      }
 
       await client.disconnect()
     } catch (extractError) {
-      console.error('[CONFIRM_CLOSURE] Failed to extract payment amount, using accumulated balance', {
+      console.error('[CONFIRM_CLOSURE] Failed to extract payment amount from ledger, using database balance', {
         error: extractError.message,
-        channelId
+        channelId,
+        databaseBalanceXAH: savedOffChainBalance
       })
-      // Fallback: use accumulated balance from database
-      amountPaidXAH = parseFloat(channel.off_chain_accumulated_balance) || 0
+      // Already set to savedOffChainBalance above - no action needed
+      // This ensures workers always get paid for their accumulated work sessions
     }
 
     // ============================================

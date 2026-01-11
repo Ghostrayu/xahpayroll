@@ -17,13 +17,21 @@ CREATE TABLE users (
   wallet_address VARCHAR(64) UNIQUE NOT NULL,
   user_type VARCHAR(20) NOT NULL CHECK (user_type IN ('employee', 'employer', 'ngo', 'admin')),
   email VARCHAR(255),
+  display_name VARCHAR(255),
   created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
   last_login TIMESTAMP,
   is_active BOOLEAN DEFAULT true,
-  profile_data JSONB
+  profile_data JSONB,
+  deleted_at TIMESTAMP DEFAULT NULL,
+  deletion_reason TEXT DEFAULT NULL
 );
 
 COMMENT ON TABLE users IS 'Core user accounts identified by XAH wallet addresses';
+COMMENT ON COLUMN users.updated_at IS 'Timestamp of last update (auto-updated via trigger)';
+COMMENT ON COLUMN users.deleted_at IS 'Soft delete timestamp (NULL = not deleted)';
+COMMENT ON COLUMN users.deletion_reason IS 'Reason for account deletion';
+COMMENT ON COLUMN users.display_name IS 'User display name (fallback for full_name)';
 
 -- 2. Organizations Table
 CREATE TABLE organizations (
@@ -250,6 +258,10 @@ END;
 $$ language 'plpgsql';
 
 -- Add triggers for auto-update
+CREATE TRIGGER update_users_updated_at
+BEFORE UPDATE ON users
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 CREATE TRIGGER update_organizations_updated_at
 BEFORE UPDATE ON organizations
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
