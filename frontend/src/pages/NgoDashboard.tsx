@@ -139,55 +139,6 @@ const NgoDashboard: React.FC = () => {
   }
 
   /**
-   * Check if CancelAfter has expired (worker can force-close)
-   * CancelAfter is Ripple Epoch timestamp - convert to Unix for comparison
-   */
-  const isCancelAfterExpired = (channel: any): boolean => {
-    if (!channel.cancelAfter || channel.status !== 'active') {
-      return false
-    }
-    // Convert Ripple Epoch to Unix timestamp (milliseconds)
-    const cancelAfterUnix = (channel.cancelAfter + 946684800) * 1000
-    return Date.now() >= cancelAfterUnix
-  }
-
-  /**
-   * Check if CancelAfter is approaching (< 48 hours remaining)
-   * Warns NGOs that worker force-close deadline is coming soon
-   */
-  const isCancelAfterApproaching = (channel: any): boolean => {
-    if (!channel.cancelAfter || channel.status !== 'active') {
-      return false
-    }
-    const cancelAfterUnix = (channel.cancelAfter + 946684800) * 1000
-    const hoursRemaining = (cancelAfterUnix - Date.now()) / (1000 * 60 * 60)
-    return hoursRemaining > 0 && hoursRemaining <= 48
-  }
-
-  /**
-   * Calculate time remaining until CancelAfter expiration
-   * Shows NGOs when worker can force-close channel
-   */
-  const getCancelAfterTimeRemaining = (cancelAfter: number): string => {
-    const cancelAfterUnix = (cancelAfter + 946684800) * 1000
-    const diff = cancelAfterUnix - Date.now()
-
-    if (diff <= 0) return 'WORKER CAN FORCE-CLOSE NOW'
-
-    const hours = Math.floor(diff / (1000 * 60 * 60))
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-
-    if (hours > 24) {
-      const days = Math.floor(hours / 24)
-      return `${days} day${days !== 1 ? 's' : ''} until force-close`
-    } else if (hours > 0) {
-      return `${hours}h ${minutes}m until force-close`
-    } else {
-      return `${minutes}m until force-close`
-    }
-  }
-
-  /**
    * Handle cancel channel button click - opens confirmation modal
    */
   const handleCancelClick = (channel: any) => {
@@ -814,59 +765,6 @@ const NgoDashboard: React.FC = () => {
                           )}
                         </div>
                       </div>
-
-                      {/* CancelAfter Expiration Warning - NGO Alert */}
-                      {channel.status === 'active' && channel.cancelAfter && (isCancelAfterExpired(channel) || isCancelAfterApproaching(channel)) && (
-                        <div className={`mb-3 rounded-lg p-3 border-2 ${
-                          isCancelAfterExpired(channel)
-                            ? 'bg-red-50 border-red-500'
-                            : 'bg-yellow-50 border-yellow-500'
-                        }`}>
-                          <div className="flex items-start gap-2">
-                            <div className={`text-2xl flex-shrink-0 ${
-                              isCancelAfterExpired(channel) ? 'animate-pulse' : ''
-                            }`}>
-                              {isCancelAfterExpired(channel) ? '⚠️' : '⏰'}
-                            </div>
-                            <div className="flex-1">
-                              <p className={`text-xs font-extrabold uppercase tracking-wide mb-1 ${
-                                isCancelAfterExpired(channel) ? 'text-red-900' : 'text-yellow-900'
-                              }`}>
-                                {isCancelAfterExpired(channel)
-                                  ? '⚠️ WORKER CAN FORCE-CLOSE WITHOUT YOUR APPROVAL!'
-                                  : '⏰ WORKER PROTECTION DEADLINE APPROACHING'}
-                              </p>
-                              <div className={`text-[10px] space-y-1 ${
-                                isCancelAfterExpired(channel) ? 'text-red-800' : 'text-yellow-800'
-                              }`}>
-                                {isCancelAfterExpired(channel) ? (
-                                  <>
-                                    <p className="font-bold">
-                                      • CANCELAFTER DEADLINE REACHED - {channel.worker} CAN CLOSE CHANNEL UNILATERALLY
-                                    </p>
-                                    <p className="font-bold">• WORKER WILL CLAIM {channel.balance?.toLocaleString() || '0'} XAH, ESCROW RETURNS TO YOU</p>
-                                    <p>• THIS IS XRPL WORKER PROTECTION - YOU CANNOT PREVENT CLOSURE</p>
-                                    <p className="font-bold text-red-900">
-                                      • CONSIDER CLOSING CHANNEL YOURSELF TO SETTLE BALANCE
-                                    </p>
-                                  </>
-                                ) : (
-                                  <>
-                                    <p className="font-bold">
-                                      • {getCancelAfterTimeRemaining(channel.cancelAfter)} UNTIL {channel.worker} CAN FORCE-CLOSE
-                                    </p>
-                                    <p>• AFTER DEADLINE, WORKER CAN CLOSE WITHOUT YOUR SIGNATURE</p>
-                                    <p>• XRPL WORKER PROTECTION PREVENTS INDEFINITE FUND LOCKING</p>
-                                    <p className="font-bold text-yellow-900">
-                                      • CLOSE CHANNEL BEFORE DEADLINE OR WORKER WILL FORCE-CLOSE
-                                    </p>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
 
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
                         <div className="bg-white/60 rounded-lg p-2 border border-orange-200">

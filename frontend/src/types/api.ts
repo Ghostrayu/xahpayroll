@@ -85,9 +85,6 @@ export interface PaymentChannel {
   expirationTime?: string          // Scheduled expiration time (ISO format) for channels in 'closing' status
   offChainAccumulatedBalance?: number // Optional: Off-chain balance field (worker earnings) for transparency
   onChainBalance?: number          // Optional: On-chain balance field (XRPL ledger Balance) for transparency
-  cancelAfter?: number | null      // Worker protection: Ripple Epoch timestamp when worker can force-close (null for legacy channels)
-  cancelAfterDate?: string         // Human-readable ISO date when worker can force-close
-  durationHours?: number           // Hours until worker can force-close (configured at channel creation)
   closureType?: 'scheduled' | 'immediate' // NEW: Type of closure (scheduled = NGO with balance, immediate = NGO with no balance or worker)
   settleDelayHours?: number        // NEW: Worker protection period for scheduled closures (typically 24 hours, 0 for immediate)
 }

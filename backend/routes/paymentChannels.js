@@ -132,8 +132,7 @@ router.post('/create', async (req, res) => {
       settleDelay,
       expiration,
       balanceUpdateFrequency,
-      maxHoursPerDay,
-      durationHours // NEW: Worker protection - hours until force-close enabled
+      maxHoursPerDay
     } = req.body
 
     // Validate required fields
@@ -154,23 +153,6 @@ router.post('/create', async (req, res) => {
         })
       }
     }
-
-    // Calculate CancelAfter timestamp for worker protection
-    // Default: 24 hours (worker can force-close after 1 day if NGO unresponsive)
-    // Ripple Epoch: Seconds since Jan 1, 2000 00:00:00 UTC
-    // Conversion: Ripple Time = Unix Time - 946684800
-    const durationInHours = parseFloat(durationHours) || 24 // Default 24 hours
-    const durationInSeconds = durationInHours * 3600
-    const nowUnix = Math.floor(Date.now() / 1000)
-    const cancelAfterRipple = (nowUnix - 946684800) + durationInSeconds
-    const cancelAfterDate = new Date((cancelAfterRipple + 946684800) * 1000)
-
-    console.log('[CANCEL_AFTER] Worker protection enabled', {
-      durationHours: durationInHours,
-      cancelAfterRipple,
-      cancelAfterDate: cancelAfterDate.toISOString(),
-      workerCanForceCloseAfter: cancelAfterDate.toLocaleString()
-    })
 
     // CRITICAL LOOKUP: Find organization by escrow_wallet_address
     // This must match the NGO/employer's wallet_address (1:1 mapping)
@@ -257,9 +239,8 @@ router.post('/create', async (req, res) => {
         hours_accumulated,
         max_daily_hours,
         settle_delay,
-        cancel_after,
         status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, $8, $9, $10, 'active')
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, $8, $9, 'active')
       RETURNING *`,
       [
         organization.id,
@@ -270,8 +251,7 @@ router.post('/create', async (req, res) => {
         balanceUpdateFrequency || 'Hourly',
         fundingAmount,
         parseFloat(maxHoursPerDay) || 8.00,
-        parseInt(settleDelay) || 86400, // Default 24 hours (86400 seconds) if not provided
-        cancelAfterRipple // Worker can force-close after this time
+        parseInt(settleDelay) || 86400 // Default 24 hours (86400 seconds) if not provided
       ]
     )
 
@@ -291,9 +271,6 @@ router.post('/create', async (req, res) => {
           balanceUpdateFrequency: channel.balance_update_frequency,
           maxDailyHours: parseFloat(channel.max_daily_hours),
           settleDelay: channel.settle_delay,
-          cancelAfter: channel.cancel_after, // Ripple Epoch timestamp
-          cancelAfterDate: cancelAfterDate.toISOString(), // Human-readable date
-          durationHours: durationInHours, // Hours until worker can force-close
           status: channel.status
         }
       }

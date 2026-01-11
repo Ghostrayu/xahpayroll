@@ -179,54 +179,6 @@ const WorkerDashboard: React.FC = () => {
     }
   }
 
-  /**
-   * Helper: Check if CancelAfter has expired (worker can force-close)
-   * CancelAfter is Ripple Epoch timestamp - convert to Unix for comparison
-   */
-  const isCancelAfterExpired = (channel: any): boolean => {
-    if (!channel.cancelAfter || channel.status !== 'active') {
-      return false
-    }
-    // Convert Ripple Epoch to Unix timestamp (milliseconds)
-    const cancelAfterUnix = (channel.cancelAfter + 946684800) * 1000
-    return Date.now() >= cancelAfterUnix
-  }
-
-  /**
-   * Helper: Check if CancelAfter is approaching (< 24 hours remaining)
-   * Warns workers that force-close deadline is coming soon
-   */
-  const isCancelAfterApproaching = (channel: any): boolean => {
-    if (!channel.cancelAfter || channel.status !== 'active') {
-      return false
-    }
-    const cancelAfterUnix = (channel.cancelAfter + 946684800) * 1000
-    const hoursRemaining = (cancelAfterUnix - Date.now()) / (1000 * 60 * 60)
-    return hoursRemaining > 0 && hoursRemaining <= 24
-  }
-
-  /**
-   * Helper: Calculate time remaining until CancelAfter expiration
-   * Shows workers when they can force-close channel
-   */
-  const getCancelAfterTimeRemaining = (cancelAfter: number): string => {
-    const cancelAfterUnix = (cancelAfter + 946684800) * 1000
-    const diff = cancelAfterUnix - Date.now()
-
-    if (diff <= 0) return 'CAN FORCE-CLOSE NOW'
-
-    const hours = Math.floor(diff / (1000 * 60 * 60))
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-
-    if (hours > 24) {
-      const days = Math.floor(hours / 24)
-      return `${days} day${days !== 1 ? 's' : ''} remaining`
-    } else if (hours > 0) {
-      return `${hours}h ${minutes}m remaining`
-    } else {
-      return `${minutes}m remaining`
-    }
-  }
 
   // Use data from context with fallback defaults
   const workerData = {
@@ -902,58 +854,6 @@ const WorkerDashboard: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Worker Protection Alert - CancelAfter Force-Close */}
-                    {channel.status === 'active' && channel.cancelAfter && (isCancelAfterExpired(channel) || isCancelAfterApproaching(channel)) && (
-                      <div className={`mb-3 rounded-lg p-3 border-2 ${
-                        isCancelAfterExpired(channel)
-                          ? 'bg-green-50 border-green-500'
-                          : 'bg-blue-50 border-blue-500'
-                      }`}>
-                        <div className="flex items-start gap-2">
-                          <div className={`text-2xl flex-shrink-0 ${
-                            isCancelAfterExpired(channel) ? 'animate-pulse' : ''
-                          }`}>
-                            {isCancelAfterExpired(channel) ? '🛡️' : '⏰'}
-                          </div>
-                          <div className="flex-1">
-                            <p className={`text-xs font-extrabold uppercase tracking-wide mb-1 ${
-                              isCancelAfterExpired(channel) ? 'text-green-900' : 'text-blue-900'
-                            }`}>
-                              {isCancelAfterExpired(channel)
-                                ? '🛡️ WORKER PROTECTION ACTIVE - YOU CAN FORCE-CLOSE NOW!'
-                                : '⏰ WORKER PROTECTION APPROACHING'}
-                            </p>
-                            <div className={`text-[10px] space-y-1 ${
-                              isCancelAfterExpired(channel) ? 'text-green-800' : 'text-blue-800'
-                            }`}>
-                              {isCancelAfterExpired(channel) ? (
-                                <>
-                                  <p className="font-bold">
-                                    • CANCELAFTER DEADLINE REACHED - YOU CAN CLOSE WITHOUT EMPLOYER APPROVAL
-                                  </p>
-                                  <p className="font-bold">• CLICK "FORCE CLOSE" BELOW TO CLAIM YOUR {channel.balance?.toLocaleString() || '0'} XAH</p>
-                                  <p>• UNUSED ESCROW AUTOMATICALLY RETURNS TO EMPLOYER</p>
-                                  <p className="font-bold text-green-900">
-                                    • XRPL WORKER PROTECTION ENSURES YOU GET PAID
-                                  </p>
-                                </>
-                              ) : (
-                                <>
-                                  <p className="font-bold">
-                                    • {getCancelAfterTimeRemaining(channel.cancelAfter)} UNTIL FORCE-CLOSE AVAILABLE
-                                  </p>
-                                  <p>• AFTER DEADLINE, YOU CAN CLOSE CHANNEL WITHOUT EMPLOYER SIGNATURE</p>
-                                  <p>• PROTECTS WORKERS FROM UNRESPONSIVE EMPLOYERS</p>
-                                  <p className="font-bold text-blue-900">
-                                    • YOUR {channel.balance?.toLocaleString() || '0'} XAH IS SAFE
-                                  </p>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
 
                     <div className="grid grid-cols-2 gap-2 mb-3">
                       <div className="bg-white/60 rounded-lg p-2 border border-green-200">
@@ -1042,16 +942,10 @@ const WorkerDashboard: React.FC = () => {
                         <button
                           onClick={() => handleCloseClick(channel)}
                           disabled={cancelingChannel === channel.channelId}
-                          className={`px-3 py-1 text-white font-bold rounded text-xs uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                            isCancelAfterExpired(channel)
-                              ? 'bg-green-500 hover:bg-green-600 animate-pulse'
-                              : 'bg-red-500 hover:bg-red-600'
-                          }`}
+                          className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white font-bold rounded text-xs uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {cancelingChannel === channel.channelId
                             ? 'CLOSING...'
-                            : isCancelAfterExpired(channel)
-                            ? '🛡️ FORCE CLOSE'
                             : 'CLOSE CHANNEL'}
                         </button>
                       )}

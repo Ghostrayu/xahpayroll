@@ -8,7 +8,6 @@ export interface PaymentChannelParams {
   amount: string // In drops (1 XAH = 1,000,000 drops)
   settleDelay: number // In seconds
   publicKey?: string
-  cancelAfter?: number // Ripple epoch timestamp
 }
 
 export interface PaymentChannelResult {
@@ -64,10 +63,6 @@ export const preparePaymentChannelTransaction = (
   // Xaman wallet automatically adds the user's public key
   if (params.publicKey) {
     tx.PublicKey = params.publicKey
-  }
-
-  if (params.cancelAfter) {
-    tx.CancelAfter = params.cancelAfter
   }
 
   return tx
