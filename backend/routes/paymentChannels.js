@@ -235,12 +235,13 @@ router.post('/create', async (req, res) => {
         hourly_rate,
         balance_update_frequency,
         escrow_funded_amount,
+        on_chain_balance,
         off_chain_accumulated_balance,
         hours_accumulated,
         max_daily_hours,
         settle_delay,
         status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, $8, $9, 'active')
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, 0, $8, $9, 'active')
       RETURNING *`,
       [
         organization.id,
@@ -248,7 +249,7 @@ router.post('/create', async (req, res) => {
         channelId,
         jobName || 'Unnamed Job',
         hourlyRate,
-        balanceUpdateFrequency || 'Hourly',
+        balanceUpdateFrequency || 'hourly',
         fundingAmount,
         parseFloat(maxHoursPerDay) || 8.00,
         parseInt(settleDelay) || 86400 // Default 24 hours (86400 seconds) if not provided
