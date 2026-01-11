@@ -1558,7 +1558,7 @@ router.post('/:channelId/close/confirm', async (req, res) => {
           status = $1,
           closure_tx_hash = $2,
           closed_at = CASE WHEN $1 = 'closed' THEN NOW() ELSE NULL END,
-          expiration_time = CASE WHEN $3 IS NOT NULL THEN $3 ELSE expiration_time END,
+          expiration_time = CASE WHEN $3::timestamp IS NOT NULL THEN $3::timestamp ELSE expiration_time END,
           off_chain_accumulated_balance = 0,
           last_ledger_sync = NOW(),
           last_validation_at = NOW(),
