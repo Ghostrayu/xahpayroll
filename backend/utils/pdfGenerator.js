@@ -55,6 +55,7 @@ async function fetchComprehensiveWorkerData(walletAddress) {
         pc.job_name,
         pc.hourly_rate,
         pc.escrow_funded_amount,
+        pc.on_chain_balance,
         pc.off_chain_accumulated_balance,
         pc.status,
         pc.created_at,
@@ -102,9 +103,13 @@ async function fetchComprehensiveWorkerData(walletAddress) {
     `, [walletAddress]);
 
     // 6. CALCULATE STATISTICS
-    const activeChannels = channelsResult.rows.filter(c => c.status === 'active').length;
+    // CRITICAL: Include "closing" status channels as active (they're still open on ledger)
+    const activeChannels = channelsResult.rows.filter(c => ['active', 'closing'].includes(c.status)).length;
     const closedChannels = channelsResult.rows.filter(c => c.status === 'closed').length;
-    const totalUnpaidBalance = channelsResult.rows.reduce((sum, c) => sum + parseFloat(c.off_chain_accumulated_balance || 0), 0);
+    // CRITICAL: Use on_chain_balance (real ledger value) instead of off_chain_accumulated_balance
+    const totalUnpaidBalance = channelsResult.rows
+      .filter(c => ['active', 'closing'].includes(c.status))
+      .reduce((sum, c) => sum + parseFloat(c.on_chain_balance || c.off_chain_accumulated_balance || 0), 0);
     const totalSessions = workSessionsResult.rows.length;
     const totalHours = workSessionsResult.rows.reduce((sum, ws) => sum + parseFloat(ws.hours_worked || 0), 0);
     const totalPayments = paymentsResult.rows.length;
@@ -256,7 +261,8 @@ async function generateWorkerDataPDF(walletAddress, res) {
         doc.text(`    STATUS: ${channel.status.toUpperCase()}`, { continued: false });
         doc.text(`    HOURLY RATE: ${formatAmount(channel.hourly_rate)}`, { continued: false });
         doc.text(`    ESCROW AMOUNT: ${formatAmount(channel.escrow_funded_amount)}`, { continued: false });
-        doc.text(`    ACCUMULATED BALANCE: ${formatAmount(channel.off_chain_accumulated_balance)}`, { continued: false });
+        // CRITICAL: Use on_chain_balance (real ledger value) instead of off_chain_accumulated_balance
+        doc.text(`    ACCUMULATED BALANCE: ${formatAmount(channel.on_chain_balance || channel.off_chain_accumulated_balance)}`, { continued: false });
         doc.text(`    CREATED: ${formatDate(channel.created_at)}`, { continued: false });
 
         if (channel.closed_at) {
@@ -418,12 +424,22 @@ async function fetchComprehensiveNGOData(walletAddress) {
     const organization = orgResult.rows[0];
 
     // 2. FETCH WORKERS
+    // CRITICAL: Get hourly_rate from payment_channels (most recent), not employees table
+    // Workers can have different rates per channel, so show the most recent rate
     const workersResult = await pool.query(`
       SELECT
         e.id,
         e.full_name,
         e.employee_wallet_address,
-        e.hourly_rate,
+        COALESCE(
+          (SELECT pc.hourly_rate
+           FROM payment_channels pc
+           WHERE pc.employee_id = e.id
+             AND pc.organization_id = $1
+           ORDER BY pc.created_at DESC
+           LIMIT 1),
+          0
+        ) as hourly_rate,
         e.employment_status,
         e.created_at,
         COALESCE(SUM(ws.hours_worked), 0) as total_hours,
@@ -444,6 +460,7 @@ async function fetchComprehensiveNGOData(walletAddress) {
         pc.job_name,
         pc.hourly_rate,
         pc.escrow_funded_amount,
+        pc.on_chain_balance,
         pc.off_chain_accumulated_balance,
         pc.status,
         pc.created_at,
@@ -491,19 +508,35 @@ async function fetchComprehensiveNGOData(walletAddress) {
     `, [organization.id]);
 
     // 6. CALCULATE STATISTICS
-    const activeChannels = channelsResult.rows.filter(c => c.status === 'active').length;
+    // CRITICAL: Include "closing" status channels as active (they're still open on ledger)
+    const activeChannels = channelsResult.rows.filter(c => ['active', 'closing'].includes(c.status)).length;
     const closedChannels = channelsResult.rows.filter(c => c.status === 'closed').length;
     const totalEscrowFunded = channelsResult.rows.reduce((sum, c) => sum + parseFloat(c.escrow_funded_amount || 0), 0);
-    const totalUnpaidBalance = channelsResult.rows.reduce((sum, c) => sum + parseFloat(c.off_chain_accumulated_balance || 0), 0);
+
+    // CRITICAL: Use on_chain_balance (real ledger value) instead of off_chain_accumulated_balance
+    const totalUnpaidBalance = channelsResult.rows
+      .filter(c => ['active', 'closing'].includes(c.status))
+      .reduce((sum, c) => sum + parseFloat(c.on_chain_balance || c.off_chain_accumulated_balance || 0), 0);
+
     const totalSessions = workSessionsResult.rows.length;
     const totalHours = workSessionsResult.rows.reduce((sum, ws) => sum + parseFloat(ws.hours_worked || 0), 0);
 
-    // Calculate payment statistics from payments table
-    // Payment records are automatically created when channels close (as of 2026-01-06)
-    const totalPayments = paymentsResult.rows.length;
-    const totalAmountPaid = paymentsResult.rows
-      .filter(p => p.payment_status === 'completed')
-      .reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+    // CRITICAL: Calculate payment statistics from work sessions AND channel closures
+    // Workers are paid via PaymentChannelClaim (not always recorded in payments table)
+    // Use work sessions total_amount for accurate payment calculations
+    const completedSessions = workSessionsResult.rows.filter(ws => ws.total_amount && ws.total_amount > 0);
+    const closedChannelsWithBalance = channelsResult.rows.filter(c =>
+      (c.status === 'closed' || c.status === 'closing') &&
+      parseFloat(c.on_chain_balance || c.off_chain_accumulated_balance || 0) > 0
+    );
+
+    // Total payments = closed/closing channels with balance
+    const totalPayments = closedChannelsWithBalance.length;
+
+    // Total amount paid = sum of on_chain_balance from closed/closing channels
+    const totalAmountPaid = closedChannelsWithBalance.reduce((sum, c) =>
+      sum + parseFloat(c.on_chain_balance || c.off_chain_accumulated_balance || 0), 0
+    );
 
     return {
       organization,
@@ -663,7 +696,8 @@ async function generateNGODataPDF(walletAddress, res) {
         doc.text(`    STATUS: ${channel.status.toUpperCase()}`, { continued: false });
         doc.text(`    HOURLY RATE: ${formatAmount(channel.hourly_rate)}`, { continued: false });
         doc.text(`    ESCROW FUNDED: ${formatAmount(channel.escrow_funded_amount)}`, { continued: false });
-        doc.text(`    WORKER BALANCE: ${formatAmount(channel.off_chain_accumulated_balance)}`, { continued: false });
+        // CRITICAL: Use on_chain_balance (real ledger value) instead of off_chain_accumulated_balance
+        doc.text(`    WORKER BALANCE: ${formatAmount(channel.on_chain_balance || channel.off_chain_accumulated_balance)}`, { continued: false });
         doc.text(`    CREATED: ${formatDate(channel.created_at)}`, { continued: false });
 
         if (channel.closed_at) {

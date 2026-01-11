@@ -684,8 +684,9 @@ router.get('/payment-channels/:walletAddress', async (req, res) => {
       else lastUpdate = `${Math.floor(diffMins / 60)} hour${Math.floor(diffMins / 60) > 1 ? 's' : ''} ago`
 
       // Escrow balance is the funded amount minus what's been accumulated
+      // CRITICAL: Use on_chain_balance (real ledger balance) as primary, off_chain_accumulated_balance as fallback
       const fundedAmount = parseFloat(c.escrow_funded_amount || 0)
-      const accumulatedAmount = parseFloat(c.off_chain_accumulated_balance || 0)
+      const accumulatedAmount = parseFloat(c.on_chain_balance || c.off_chain_accumulated_balance || 0)
       const escrowBalance = fundedAmount - accumulatedAmount
 
       // Validate channel_id - must be 64-character hex string or null
@@ -699,7 +700,7 @@ router.get('/payment-channels/:walletAddress', async (req, res) => {
         worker: c.worker,
         jobName: c.job_name || 'Unnamed Job',
         channelId: channelId || null, // Return null if missing/invalid instead of generating fake ID
-        balance: parseFloat(c.off_chain_accumulated_balance),
+        balance: parseFloat(c.on_chain_balance || c.off_chain_accumulated_balance || 0),
         escrowBalance: escrowBalance,
         hourlyRate: parseFloat(c.hourly_rate),
         hoursAccumulated: parseFloat(c.hours_accumulated),
