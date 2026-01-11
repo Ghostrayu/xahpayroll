@@ -1512,13 +1512,15 @@ router.post('/:channelId/close/confirm', async (req, res) => {
       // Update channel with appropriate status
       // Clear off_chain_accumulated_balance (worker was paid via XRPL transaction)
       // Do NOT touch on_chain_balance (will sync from ledger separately)
+      // CRITICAL FIX (2026-01-11): Only update expiration_time if it's NOT NULL
+      // When finalizing an already-closing channel, expiration_time should remain unchanged
       const updateResult = await query(
         `UPDATE payment_channels
         SET
-          status = $1::VARCHAR,
+          status = $1,
           closure_tx_hash = $2,
-          closed_at = CASE WHEN $1::VARCHAR = 'closed' THEN NOW() ELSE NULL END,
-          expiration_time = $3::TIMESTAMP,
+          closed_at = CASE WHEN $1 = 'closed' THEN NOW() ELSE NULL END,
+          expiration_time = CASE WHEN $3 IS NOT NULL THEN $3 ELSE expiration_time END,
           off_chain_accumulated_balance = 0,
           last_ledger_sync = NOW(),
           last_validation_at = NOW(),
