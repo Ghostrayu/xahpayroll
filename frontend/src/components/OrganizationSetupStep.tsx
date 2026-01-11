@@ -4,16 +4,12 @@
  *
  * Collects organization details:
  * - Organization Name (required, pre-filled from step 1)
- * - Website (optional, URL validation)
- * - Mission Statement/Description (optional, max 2000 chars)
  */
 
 import { useState } from 'react'
 
 export interface OrganizationData {
   organizationName: string
-  website?: string
-  description?: string
 }
 
 interface OrganizationSetupStepProps {
@@ -25,8 +21,6 @@ interface OrganizationSetupStepProps {
 
 interface FormErrors {
   organizationName?: string
-  website?: string
-  description?: string
   submit?: string
 }
 
@@ -37,9 +31,7 @@ export default function OrganizationSetupStep({
   onBack,
 }: OrganizationSetupStepProps) {
   const [formData, setFormData] = useState({
-    organizationName: initialOrgName,
-    website: '',
-    description: '',
+    organizationName: initialOrgName
   })
   const [errors, setErrors] = useState<FormErrors>({})
   const [isSaving] = useState(false) // Kept for UI state, actual saving happens in parent
@@ -50,20 +42,6 @@ export default function OrganizationSetupStep({
     // Required: Organization name
     if (!formData.organizationName.trim()) {
       newErrors.organizationName = 'ORGANIZATION NAME IS REQUIRED'
-    }
-
-    // Optional: Website URL validation
-    if (formData.website && formData.website.trim()) {
-      try {
-        new URL(formData.website)
-      } catch (e) {
-        newErrors.website = 'INVALID WEBSITE URL (MUST START WITH HTTP:// OR HTTPS://)'
-      }
-    }
-
-    // Optional: Description length validation
-    if (formData.description && formData.description.length > 2000) {
-      newErrors.description = 'DESCRIPTION MUST BE 2000 CHARACTERS OR LESS'
     }
 
     setErrors(newErrors)
@@ -77,9 +55,7 @@ export default function OrganizationSetupStep({
     // Pass organization data back to parent (MultiStepSignupModal)
     // Parent will create user FIRST, then organization
     const orgData: OrganizationData = {
-      organizationName: formData.organizationName,
-      website: formData.website || undefined,
-      description: formData.description || undefined,
+      organizationName: formData.organizationName
     }
 
     console.log('[ORG_DATA_COLLECTED]', {
@@ -92,7 +68,7 @@ export default function OrganizationSetupStep({
   }
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    e: React.ChangeEvent<HTMLInputElement>
   ) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
@@ -101,9 +77,6 @@ export default function OrganizationSetupStep({
       setErrors((prev) => ({ ...prev, [name]: undefined }))
     }
   }
-
-  const charCount = formData.description.length
-  const charCountColor = charCount > 2000 ? 'text-red-500' : 'text-gray-500'
 
   return (
     <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -126,7 +99,7 @@ export default function OrganizationSetupStep({
               htmlFor="organizationName"
               className="block text-sm font-medium text-gray-700 mb-2"
             >
-              Organization Name <span className="text-red-500">*</span>
+              ORGANIZATION NAME <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
@@ -137,68 +110,13 @@ export default function OrganizationSetupStep({
               className={`w-full px-4 py-3 border ${
                 errors.organizationName ? 'border-red-500' : 'border-gray-300'
               } rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
-              placeholder="Good Money Collective"
+              placeholder="GOOD MONEY COLLECTIVE"
             />
             {errors.organizationName && (
               <p className="mt-1 text-sm text-red-500">{errors.organizationName}</p>
             )}
-          </div>
-
-          {/* Website (Optional) */}
-          <div>
-            <label
-              htmlFor="website"
-              className="block text-sm font-medium text-gray-700 mb-2"
-            >
-              Website (Optional)
-            </label>
-            <input
-              type="url"
-              id="website"
-              name="website"
-              value={formData.website}
-              onChange={handleChange}
-              className={`w-full px-4 py-3 border ${
-                errors.website ? 'border-red-500' : 'border-gray-300'
-              } rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
-              placeholder="https://goodmoney.org"
-            />
-            {errors.website && (
-              <p className="mt-1 text-sm text-red-500">{errors.website}</p>
-            )}
             <p className="mt-1 text-sm text-gray-500">
-              💡 Help workers learn more about you
-            </p>
-          </div>
-
-          {/* Mission Statement (Optional) */}
-          <div>
-            <label
-              htmlFor="description"
-              className="block text-sm font-medium text-gray-700 mb-2"
-            >
-              Mission Statement (Optional)
-            </label>
-            <textarea
-              id="description"
-              name="description"
-              value={formData.description}
-              onChange={handleChange}
-              rows={4}
-              maxLength={2000}
-              className={`w-full px-4 py-3 border ${
-                errors.description ? 'border-red-500' : 'border-gray-300'
-              } rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none`}
-              placeholder="We provide financial services to underserved communities in rural areas, focusing on microloans and financial literacy education."
-            />
-            {errors.description && (
-              <p className="mt-1 text-sm text-red-500">{errors.description}</p>
-            )}
-            <p className={`mt-1 text-sm ${charCountColor}`}>
-              {charCount}/2000 characters
-            </p>
-            <p className="mt-1 text-sm text-gray-500">
-              ℹ️ Complete profiles help workers trust your organization
+              💡 THIS NAME WILL BE VISIBLE TO WORKERS WHEN THEY RECEIVE PAYMENTS
             </p>
           </div>
 

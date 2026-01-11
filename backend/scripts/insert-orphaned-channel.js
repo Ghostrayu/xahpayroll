@@ -4,7 +4,8 @@
  * This script inserts the payment channel that was successfully created on the
  * Xahau ledger but failed to sync to the database due to missing on_chain_balance field.
  *
- * Real Channel ID: 871391761F1D26F503BEEFE8CDE884D5F296AA65840F254D71BD3C374F5E01AF
+ * Real Channel ID: A14F01EB298A9124D6186281D0CDD8518C2AA9948CA63E51919BED430AC7DA28
+ * Public Key: aB4Y5MfM87nbWkm6E5jHYDVGwLThnVwhcDoW68U7EwqWd84N4aB2
  */
 
 const { Pool } = require('pg')
@@ -25,7 +26,7 @@ async function insertOrphanedChannel() {
 
     const organizationWallet = 'ryWmg93m9hzJWr36ajV5JmAMdBLA7SiQW'
     const workerWallet = 'rQHERc4JCVRtoHvwnoeqoqc1GBgrXPDrLS'
-    const realChannelId = '871391761F1D26F503BEEFE8CDE884D5F296AA65840F254D71BD3C374F5E01AF'
+    const realChannelId = 'A14F01EB298A9124D6186281D0CDD8518C2AA9948CA63E51919BED430AC7DA28'
 
     console.log('\n📋 Channel Details:')
     console.log(`   Channel ID: ${realChannelId}`)
@@ -63,7 +64,7 @@ async function insertOrphanedChannel() {
           hourly_rate, employment_status
         ) VALUES ($1, $2, $3, $4, 'active')
         RETURNING id, full_name`,
-        [organization.id, 'TESTING', workerWallet, 15.00]
+        [organization.id, 'DONALD TRUMP', workerWallet, 15.00]
       )
       employee = newEmployeeResult.rows[0]
       console.log(`   ✅ Created employee: ${employee.full_name} (ID: ${employee.id})`)
@@ -102,16 +103,17 @@ async function insertOrphanedChannel() {
         hours_accumulated,
         max_daily_hours,
         settle_delay,
+        public_key,
         status,
         created_at,
         updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING id, channel_id, status`,
       [
         organization.id,
         employee.id,
         realChannelId,
-        'TESTING',
+        'FINAL TEST 2',
         15.00,
         'hourly',
         240.00,
@@ -120,6 +122,7 @@ async function insertOrphanedChannel() {
         0, // hours_accumulated
         8.00,
         3600, // settle_delay (1 hour, as seen on ledger)
+        'aB4Y5MfM87nbWkm6E5jHYDVGwLThnVwhcDoW68U7EwqWd84N4aB2', // public_key from ledger
         'active',
         '2026-01-11T00:56:44.755Z',
         new Date()

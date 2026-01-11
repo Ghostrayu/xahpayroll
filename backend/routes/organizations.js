@@ -21,9 +21,7 @@ router.post('/', async (req, res) => {
   try {
     const {
       organizationName,
-      escrowWalletAddress,
-      website,
-      description
+      escrowWalletAddress
     } = req.body
 
     // Validate required fields
@@ -40,26 +38,6 @@ router.post('/', async (req, res) => {
       return res.status(400).json({
         success: false,
         error: { message: 'INVALID XRPL WALLET ADDRESS FORMAT' }
-      })
-    }
-
-    // Validate website if provided
-    if (website) {
-      try {
-        new URL(website)
-      } catch (e) {
-        return res.status(400).json({
-          success: false,
-          error: { message: 'INVALID WEBSITE URL FORMAT' }
-        })
-      }
-    }
-
-    // Validate description length
-    if (description && description.length > 2000) {
-      return res.status(400).json({
-        success: false,
-        error: { message: 'DESCRIPTION MUST BE 2000 CHARACTERS OR LESS' }
       })
     }
 
@@ -105,15 +83,13 @@ router.post('/', async (req, res) => {
     const result = await query(
       `INSERT INTO organizations (
         organization_name, escrow_wallet_address,
-        user_id, website, description, created_at
-      ) VALUES ($1, $2, $3, $4, $5, NOW())
+        user_id, created_at
+      ) VALUES ($1, $2, $3, NOW())
       RETURNING *`,
       [
         organizationName,
         escrowWalletAddress,
-        userId,
-        website || null,
-        description || null
+        userId
       ]
     )
 

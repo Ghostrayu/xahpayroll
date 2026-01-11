@@ -157,7 +157,7 @@ router.post('/create', async (req, res) => {
     // CRITICAL LOOKUP: Find organization by escrow_wallet_address
     // This must match the NGO/employer's wallet_address (1:1 mapping)
     const orgResult = await query(
-      `SELECT id, organization_name, escrow_wallet_address, website, description
+      `SELECT id, organization_name, escrow_wallet_address
        FROM organizations
        WHERE escrow_wallet_address = $1`,
       [organizationWalletAddress]
