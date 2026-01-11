@@ -7,7 +7,6 @@ WE ACTIVELY SUPPORT THE FOLLOWING VERSIONS OF XAH PAYROLL WITH SECURITY UPDATES:
 | VERSION | SUPPORTED          | END OF SUPPORT |
 | ------- | ------------------ | -------------- |
 | 1.0.X   | :white_check_mark: | TBD            |
-| < 1.0   | :x:                | 2026-01-03     |
 
 ## REPORTING A VULNERABILITY
 
