@@ -108,38 +108,49 @@ router.post('/add', async (req, res) => {
       })
     }
 
-    // Add worker to organization (hourly_rate is required in schema, set default to 0)
+    // Create or get user record FIRST (before employee record)
+    // This ensures we have a user_id to link to the employee
+    let userId
+    const existingUser = await query(
+      'SELECT id FROM users WHERE wallet_address = $1',
+      [walletAddress]
+    )
+
+    if (existingUser.rows.length === 0) {
+      // Create new user record
+      const newUser = await query(
+        `INSERT INTO users (
+          wallet_address,
+          display_name,
+          user_type
+        ) VALUES ($1, $2, 'employee')
+        RETURNING id`,
+        [walletAddress, name]
+      )
+      userId = newUser.rows[0].id
+      console.log('[ADD_WORKER] Created new user with ID:', userId)
+    } else {
+      userId = existingUser.rows[0].id
+      console.log('[ADD_WORKER] Using existing user ID:', userId)
+    }
+
+    // Add worker to organization with user_id populated
+    // CRITICAL: user_id must be set to prevent orphaned employee records
     const result = await query(
       `INSERT INTO employees (
         organization_id,
         full_name,
         employee_wallet_address,
         hourly_rate,
-        employment_status
-      ) VALUES ($1, $2, $3, $4, 'active')
+        employment_status,
+        user_id
+      ) VALUES ($1, $2, $3, $4, 'active', $5)
       RETURNING *`,
-      [organizationId, name, walletAddress, 0]  // Default hourly_rate to 0, will be set when creating payment channel
+      [organizationId, name, walletAddress, 0, userId]  // Default hourly_rate to 0, will be set when creating payment channel
     )
 
     const worker = result.rows[0]
-
-    // Also create a user record if it doesn't exist
-    const existingUser = await query(
-      'SELECT * FROM users WHERE wallet_address = $1',
-      [walletAddress]
-    )
-
-    if (existingUser.rows.length === 0) {
-      await query(
-        `INSERT INTO users (
-          wallet_address,
-          display_name,
-          user_type
-        ) VALUES ($1, $2, 'employee')
-        ON CONFLICT (wallet_address) DO NOTHING`,
-        [walletAddress, name]
-      )
-    }
+    console.log('[ADD_WORKER] Created employee with user_id:', worker.user_id)
 
     res.json({
       success: true,
