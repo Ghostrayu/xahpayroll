@@ -7,6 +7,7 @@ import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import CreatePaymentChannelModal from '../components/CreatePaymentChannelModal'
 import AddWorkerModal from '../components/AddWorkerModal'
+import DeleteWorkerModal from '../components/DeleteWorkerModal'
 import NGONotifications from '../components/NGONotifications'
 import { ActiveWorkersSection } from '../components/ActiveWorkersSection'
 import { paymentChannelApi, organizationApi, notificationApi } from '../services/api'
@@ -21,6 +22,7 @@ const NgoDashboard: React.FC = () => {
   const { orgStats, workers, paymentChannels, recentActivity, refreshData } = useData()
   const [showEscrowModal, setShowEscrowModal] = useState(false)
   const [showAddWorkerModal, setShowAddWorkerModal] = useState(false)
+  const [showDeleteWorkerModal, setShowDeleteWorkerModal] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [selectedChannel, setSelectedChannel] = useState<any>(null)
   const [cancelingChannel, setCancelingChannel] = useState<string | null>(null)
@@ -564,12 +566,18 @@ const NgoDashboard: React.FC = () => {
           </div>
 
           {/* Quick Actions */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <button
               onClick={() => setShowAddWorkerModal(true)}
               className="bg-xah-blue hover:bg-primary-700 text-white font-bold py-4 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-lg"
             >
               ➕ ADD WORKER
+            </button>
+            <button
+              onClick={() => setShowDeleteWorkerModal(true)}
+              className="bg-red-500 hover:bg-red-600 text-white font-bold py-4 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-lg"
+            >
+              🗑️ DELETE WORKER
             </button>
             <button
               onClick={() => setShowEscrowModal(true)}
@@ -1012,12 +1020,20 @@ const NgoDashboard: React.FC = () => {
                   </div>
                 )}
               </div>
-              <button 
-                onClick={() => setShowAddWorkerModal(true)}
-                className="w-full mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-sm uppercase tracking-wide transition-colors"
-              >
-                + ADD WORKER
-              </button>
+              <div className="flex gap-2 mt-4">
+                <button
+                  onClick={() => setShowAddWorkerModal(true)}
+                  className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-sm uppercase tracking-wide transition-colors"
+                >
+                  + ADD WORKER
+                </button>
+                <button
+                  onClick={() => setShowDeleteWorkerModal(true)}
+                  className="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-4 rounded-lg text-sm uppercase tracking-wide transition-colors"
+                >
+                  🗑️ DELETE WORKER
+                </button>
+              </div>
             </div>
           </div>
             </>
@@ -1057,6 +1073,17 @@ const NgoDashboard: React.FC = () => {
           // Refresh dashboard data after worker is added
           refreshData()
         }}
+      />
+
+      {/* Delete Worker Modal */}
+      <DeleteWorkerModal
+        isOpen={showDeleteWorkerModal}
+        onClose={() => setShowDeleteWorkerModal(false)}
+        onSuccess={() => {
+          // Refresh dashboard data after worker is deleted
+          refreshData()
+        }}
+        workers={workers}
       />
 
       {/* Payment Channel Closure Confirmation Modal (Cancel/Finalize) */}

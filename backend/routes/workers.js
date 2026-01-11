@@ -174,6 +174,120 @@ router.post('/add', async (req, res) => {
 })
 
 /**
+ * DELETE /api/workers/remove
+ * Remove a worker from an organization
+ * Validates that worker has no active payment channels before deletion
+ */
+router.delete('/remove', async (req, res) => {
+  try {
+    const { walletAddress, ngoWalletAddress } = req.body
+
+    // Validate required fields
+    if (!walletAddress || !ngoWalletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Worker wallet address and NGO wallet address are required' }
+      })
+    }
+
+    // Get organization by NGO wallet address
+    const orgResult = await query(
+      `SELECT o.id
+       FROM organizations o
+       JOIN users u ON o.user_id = u.id
+       WHERE u.wallet_address = $1`,
+      [ngoWalletAddress]
+    )
+
+    if (orgResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: { message: 'Organization not found' }
+      })
+    }
+
+    const organizationId = orgResult.rows[0].id
+
+    // Check if worker exists in this organization
+    const workerCheck = await query(
+      'SELECT id FROM employees WHERE organization_id = $1 AND employee_wallet_address = $2',
+      [organizationId, walletAddress]
+    )
+
+    if (workerCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: { message: 'Worker not found in your organization' }
+      })
+    }
+
+    const employeeId = workerCheck.rows[0].id
+
+    // Check for active payment channels
+    const activeChannels = await query(
+      `SELECT channel_id, job_name, status, off_chain_accumulated_balance
+       FROM payment_channels
+       WHERE employee_id = $1 AND organization_id = $2 AND status IN ('active', 'closing')`,
+      [employeeId, organizationId]
+    )
+
+    if (activeChannels.rows.length > 0) {
+      return res.status(409).json({
+        success: false,
+        error: {
+          message: 'Cannot remove worker with active payment channels',
+          activeChannels: activeChannels.rows.map(c => ({
+            jobName: c.job_name,
+            status: c.status,
+            balance: parseFloat(c.off_chain_accumulated_balance || 0)
+          }))
+        }
+      })
+    }
+
+    // Check for unpaid balances
+    const unpaidBalance = await query(
+      `SELECT SUM(off_chain_accumulated_balance) as total
+       FROM payment_channels
+       WHERE employee_id = $1 AND organization_id = $2 AND status = 'active'`,
+      [employeeId, organizationId]
+    )
+
+    const totalUnpaid = parseFloat(unpaidBalance.rows[0]?.total || 0)
+
+    if (totalUnpaid > 0) {
+      return res.status(409).json({
+        success: false,
+        error: {
+          message: `Cannot remove worker with unpaid balance of ${totalUnpaid} XAH`,
+          unpaidBalance: totalUnpaid
+        }
+      })
+    }
+
+    // Delete worker from organization
+    await query(
+      'DELETE FROM employees WHERE id = $1 AND organization_id = $2',
+      [employeeId, organizationId]
+    )
+
+    res.json({
+      success: true,
+      message: 'Worker removed from organization successfully'
+    })
+  } catch (error) {
+    console.error('Error removing worker:', error)
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Failed to remove worker',
+        details: error.message
+      }
+    })
+  }
+})
+
+/**
  * GET /api/workers/list/:ngoWalletAddress
  * Get all workers for an organization
  */
