@@ -997,7 +997,7 @@ router.get('/:walletAddress/payment-channels', async (req, res) => {
         maxDailyHours: parseFloat(c.max_daily_hours || 8.00),
         status: c.status,
         lastUpdate,
-        balanceUpdateFrequency: c.balance_update_frequency || 'Hourly',
+        balanceUpdateFrequency: c.balance_update_frequency || 'hourly',
         lastLedgerSync: c.last_ledger_sync,
         expirationTime: c.expiration_time,
         closureTxHash: c.closure_tx_hash

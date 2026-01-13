@@ -682,7 +682,7 @@ router.get('/payment-channels/:walletAddress', async (req, res) => {
         hoursAccumulated: parseFloat(c.hours_accumulated),
         status: c.status,
         lastUpdate,
-        balanceUpdateFrequency: c.balance_update_frequency || 'Hourly',
+        balanceUpdateFrequency: c.balance_update_frequency || 'hourly',
         lastLedgerSync: c.last_ledger_sync,
         expirationTime: c.expiration_time,
         closureTxHash: c.closure_tx_hash,
@@ -1220,7 +1220,7 @@ router.post('/:walletAddress/sync-all-channels', async (req, res) => {
                 escrowAmountXah,
                 balanceXah, // on_chain_balance from ledger
                 0, // off_chain_accumulated_balance starts at 0 (no completed sessions yet)
-                'Hourly', // Default frequency
+                'hourly', // Default frequency
                 'closing', // Status is closing because expiration exists
                 expirationTimestamp,
                 ledgerChannel.settle_delay || 0
@@ -1256,7 +1256,7 @@ router.post('/:walletAddress/sync-all-channels', async (req, res) => {
                 escrowAmountXah,
                 balanceXah, // on_chain_balance from ledger
                 0, // off_chain_accumulated_balance starts at 0 (no completed sessions yet)
-                'Hourly', // Default frequency
+                'hourly', // Default frequency
                 'active', // Status is active (no expiration)
                 ledgerChannel.settle_delay || 0
               ]

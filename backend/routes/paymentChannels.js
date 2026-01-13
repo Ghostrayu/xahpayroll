@@ -322,7 +322,7 @@ const isValidChannelId = (channelId) => {
  * @param {string} workerWalletAddress - Worker wallet address
  * @param {string} [jobName] - Optional job name (defaults to 'PAYMENT CHANNEL')
  * @param {number} [hourlyRate] - Optional hourly rate (defaults to 20.00)
- * @param {string} [balanceUpdateFrequency] - Optional update frequency (defaults to 'Hourly')
+ * @param {string} [balanceUpdateFrequency] - Optional update frequency (defaults to 'hourly')
  */
 router.post('/sync-from-ledger', async (req, res) => {
   try {
@@ -503,7 +503,7 @@ router.post('/sync-from-ledger', async (req, res) => {
         channelId,
         jobName || 'PAYMENT CHANNEL', // Use provided job name or default
         hourlyRate || 20.00, // Use provided hourly rate or default
-        balanceUpdateFrequency || 'Hourly', // Use provided frequency or default
+        balanceUpdateFrequency || 'hourly', // Use provided frequency or default
         balanceXAH,
         0, // Default hours
         'active',
