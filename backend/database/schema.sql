@@ -12,7 +12,7 @@
 -- =====================================================
 
 -- 1. Users Table (FIRST - no dependencies)
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   wallet_address VARCHAR(64) UNIQUE NOT NULL,
   user_type VARCHAR(20) NOT NULL CHECK (user_type IN ('employee', 'employer', 'ngo', 'admin')),
@@ -34,7 +34,7 @@ COMMENT ON COLUMN users.deletion_reason IS 'Reason for account deletion';
 COMMENT ON COLUMN users.display_name IS 'User display name (fallback for full_name)';
 
 -- 2. Organizations Table
-CREATE TABLE organizations (
+CREATE TABLE IF NOT EXISTS organizations (
   id SERIAL PRIMARY KEY,
   user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
   organization_name VARCHAR(255) NOT NULL,
@@ -54,7 +54,7 @@ CREATE TABLE organizations (
 COMMENT ON TABLE organizations IS 'NGOs and employers who hire workers';
 
 -- 3. Employees Table
-CREATE TABLE employees (
+CREATE TABLE IF NOT EXISTS employees (
   id SERIAL PRIMARY KEY,
   user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
   organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
@@ -75,7 +75,7 @@ CREATE TABLE employees (
 COMMENT ON TABLE employees IS 'Workers employed by organizations';
 
 -- 4. Work Sessions Table
-CREATE TABLE work_sessions (
+CREATE TABLE IF NOT EXISTS work_sessions (
   id SERIAL PRIMARY KEY,
   employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
   organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
@@ -94,7 +94,7 @@ CREATE TABLE work_sessions (
 COMMENT ON TABLE work_sessions IS 'Individual work shifts with clock in/out times';
 
 -- 5. Payments Table
-CREATE TABLE payments (
+CREATE TABLE IF NOT EXISTS payments (
   id SERIAL PRIMARY KEY,
   session_id INTEGER REFERENCES work_sessions(id) ON DELETE SET NULL,
   employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
@@ -115,7 +115,7 @@ CREATE TABLE payments (
 COMMENT ON TABLE payments IS 'All payment transactions from escrow to workers';
 
 -- 6. Escrow Transactions Table
-CREATE TABLE escrow_transactions (
+CREATE TABLE IF NOT EXISTS escrow_transactions (
   id SERIAL PRIMARY KEY,
   organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
   transaction_type VARCHAR(20) CHECK (transaction_type IN ('deposit', 'withdrawal', 'payment', 'refund')),
@@ -131,7 +131,7 @@ CREATE TABLE escrow_transactions (
 COMMENT ON TABLE escrow_transactions IS 'Audit trail of all escrow account movements';
 
 -- 7. Payment Configurations Table
-CREATE TABLE payment_configurations (
+CREATE TABLE IF NOT EXISTS payment_configurations (
   id SERIAL PRIMARY KEY,
   organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
   timeout_threshold_minutes INTEGER DEFAULT 60,
@@ -148,7 +148,7 @@ CREATE TABLE payment_configurations (
 COMMENT ON TABLE payment_configurations IS 'Customizable payment rules per organization';
 
 -- 8. Activity Logs Table
-CREATE TABLE activity_logs (
+CREATE TABLE IF NOT EXISTS activity_logs (
   id SERIAL PRIMARY KEY,
   user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL,
@@ -165,7 +165,7 @@ CREATE TABLE activity_logs (
 COMMENT ON TABLE activity_logs IS 'Audit trail of all user actions';
 
 -- 9. Notifications Table
-CREATE TABLE notifications (
+CREATE TABLE IF NOT EXISTS notifications (
   id SERIAL PRIMARY KEY,
   user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
   notification_type VARCHAR(50) NOT NULL,
@@ -179,7 +179,7 @@ CREATE TABLE notifications (
 COMMENT ON TABLE notifications IS 'User notifications for important events';
 
 -- 10. API Keys Table
-CREATE TABLE api_keys (
+CREATE TABLE IF NOT EXISTS api_keys (
   id SERIAL PRIMARY KEY,
   organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
   key_hash VARCHAR(255) UNIQUE NOT NULL,
