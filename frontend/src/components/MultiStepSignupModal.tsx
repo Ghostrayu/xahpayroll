@@ -108,8 +108,6 @@ export default function MultiStepSignupModal({
           await organizationApi.create({
             organizationName: organizationData.organizationName,
             escrowWalletAddress: walletAddress,
-            website: organizationData.website,
-            description: organizationData.description,
           })
           console.log('[ORG_CREATED]', {
             walletAddress,

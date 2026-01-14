@@ -232,8 +232,6 @@ export interface OrganizationData {
   id: number                       // Database organizations ID
   organizationName: string         // Organization display name (required)
   escrowWalletAddress: string      // MUST match user's wallet_address (required)
-  website?: string                 // Organization website URL (optional)
-  description?: string             // Mission statement/description (optional, max 2000 chars)
   createdAt: string                // ISO 8601 timestamp of creation
   updatedAt?: string               // ISO 8601 timestamp of last update
 }
@@ -248,8 +246,6 @@ export interface OrganizationData {
 export interface OrganizationCreateRequest {
   organizationName: string         // Organization name (required)
   escrowWalletAddress: string      // MUST match logged-in user's wallet address (required)
-  website?: string                 // Website URL (optional)
-  description?: string             // Mission statement (optional, max 2000 chars)
 }
 
 /**
@@ -261,8 +257,6 @@ export interface OrganizationCreateRequest {
  */
 export interface OrganizationUpdateRequest {
   organizationName?: string        // Update organization name
-  website?: string                 // Update website URL
-  description?: string             // Update mission statement
 }
 
 /**
