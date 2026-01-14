@@ -1,5 +1,6 @@
 const PDFDocument = require('pdfkit');
 const pool = require('../database/db');
+const path = require('path');
 
 /**
  * Fetch comprehensive worker data from all tables
@@ -350,7 +351,7 @@ async function generateWorkerDataPDF(walletAddress, res) {
     doc.moveDown(2);
 
     // Add logo image at the bottom
-    const logoPath = '/Users/iranrayu/Documents/CODE/xahpayroll.folder/xahaupayroll/frontend/src/assets/images/IMG_4027.png';
+    const logoPath = path.join(__dirname, '..', 'assets', 'IMG_4027.png');
     try {
       // Center the image on the page
       const imageWidth = 80; // Smaller logo size
@@ -785,7 +786,7 @@ async function generateNGODataPDF(walletAddress, res) {
     doc.moveDown(2);
 
     // Add logo image at the bottom
-    const logoPath = '/Users/iranrayu/Documents/CODE/xahpayroll.folder/xahaupayroll/frontend/src/assets/images/IMG_4027.png';
+    const logoPath = path.join(__dirname, '..', 'assets', 'IMG_4027.png');
     try {
       // Center the image on the page
       const imageWidth = 80; // Smaller logo size
