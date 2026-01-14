@@ -169,10 +169,14 @@ router.get('/stats/:walletAddress', async (req, res) => {
     )
 
     // Get total paid amount
+    // CRITICAL: Workers are paid via PaymentChannelClaim when channels close
+    // Calculate from closed/closing channels' on_chain_balance (actual ledger value)
     const totalPaidResult = await query(
-      `SELECT COALESCE(SUM(amount), 0) as total_paid
-       FROM payments
-       WHERE organization_id = $1 AND payment_status = 'completed'`,
+      `SELECT COALESCE(SUM(on_chain_balance), 0) as total_paid
+       FROM payment_channels
+       WHERE organization_id = $1
+       AND status IN ('closed', 'closing')
+       AND on_chain_balance > 0`,
       [organization.id]
     )
 
