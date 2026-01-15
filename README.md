@@ -235,6 +235,7 @@ WE WELCOME CONTRIBUTIONS! PLEASE SEE [CONTRIBUTING.md](CONTRIBUTING.md) FOR:
 <div align="center">
 
 **BUILT WITH ❤️ FOR THE XAHAU ECOSYSTEM**
+**GOOD MONEY COLLECTIVE DONATION XRPL ADDRESS: r3pgsajrrWoFaTajo1wBEEvYzL1RAxjXMe**
 
 [📖 FAQ](DOCUMENTS/FAQ.md) • [⭐ STAR THIS PROJECT](https://github.com/Ghostrayu/xahpayroll) • [🐛 REPORT BUG](https://github.com/Ghostrayu/xahpayroll/issues) • [💡 REQUEST FEATURE](https://github.com/Ghostrayu/xahpayroll/issues)
 
