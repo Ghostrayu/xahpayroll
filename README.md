@@ -11,7 +11,7 @@
 [![Security](https://img.shields.io/badge/security-policy-red.svg)](SECURITY.md)
 [![Code of Conduct](https://img.shields.io/badge/code%20of%20conduct-contributor%20covenant-purple.svg)](CODE_OF_CONDUCT.md)
 
-**[DOCUMENTATION](DOCUMENTS/) • [QUICKSTART](DOCUMENTS/QUICKSTART.md) • [ARCHITECTURE](DOCUMENTS/ARCHITECTURE.md) • [SECURITY](SECURITY.md)**
+**[DOCUMENTATION](DOCUMENTS/) • [FAQ](DOCUMENTS/FAQ.md) • [QUICKSTART](DOCUMENTS/QUICKSTART.md) • [ARCHITECTURE](DOCUMENTS/ARCHITECTURE.md) • [SECURITY](SECURITY.md)**
 
 ---
 
@@ -100,6 +100,7 @@ npm run dev
 ## 📚 DOCUMENTATION
 
 ### CORE DOCUMENTATION
+- [**FAQ.md**](DOCUMENTS/FAQ.md) - FREQUENTLY ASKED QUESTIONS, USE CASES, AND KNOWN LIMITATIONS
 - [**ARCHITECTURE.md**](DOCUMENTS/ARCHITECTURE.md) - SYSTEM DESIGN, PAYMENT FLOW, DATABASE SCHEMA (500+ LINES)
 - [**QUICKSTART.md**](DOCUMENTS/QUICKSTART.md) - DETAILED SETUP GUIDE AND CONFIGURATION
 - [**DATABASE_SETUP.md**](DOCUMENTS/DATABASE_SETUP.md) - DATABASE CONFIGURATION AND MIGRATION
@@ -235,6 +236,6 @@ WE WELCOME CONTRIBUTIONS! PLEASE SEE [CONTRIBUTING.md](CONTRIBUTING.md) FOR:
 
 **BUILT WITH ❤️ FOR THE XAHAU ECOSYSTEM**
 
-[⭐ STAR THIS PROJECT](https://github.com/Ghostrayu/xahpayroll) • [🐛 REPORT BUG](https://github.com/Ghostrayu/xahpayroll/issues) • [💡 REQUEST FEATURE](https://github.com/Ghostrayu/xahpayroll/issues)
+[📖 FAQ](DOCUMENTS/FAQ.md) • [⭐ STAR THIS PROJECT](https://github.com/Ghostrayu/xahpayroll) • [🐛 REPORT BUG](https://github.com/Ghostrayu/xahpayroll/issues) • [💡 REQUEST FEATURE](https://github.com/Ghostrayu/xahpayroll/issues)
 
 </div>
