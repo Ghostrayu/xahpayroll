@@ -7,7 +7,7 @@ import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import UnclaimedBalanceWarningModal from '../components/UnclaimedBalanceWarningModal'
 import { WorkSessionTimer } from '../components/WorkSessionTimer'
-import { paymentChannelApi, workerApi, workerNotificationsApi } from '../services/api'
+import { paymentChannelApi, workerApi, workerNotificationsApi, closureRequestsApi } from '../services/api'
 import { closePaymentChannel, verifyChannelClosure } from '../utils/paymentChannels'
 import { getTransactionExplorerUrl, getAccountExplorerUrl } from '../utils/networkUtils'
 
@@ -205,7 +205,16 @@ const WorkerDashboard: React.FC = () => {
     }))
 
   /**
-   * Handle close channel button click - opens confirmation modal
+   * Handle request closure button click - opens confirmation modal
+   *
+   * ARCHITECTURAL CHANGE (2026-01-16):
+   * Workers can NO LONGER directly close payment channels.
+   * This function now creates a closure REQUEST that NGOs must approve.
+   *
+   * RATIONALE:
+   * XRPL PaymentChannelClaim requires NGO signature when worker (destination)
+   * attempts to claim accumulated balance. Without NGO's private key, workers
+   * cannot generate the required Signature field, causing temBAD_SIGNATURE errors.
    */
   const handleCloseClick = (channel: any) => {
     setSelectedChannel(channel)
@@ -213,152 +222,57 @@ const WorkerDashboard: React.FC = () => {
   }
 
   /**
-   * Handle close confirmation - executes the 3-step closure flow
-   * Same as NGO flow but with worker authorization
-   *
-   * @param forceClose - If true, bypass unclaimed balance warning
+   * Handle closure request submission
+   * Creates a request for NGO to approve and close the channel
    */
   const handleCloseConfirm = async (forceClose: boolean = false) => {
-    if (!selectedChannel || !walletAddress) {
-      alert('MISSING WALLET ADDRESS OR CHANNEL SELECTION')
+    if (!selectedChannel || !walletAddress || !userName) {
+      alert('MISSING REQUIRED INFORMATION')
       return
     }
 
     setCancelingChannel(selectedChannel.channelId)
 
     try {
-      // Step 1: Get XRPL transaction details from backend
-      console.log('[WORKER_CLOSE_FLOW] Step 1: Getting transaction details', { forceClose })
-      const response = await paymentChannelApi.cancelPaymentChannel(
-        selectedChannel.channelId,
-        walletAddress,
-        'worker'
-      )
+      console.log('[WORKER_REQUEST_CLOSURE] Submitting closure request', {
+        channelId: selectedChannel.channelId,
+        accumulatedBalance: selectedChannel.accumulatedBalance
+      })
+
+      const response = await closureRequestsApi.createRequest({
+        channelId: selectedChannel.channelId,
+        workerWalletAddress: walletAddress,
+        workerName: userName,
+        requestMessage: `WORKER REQUESTING CLOSURE OF PAYMENT CHANNEL. ACCUMULATED BALANCE: ${selectedChannel.accumulatedBalance} XAH`
+      })
 
       if (!response.success) {
-        // Check if error is UNCLAIMED_BALANCE warning
-        if (response.error?.code === 'UNCLAIMED_BALANCE' && !forceClose) {
-          console.log('[WORKER_CLOSE_FLOW] Unclaimed balance detected, showing warning')
-          setUnclaimedBalanceData({
-            unpaidBalance: response.error.unpaidBalance,
-            callerType: response.error.callerType
-          })
-          setShowCancelConfirm(false)
-          setShowUnclaimedWarning(true)
-          setCancelingChannel(null)
-          return
-        }
-
-        throw new Error(response.error?.message || 'FAILED TO PREPARE CLOSURE')
+        throw new Error(response.error?.message || 'FAILED TO CREATE CLOSURE REQUEST')
       }
 
-      if (!response.data) {
-        throw new Error('NO DATA RETURNED FROM BACKEND')
-      }
-
-      const { channel, xrplTransaction } = response.data
-
-      console.log('[WORKER_CLOSE_FLOW] Step 1 complete. Worker payment:', channel.accumulatedBalance, 'XAH')
-      console.log('[WORKER_CLOSE_FLOW] Backend returned xrplTransaction:', {
-        hasPublicKey: !!xrplTransaction.PublicKey,
-        publicKeyPreview: xrplTransaction.PublicKey ? `${xrplTransaction.PublicKey.substring(0, 20)}...` : 'MISSING',
-        balance: xrplTransaction.Balance,
-        transactionType: xrplTransaction.TransactionType,
-        flags: xrplTransaction.Flags
-      })
-
-      // Step 2: Execute XRPL transaction
-      console.log('[WORKER_CLOSE_FLOW] Step 2: Executing XRPL PaymentChannelClaim')
-      const txResult = await closePaymentChannel(
-        {
-          channelId: channel.channelId,
-          balance: xrplTransaction.Balance,
-          escrowReturn: xrplTransaction.Amount,
-          account: walletAddress,
-          publicKey: xrplTransaction.PublicKey,
-          isSourceClosure: false, // Worker is the destination (receiver) of the payment channel
-          sourceAddress: channel.ngoWalletAddress || channel.organizationWalletAddress,
-          destinationAddress: walletAddress
-        },
-        provider,
-        network
-      )
-
-      if (!txResult.success || !txResult.hash) {
-        throw new Error(txResult.error || 'XRPL TRANSACTION FAILED')
-      }
-
-      console.log('[WORKER_CLOSE_FLOW] Step 2 complete. TX:', txResult.hash)
-
-      // Step 2.5: CRITICAL - Verify transaction on ledger before database update
-      console.log('[WORKER_CLOSE_FLOW] Step 2.5: Verifying transaction on ledger...')
-      const validation = await verifyChannelClosure(
-        channel.channelId,
-        txResult.hash,
-        network,
-        false // isSourceClosure = false for worker (destination) closures
-      )
-
-      if (!validation.success || !validation.validated) {
-        console.error('[WORKER_CLOSE_FLOW] VALIDATION FAILED', validation)
-        throw new Error(
-          `TRANSACTION FAILED ON LEDGER: ${validation.error || 'NOT_VALIDATED'}\n` +
-          `Result Code: ${validation.details?.transactionResult || 'UNKNOWN'}\n\n` +
-          `The transaction was submitted but rejected by the network. ` +
-          `Your wallet balance has not changed and the channel remains active.`
-        )
-      }
-
-      console.log('[WORKER_CLOSE_FLOW] Transaction validated successfully ✅', {
-        transactionResult: validation.details?.transactionResult,
-        channelRemoved: validation.channelRemoved
-      })
-
-      // Step 3: Confirm closure in database (ONLY after validation succeeds)
-      console.log('[WORKER_CLOSE_FLOW] Step 3: Confirming closure in database')
-      await paymentChannelApi.confirmChannelClosure(
-        selectedChannel.channelId,
-        txResult.hash,
-        walletAddress,
-        'worker'
-      )
-
-      console.log('[WORKER_CLOSE_FLOW] Complete! Channel closed.')
-
-      // Success feedback
       alert(
-        `✅ PAYMENT CHANNEL CLOSED SUCCESSFULLY!\n\n` +
-        `YOU RECEIVED: ${channel.accumulatedBalance} XAH\n` +
-        `ESCROW RETURNED TO EMPLOYER: ${channel.escrowReturn} XAH\n` +
-        `TRANSACTION: ${txResult.hash}`
+        `✅ CLOSURE REQUEST SUBMITTED SUCCESSFULLY!\n\n` +
+        `REQUEST ID: ${response.data.requestId}\n` +
+        `YOUR ACCUMULATED BALANCE: ${selectedChannel.accumulatedBalance} XAH\n\n` +
+        `THE NGO/EMPLOYER HAS BEEN NOTIFIED AND WILL REVIEW YOUR REQUEST.\n` +
+        `YOU WILL BE PAID WHEN THEY APPROVE AND CLOSE THE CHANNEL.`
       )
 
-      // Refresh data (work sessions and earnings)
-      console.log('[WORKER_CLOSE_FLOW] Refreshing work sessions and earnings...')
-      await refreshData()
-
-      // Refresh payment channels
-      console.log('[WORKER_CLOSE_FLOW] Refreshing payment channels list...')
+      // Refresh payment channels to show updated status
       const updatedChannels = await workerApi.getPaymentChannels(walletAddress)
       setPaymentChannels(updatedChannels)
-      console.log('[WORKER_CLOSE_FLOW] Payment channels updated. New count:', updatedChannels.length)
 
-      // Refresh notifications to update closure status
-      const notifData = await workerNotificationsApi.getNotifications(walletAddress)
-      setNotifications(notifData.notifications)
-      setUnreadCount(notifData.unreadCount)
-
-      // Close modals
+      // Close modal
       setShowCancelConfirm(false)
-      setShowUnclaimedWarning(false)
+      setSelectedChannel(null)
+      setCancelingChannel(null)
 
     } catch (error: any) {
-      console.error('[WORKER_CLOSE_ERROR]', error)
-      alert(`❌ FAILED TO CLOSE CHANNEL:\n\n${error.message}`)
+      console.error('[WORKER_REQUEST_CLOSURE_ERROR]', error)
+      alert(`❌ FAILED TO SUBMIT CLOSURE REQUEST:\n\n${error.message}`)
     } finally {
       setCancelingChannel(null)
       setSelectedChannel(null)
-      setUnclaimedBalanceData(null)
     }
   }
 
@@ -945,8 +859,8 @@ const WorkerDashboard: React.FC = () => {
                           className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white font-bold rounded text-xs uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {cancelingChannel === channel.channelId
-                            ? 'CLOSING...'
-                            : 'CLOSE CHANNEL'}
+                            ? 'REQUESTING...'
+                            : 'REQUEST CLOSURE'}
                         </button>
                       )}
                     </div>
@@ -1311,16 +1225,16 @@ const WorkerDashboard: React.FC = () => {
 
       <Footer />
 
-      {/* Close Channel Confirmation Modal */}
+      {/* Request Channel Closure Modal */}
       {showCancelConfirm && selectedChannel && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-2xl">
             <div className="mb-4">
               <h3 className="text-xl font-extrabold text-gray-900 uppercase tracking-tight mb-2">
-                CLOSE PAYMENT CHANNEL
+                REQUEST CHANNEL CLOSURE
               </h3>
               <p className="text-sm text-gray-700 uppercase">
-                ARE YOU SURE YOU WANT TO CLOSE THIS CHANNEL?
+                SUBMIT A REQUEST FOR YOUR EMPLOYER TO CLOSE THIS CHANNEL?
               </p>
             </div>
 
@@ -1342,15 +1256,15 @@ const WorkerDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Warning */}
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+            {/* Info */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
               <div className="flex gap-2">
-                <div className="text-yellow-600 text-xl flex-shrink-0">⚠️</div>
-                <div className="space-y-2 text-xs text-yellow-800 uppercase">
-                  <p className="font-bold uppercase tracking-wide">IMPORTANT:</p>
-                  <p>• YOU WILL RECEIVE YOUR ACCUMULATED BALANCE</p>
-                  <p>• UNUSED ESCROW RETURNS TO EMPLOYER</p>
-                  <p>• THIS ACTION CANNOT BE UNDONE</p>
+                <div className="text-blue-600 text-xl flex-shrink-0">ℹ️</div>
+                <div className="space-y-2 text-xs text-blue-800 uppercase">
+                  <p className="font-bold uppercase tracking-wide">WHAT HAPPENS NEXT:</p>
+                  <p>• YOUR EMPLOYER WILL BE NOTIFIED</p>
+                  <p>• THEY WILL REVIEW AND APPROVE YOUR REQUEST</p>
+                  <p>• YOU WILL RECEIVE YOUR BALANCE WHEN THEY CLOSE THE CHANNEL</p>
                 </div>
               </div>
             </div>
@@ -1365,14 +1279,14 @@ const WorkerDashboard: React.FC = () => {
                 disabled={cancelingChannel === selectedChannel.channelId}
                 className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold rounded uppercase tracking-wide text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                KEEP CHANNEL
+                CANCEL
               </button>
               <button
                 onClick={() => handleCloseConfirm(false)}
                 disabled={cancelingChannel === selectedChannel.channelId}
                 className="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded uppercase tracking-wide text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {cancelingChannel === selectedChannel.channelId ? 'CLOSING...' : 'CLOSE CHANNEL'}
+                {cancelingChannel === selectedChannel.channelId ? 'REQUESTING...' : 'REQUEST CLOSURE'}
               </button>
             </div>
           </div>

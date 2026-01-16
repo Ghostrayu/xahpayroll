@@ -10,11 +10,11 @@ import AddWorkerModal from '../components/AddWorkerModal'
 import DeleteWorkerModal from '../components/DeleteWorkerModal'
 import NGONotifications from '../components/NGONotifications'
 import { ActiveWorkersSection } from '../components/ActiveWorkersSection'
-import { paymentChannelApi, organizationApi, notificationApi } from '../services/api'
+import { paymentChannelApi, organizationApi, notificationApi, closureRequestsApi } from '../services/api'
 import { closePaymentChannel } from '../utils/paymentChannels'
 import { getTransactionExplorerUrl } from '../utils/networkUtils'
 
-type DashboardTab = 'overview' | 'notifications'
+type DashboardTab = 'overview' | 'notifications' | 'closure-requests'
 
 const NgoDashboard: React.FC = () => {
   const { userName } = useAuth()
@@ -32,6 +32,9 @@ const NgoDashboard: React.FC = () => {
   const [organizationId, setOrganizationId] = useState<number | null>(null)
   const [unreadCount, setUnreadCount] = useState<number>(0)
   const [downloadingData, setDownloadingData] = useState(false)
+  const [closureRequests, setClosureRequests] = useState<any[]>([])
+  const [loadingRequests, setLoadingRequests] = useState(false)
+  const [processingRequestId, setProcessingRequestId] = useState<number | null>(null)
 
   // Use data from context with fallback defaults
   const stats = orgStats || {
@@ -106,6 +109,27 @@ const NgoDashboard: React.FC = () => {
 
     syncExpiredChannels()
   }, [walletAddress, refreshData])
+
+  // Fetch closure requests when tab is active
+  useEffect(() => {
+    const fetchClosureRequests = async () => {
+      if (!walletAddress || activeTab !== 'closure-requests') return
+
+      setLoadingRequests(true)
+      try {
+        const response = await closureRequestsApi.getNGORequests(walletAddress)
+        if (response.success && response.data) {
+          setClosureRequests(response.data.requests)
+        }
+      } catch (error) {
+        console.error('[FETCH_CLOSURE_REQUESTS_ERROR]', error)
+      } finally {
+        setLoadingRequests(false)
+      }
+    }
+
+    fetchClosureRequests()
+  }, [walletAddress, activeTab])
 
   /**
    * Check if a closing channel has passed its expiration time
@@ -473,6 +497,129 @@ const NgoDashboard: React.FC = () => {
     }
   }
 
+  /**
+   * Handle approval of worker closure request
+   * NGO approves request and executes channel closure
+   */
+  const handleApproveRequest = async (request: any) => {
+    if (!walletAddress) {
+      alert('WALLET ADDRESS NOT AVAILABLE')
+      return
+    }
+
+    const confirmed = confirm(
+      `APPROVE CLOSURE REQUEST?\n\n` +
+      `WORKER: ${request.worker_name}\n` +
+      `JOB: ${request.job_title}\n` +
+      `BALANCE TO PAY: ${request.accumulated_balance} XAH\n\n` +
+      `YOU WILL EXECUTE THE CHANNEL CLOSURE TRANSACTION.`
+    )
+
+    if (!confirmed) return
+
+    setProcessingRequestId(request.request_id)
+
+    try {
+      console.log('[APPROVE_CLOSURE_REQUEST] Approving request', { requestId: request.request_id })
+
+      // Step 1: Approve request and get XRPL transaction
+      const approveResponse = await closureRequestsApi.approveRequest(request.request_id, walletAddress)
+
+      if (!approveResponse.success || !approveResponse.data) {
+        throw new Error(approveResponse.error?.message || 'FAILED TO APPROVE REQUEST')
+      }
+
+      const { xrplTransaction } = approveResponse.data
+
+      console.log('[APPROVE_CLOSURE_REQUEST] Executing XRPL transaction', {
+        channel: request.channel_id,
+        balance: xrplTransaction.Balance
+      })
+
+      // Step 2: Execute XRPL PaymentChannelClaim transaction
+      const txResult = await closePaymentChannel(
+        {
+          channelId: request.channel_id,
+          balance: xrplTransaction.Balance,
+          account: walletAddress,
+          isSourceClosure: true, // NGO is the source (owner) of the channel
+          sourceAddress: walletAddress,
+          destinationAddress: request.worker_wallet
+        },
+        provider,
+        network
+      )
+
+      if (!txResult.success || !txResult.hash) {
+        throw new Error(txResult.error || 'XRPL TRANSACTION FAILED')
+      }
+
+      console.log('[APPROVE_CLOSURE_REQUEST] Transaction successful', { hash: txResult.hash })
+
+      // Step 3: Confirm closure in database
+      await closureRequestsApi.confirmClosure(request.request_id, txResult.hash)
+
+      alert(
+        `✅ CLOSURE REQUEST APPROVED AND EXECUTED!\n\n` +
+        `WORKER ${request.worker_name} RECEIVED: ${request.accumulated_balance} XAH\n` +
+        `TRANSACTION: ${txResult.hash}`
+      )
+
+      // Refresh data
+      await refreshData()
+
+      // Refresh closure requests
+      const requestsResponse = await closureRequestsApi.getNGORequests(walletAddress)
+      if (requestsResponse.success && requestsResponse.data) {
+        setClosureRequests(requestsResponse.data.requests)
+      }
+
+    } catch (error: any) {
+      console.error('[APPROVE_CLOSURE_REQUEST_ERROR]', error)
+      alert(`❌ FAILED TO APPROVE CLOSURE REQUEST:\n\n${error.message}`)
+    } finally {
+      setProcessingRequestId(null)
+    }
+  }
+
+  /**
+   * Handle rejection of worker closure request
+   */
+  const handleRejectRequest = async (request: any) => {
+    const reason = prompt(
+      `REJECT CLOSURE REQUEST FROM ${request.worker_name}?\n\n` +
+      `PLEASE PROVIDE A REASON FOR REJECTION:`
+    )
+
+    if (!reason) return
+
+    setProcessingRequestId(request.request_id)
+
+    try {
+      console.log('[REJECT_CLOSURE_REQUEST] Rejecting request', { requestId: request.request_id })
+
+      const response = await closureRequestsApi.rejectRequest(request.request_id, walletAddress!, reason)
+
+      if (!response.success) {
+        throw new Error(response.error?.message || 'FAILED TO REJECT REQUEST')
+      }
+
+      alert(`✅ CLOSURE REQUEST REJECTED\n\nREASON: ${reason}`)
+
+      // Refresh closure requests
+      const requestsResponse = await closureRequestsApi.getNGORequests(walletAddress!)
+      if (requestsResponse.success && requestsResponse.data) {
+        setClosureRequests(requestsResponse.data.requests)
+      }
+
+    } catch (error: any) {
+      console.error('[REJECT_CLOSURE_REQUEST_ERROR]', error)
+      alert(`❌ FAILED TO REJECT REQUEST:\n\n${error.message}`)
+    } finally {
+      setProcessingRequestId(null)
+    }
+  }
+
   return (
     <div className="min-h-screen x-pattern-bg-light">
       <Navbar />
@@ -628,6 +775,21 @@ const NgoDashboard: React.FC = () => {
               {unreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 px-2 py-0.5 bg-red-500 text-white rounded-full text-[10px] font-bold">
                   {unreadCount}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('closure-requests')}
+              className={`px-6 py-4 font-bold text-sm uppercase tracking-wide transition-all relative ${
+                activeTab === 'closure-requests'
+                  ? 'text-xah-blue border-b-4 border-xah-blue'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              CLOSURE REQUESTS
+              {closureRequests.length > 0 && (
+                <span className="absolute -top-1 -right-1 px-2 py-0.5 bg-orange-500 text-white rounded-full text-[10px] font-bold">
+                  {closureRequests.length}
                 </span>
               )}
             </button>
@@ -1051,6 +1213,103 @@ const NgoDashboard: React.FC = () => {
               <p className="text-sm text-gray-600 uppercase tracking-wide mt-4">
                 LOADING ORGANIZATION DATA...
               </p>
+            </div>
+          )}
+
+          {/* Closure Requests Tab */}
+          {activeTab === 'closure-requests' && (
+            <div>
+              <div className="mb-6">
+                <h2 className="text-2xl font-extrabold text-gray-900 uppercase tracking-tight">
+                  WORKER CLOSURE REQUESTS
+                </h2>
+                <p className="text-sm text-gray-600 uppercase tracking-wide mt-2">
+                  REVIEW AND APPROVE WORKER REQUESTS TO CLOSE PAYMENT CHANNELS
+                </p>
+              </div>
+
+              {loadingRequests ? (
+                <div className="text-center py-12">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-xah-blue"></div>
+                  <p className="text-sm text-gray-600 uppercase tracking-wide mt-4">
+                    LOADING CLOSURE REQUESTS...
+                  </p>
+                </div>
+              ) : closureRequests.length === 0 ? (
+                <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                  <div className="text-4xl mb-4">📋</div>
+                  <p className="text-gray-600 font-bold uppercase tracking-wide">
+                    NO PENDING CLOSURE REQUESTS
+                  </p>
+                  <p className="text-sm text-gray-500 uppercase tracking-wide mt-2">
+                    WORKERS CAN REQUEST CHANNEL CLOSURES FROM THEIR DASHBOARD
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {closureRequests.map((request) => (
+                    <div
+                      key={request.request_id}
+                      className="bg-white border-2 border-gray-200 rounded-lg p-6 hover:border-xah-blue transition-colors"
+                    >
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1">
+                          <h3 className="text-lg font-extrabold text-gray-900 uppercase tracking-tight mb-2">
+                            {request.worker_name || request.worker_wallet}
+                          </h3>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <p className="text-gray-600 uppercase tracking-wide font-semibold">JOB:</p>
+                              <p className="text-gray-900 font-bold">{request.job_title}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-600 uppercase tracking-wide font-semibold">BALANCE TO PAY:</p>
+                              <p className="text-green-600 font-bold text-lg">{request.accumulated_balance} XAH</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-600 uppercase tracking-wide font-semibold">ESCROW:</p>
+                              <p className="text-blue-600 font-bold">{request.escrow_amount} XAH</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-600 uppercase tracking-wide font-semibold">REQUESTED:</p>
+                              <p className="text-gray-900 font-bold">
+                                {new Date(request.created_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                          {request.request_message && (
+                            <div className="mt-4 p-3 bg-gray-50 rounded border border-gray-200">
+                              <p className="text-xs text-gray-700 uppercase tracking-wide font-semibold mb-1">
+                                MESSAGE:
+                              </p>
+                              <p className="text-sm text-gray-900">{request.request_message}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex gap-3 mt-4">
+                        <button
+                          onClick={() => handleApproveRequest(request)}
+                          disabled={processingRequestId === request.request_id}
+                          className="flex-1 px-4 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded uppercase tracking-wide text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {processingRequestId === request.request_id
+                            ? '⏳ PROCESSING...'
+                            : '✅ APPROVE & CLOSE'}
+                        </button>
+                        <button
+                          onClick={() => handleRejectRequest(request)}
+                          disabled={processingRequestId === request.request_id}
+                          className="flex-1 px-4 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded uppercase tracking-wide text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {processingRequestId === request.request_id ? '⏳ PROCESSING...' : '❌ REJECT'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

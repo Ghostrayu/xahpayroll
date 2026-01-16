@@ -905,6 +905,152 @@ export const workSessionsApi = {
 }
 
 /**
+ * Channel Closure Requests API calls
+ *
+ * ARCHITECTURAL CHANGE (2026-01-16):
+ * Workers can no longer directly close payment channels with accumulated balances.
+ * This API implements a request-approval workflow where workers request closure
+ * and NGOs must approve and execute the closure transaction.
+ */
+export const closureRequestsApi = {
+  /**
+   * Worker creates a channel closure request
+   */
+  async createRequest(params: {
+    channelId: string
+    workerWalletAddress: string
+    workerName: string
+    requestMessage?: string
+  }): Promise<ApiResponse<{
+    requestId: number
+    channelId: string
+    status: string
+    createdAt: string
+    message: string
+  }>> {
+    return apiFetch('/api/closure-requests/create', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    })
+  },
+
+  /**
+   * Get pending closure requests for an NGO
+   */
+  async getNGORequests(ngoWalletAddress: string): Promise<ApiResponse<{
+    requests: Array<{
+      request_id: number
+      channel_id: string
+      worker_wallet: string
+      worker_name: string
+      accumulated_balance: string
+      escrow_amount: string
+      job_title: string
+      request_message: string
+      status: string
+      created_at: string
+      updated_at: string
+      channel_status: string
+    }>
+    count: number
+  }>> {
+    return apiFetch(`/api/closure-requests/ngo/${encodeURIComponent(ngoWalletAddress)}`)
+  },
+
+  /**
+   * Get closure request history for a worker
+   */
+  async getWorkerRequests(workerWalletAddress: string): Promise<ApiResponse<{
+    requests: Array<{
+      request_id: number
+      channel_id: string
+      ngo_wallet_address: string
+      accumulated_balance: string
+      escrow_amount: string
+      job_title: string
+      request_message: string
+      status: string
+      created_at: string
+      approved_at: string
+      completed_at: string
+      rejection_reason: string
+      closure_tx_hash: string
+      channel_status: string
+      ngo_name: string
+    }>
+    count: number
+  }>> {
+    return apiFetch(`/api/closure-requests/worker/${encodeURIComponent(workerWalletAddress)}`)
+  },
+
+  /**
+   * NGO approves a closure request
+   */
+  async approveRequest(requestId: number, ngoWalletAddress: string): Promise<ApiResponse<{
+    requestId: number
+    channelId: string
+    workerWallet: string
+    workerName: string
+    workerPayment: string
+    xrplTransaction: {
+      TransactionType: string
+      Account: string
+      Channel: string
+      Balance: string
+      Flags: number
+    }
+    message: string
+  }>> {
+    return apiFetch(`/api/closure-requests/${requestId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ ngoWalletAddress }),
+    })
+  },
+
+  /**
+   * NGO rejects a closure request
+   */
+  async rejectRequest(requestId: number, ngoWalletAddress: string, rejectionReason?: string): Promise<ApiResponse<{
+    requestId: number
+    status: string
+    message: string
+  }>> {
+    return apiFetch(`/api/closure-requests/${requestId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ ngoWalletAddress, rejectionReason }),
+    })
+  },
+
+  /**
+   * Confirm channel closure after transaction succeeds
+   */
+  async confirmClosure(requestId: number, txHash: string): Promise<ApiResponse<{
+    requestId: number
+    txHash: string
+    status: string
+    message: string
+  }>> {
+    return apiFetch(`/api/closure-requests/${requestId}/confirm`, {
+      method: 'POST',
+      body: JSON.stringify({ txHash }),
+    })
+  },
+
+  /**
+   * Worker cancels their own pending closure request
+   */
+  async cancelRequest(requestId: number, workerWalletAddress: string): Promise<ApiResponse<{
+    requestId: number
+    status: string
+    message: string
+  }>> {
+    return apiFetch(`/api/closure-requests/${requestId}?workerWalletAddress=${encodeURIComponent(workerWalletAddress)}`, {
+      method: 'DELETE',
+    })
+  },
+}
+
+/**
  * Export ApiError for error handling in components
  */
 export { ApiError }

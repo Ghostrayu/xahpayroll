@@ -401,3 +401,150 @@ CREATE INDEX IF NOT EXISTS idx_users_last_login ON users(last_login_at) WHERE us
 COMMENT ON COLUMN users.deleted_at IS 'Soft delete timestamp for 48-hour grace period';
 COMMENT ON COLUMN users.deletion_reason IS 'Reason provided by user for deletion';
 COMMENT ON COLUMN users.last_login_at IS 'Last login timestamp for inactivity tracking';
+
+-- =====================================================
+-- CHANNEL CLOSURE REQUESTS (Migration 005)
+-- =====================================================
+-- Source: migrations/005_channel_closure_requests.sql
+-- Created: 2026-01-16
+--
+-- ARCHITECTURAL CHANGE:
+-- Workers can NO LONGER directly close payment channels with accumulated balances.
+-- This implements a request-approval workflow where:
+-- 1. Workers submit closure requests
+-- 2. NGOs receive notifications
+-- 3. NGOs approve and execute closures
+--
+-- RATIONALE:
+-- XRPL PaymentChannelClaim requires NGO signature when worker (destination)
+-- attempts to claim accumulated balance. Without NGO's private key, workers
+-- cannot generate the required Signature field, causing temBAD_SIGNATURE errors.
+
+CREATE TABLE IF NOT EXISTS channel_closure_requests (
+  id SERIAL PRIMARY KEY,
+  channel_id VARCHAR(128) NOT NULL REFERENCES payment_channels(channel_id) ON DELETE CASCADE,
+
+  -- Requester details (always worker)
+  requester_wallet_address VARCHAR(100) NOT NULL,
+  requester_name VARCHAR(255),
+
+  -- Channel owner details (NGO/employer)
+  ngo_wallet_address VARCHAR(100) NOT NULL,
+  organization_id INT REFERENCES organizations(id) ON DELETE SET NULL,
+
+  -- Request metadata
+  accumulated_balance NUMERIC(20, 8) NOT NULL DEFAULT 0,
+  escrow_amount NUMERIC(20, 8) NOT NULL DEFAULT 0,
+  job_title VARCHAR(255),
+
+  -- Request status lifecycle
+  status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'completed', 'cancelled')),
+
+  -- Approval tracking
+  approved_by VARCHAR(100),
+  approved_at TIMESTAMP,
+  rejection_reason TEXT,
+
+  -- Completion tracking
+  closure_tx_hash VARCHAR(128),
+  completed_at TIMESTAMP,
+
+  -- Metadata
+  request_message TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+COMMENT ON TABLE channel_closure_requests IS 'Worker-initiated payment channel closure requests requiring NGO approval';
+COMMENT ON COLUMN channel_closure_requests.status IS 'pending: awaiting NGO action | approved: NGO approved, awaiting closure | rejected: NGO declined | completed: channel closed | cancelled: worker cancelled';
+COMMENT ON COLUMN channel_closure_requests.accumulated_balance IS 'Worker earned balance at time of request';
+COMMENT ON COLUMN channel_closure_requests.escrow_amount IS 'Total channel escrow at time of request';
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_closure_requests_ngo_status ON channel_closure_requests(ngo_wallet_address, status);
+CREATE INDEX IF NOT EXISTS idx_closure_requests_worker ON channel_closure_requests(requester_wallet_address, status);
+CREATE INDEX IF NOT EXISTS idx_closure_requests_channel ON channel_closure_requests(channel_id, status);
+CREATE INDEX IF NOT EXISTS idx_closure_requests_created_at ON channel_closure_requests(created_at DESC);
+
+-- Triggers
+CREATE OR REPLACE FUNCTION update_closure_requests_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER closure_requests_updated_at
+  BEFORE UPDATE ON channel_closure_requests
+  FOR EACH ROW
+  EXECUTE FUNCTION update_closure_requests_timestamp();
+
+CREATE OR REPLACE FUNCTION notify_ngo_on_closure_request()
+RETURNS TRIGGER AS $$
+DECLARE
+  org_id INT;
+BEGIN
+  IF (TG_OP = 'INSERT' AND NEW.status = 'pending') THEN
+    SELECT id INTO org_id FROM organizations WHERE escrow_wallet_address = NEW.ngo_wallet_address;
+    IF org_id IS NOT NULL THEN
+      INSERT INTO ngo_notifications (
+        organization_id, notification_type, worker_wallet_address, worker_name, message, metadata
+      ) VALUES (
+        org_id, 'closure_requested', NEW.requester_wallet_address, NEW.requester_name,
+        FORMAT('WORKER %s HAS REQUESTED CLOSURE OF PAYMENT CHANNEL FOR JOB "%s". ACCUMULATED BALANCE: %s XAH',
+          COALESCE(NEW.requester_name, NEW.requester_wallet_address), NEW.job_title, NEW.accumulated_balance),
+        jsonb_build_object('request_id', NEW.id, 'channel_id', NEW.channel_id,
+          'accumulated_balance', NEW.accumulated_balance, 'escrow_amount', NEW.escrow_amount, 'job_title', NEW.job_title)
+      );
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER notify_ngo_closure_request
+  AFTER INSERT ON channel_closure_requests
+  FOR EACH ROW
+  EXECUTE FUNCTION notify_ngo_on_closure_request();
+
+-- Helper function
+CREATE OR REPLACE FUNCTION get_pending_closure_requests(ngo_wallet VARCHAR)
+RETURNS TABLE (
+  request_id INT, channel_id VARCHAR, worker_name VARCHAR, worker_wallet VARCHAR,
+  accumulated_balance NUMERIC, job_title VARCHAR, requested_at TIMESTAMP
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT id, ccr.channel_id, requester_name, requester_wallet_address,
+    ccr.accumulated_balance, ccr.job_title, created_at
+  FROM channel_closure_requests ccr
+  WHERE ccr.ngo_wallet_address = ngo_wallet AND status = 'pending'
+  ORDER BY created_at DESC;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION get_pending_closure_requests IS 'Get all pending closure requests for an NGO organization';
+
+-- Cancel requests when channel closes
+CREATE OR REPLACE FUNCTION cancel_closure_requests_on_channel_close()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF (TG_OP = 'UPDATE' AND OLD.status != 'closed' AND NEW.status = 'closed') THEN
+    UPDATE channel_closure_requests SET status = 'cancelled', updated_at = NOW()
+    WHERE channel_id = NEW.channel_id AND status = 'pending';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER cancel_requests_on_channel_close
+  AFTER UPDATE ON payment_channels
+  FOR EACH ROW
+  EXECUTE FUNCTION cancel_closure_requests_on_channel_close();
+
+-- Unique constraint: only one pending request per channel
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_pending_closure_request
+  ON channel_closure_requests(channel_id) WHERE status = 'pending';
+
+COMMENT ON INDEX idx_unique_pending_closure_request IS 'Ensure only one pending closure request per channel at a time';

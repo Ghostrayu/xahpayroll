@@ -13,6 +13,7 @@ const paymentChannelsRoutes = require('./routes/paymentChannels')
 const workersRoutes = require('./routes/workers')
 const workerNotificationsRoutes = require('./routes/workerNotifications')
 const workSessionsRoutes = require('./routes/workSessions')
+const closureRequestsRoutes = require('./routes/closureRequests')
 
 // NOTE: Scheduled jobs now run via system cron (see backend/jobs/runHardDelete.js)
 // This ensures jobs run independently of server uptime for production reliability
@@ -129,6 +130,7 @@ app.use('/api/payment-channels', paymentChannelsRoutes)
 app.use('/api/workers', workersRoutes)
 app.use('/api/worker-notifications', workerNotificationsRoutes)
 app.use('/api/work-sessions', workSessionsRoutes)
+app.use('/api/closure-requests', closureRequestsRoutes)
 
 // Error handling middleware
 app.use((err, req, res, next) => {
