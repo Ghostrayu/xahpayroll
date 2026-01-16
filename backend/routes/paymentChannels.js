@@ -480,6 +480,19 @@ router.post('/sync-from-ledger', async (req, res) => {
     const escrowAmountXAH = parseInt(ledgerChannel.Amount) / 1000000
     const balanceXAH = ledgerChannel.Balance ? parseInt(ledgerChannel.Balance) / 1000000 : 0
 
+    // Step 6a: Detect channel status based on expiration
+    const hasExpiration = ledgerChannel.Expiration || ledgerChannel.CancelAfter
+    const channelStatus = hasExpiration ? 'closing' : 'active'
+    const cancelAfterValue = ledgerChannel.Expiration || ledgerChannel.CancelAfter || null
+
+    console.log('[LEDGER_SYNC] Channel status detection:', {
+      hasExpiration,
+      channelStatus,
+      cancelAfterValue,
+      expiration: ledgerChannel.Expiration,
+      cancelAfter: ledgerChannel.CancelAfter
+    })
+
     // Step 7: Insert channel from ledger data
     const channelResult = await query(
       `INSERT INTO payment_channels (
@@ -492,21 +505,23 @@ router.post('/sync-from-ledger', async (req, res) => {
         off_chain_accumulated_balance,
         hours_accumulated,
         status,
+        cancel_after,
         escrow_funded_amount,
         created_at,
         updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
       RETURNING *`,
       [
         organization.id,
         employee.id,
         channelId,
-        jobName || 'PAYMENT CHANNEL', // Use provided job name or default
-        hourlyRate || 20.00, // Use provided hourly rate or default
+        jobName || '[IMPORTED - EDIT JOB NAME]', // Use provided job name or default with indicator
+        hourlyRate || 0.00, // Use provided hourly rate or 0 to indicate needs editing
         balanceUpdateFrequency || 'hourly', // Use provided frequency or default
         balanceXAH,
         0, // Default hours
-        'active',
+        channelStatus, // ✅ Dynamically set based on expiration
+        cancelAfterValue, // ✅ Set expiration timestamp if exists
         escrowAmountXAH
       ]
     )
