@@ -232,14 +232,14 @@ const WorkerDashboard: React.FC = () => {
     try {
       console.log('[WORKER_REQUEST_CLOSURE] Submitting closure request', {
         channelId: selectedChannel.channelId,
-        accumulatedBalance: selectedChannel.accumulatedBalance
+        accumulatedBalance: selectedChannel.balance
       })
 
       const response = await closureRequestsApi.createRequest({
         channelId: selectedChannel.channelId,
         workerWalletAddress: walletAddress,
         workerName: userName,
-        requestMessage: `WORKER REQUESTING CLOSURE OF PAYMENT CHANNEL. ACCUMULATED BALANCE: ${selectedChannel.accumulatedBalance} XAH`
+        requestMessage: `WORKER REQUESTING CLOSURE OF PAYMENT CHANNEL. ACCUMULATED BALANCE: ${selectedChannel.balance} XAH`
       })
 
       if (!response.success) {
@@ -249,7 +249,7 @@ const WorkerDashboard: React.FC = () => {
       alert(
         `✅ CLOSURE REQUEST SUBMITTED SUCCESSFULLY!\n\n` +
         `REQUEST ID: ${response.data?.requestId || 'N/A'}\n` +
-        `YOUR ACCUMULATED BALANCE: ${selectedChannel.accumulatedBalance} XAH\n\n` +
+        `YOUR ACCUMULATED BALANCE: ${selectedChannel.balance} XAH\n\n` +
         `THE NGO/EMPLOYER HAS BEEN NOTIFIED AND WILL REVIEW YOUR REQUEST.\n` +
         `YOU WILL BE PAID WHEN THEY APPROVE AND CLOSE THE CHANNEL.`
       )

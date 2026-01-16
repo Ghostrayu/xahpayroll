@@ -1258,6 +1258,14 @@ const NgoDashboard: React.FC = () => {
                             {request.worker_name || request.worker_wallet}
                           </h3>
                           <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div className="col-span-2">
+                              <p className="text-gray-600 uppercase tracking-wide font-semibold">WORKER WALLET:</p>
+                              <p className="text-gray-900 font-mono text-xs break-all">{request.worker_wallet}</p>
+                            </div>
+                            <div className="col-span-2">
+                              <p className="text-gray-600 uppercase tracking-wide font-semibold">CHANNEL ID:</p>
+                              <p className="text-gray-900 font-mono text-xs break-all">{request.channel_id}</p>
+                            </div>
                             <div>
                               <p className="text-gray-600 uppercase tracking-wide font-semibold">JOB:</p>
                               <p className="text-gray-900 font-bold">{request.job_title}</p>
