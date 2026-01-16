@@ -21,7 +21,7 @@ interface WalletOption {
 }
 
 const WalletSelectionModal: React.FC<WalletSelectionModalProps> = ({ isOpen, onClose }) => {
-  const { connectWallet, isLoading, error, xamanQrUrl, walletAddress } = useWallet()
+  const { connectWallet, isLoading, error, xamanQrUrl, xamanDeepLink, walletAddress } = useWallet()
   const { login, updateProfile } = useAuth()
   const navigate = useNavigate()
   const [selectedWallet, setSelectedWallet] = useState<WalletProvider | null>(null)
@@ -31,13 +31,16 @@ const WalletSelectionModal: React.FC<WalletSelectionModalProps> = ({ isOpen, onC
   const [foundProfile, setFoundProfile] = useState<any>(null)
   const [showProfileFound, setShowProfileFound] = useState(false)
 
+  // Detect if user is on mobile device
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+
   const walletOptions: WalletOption[] = [
     {
       id: 'xaman',
       name: 'Xaman (Xumm)',
       logo: xamanLogo,
-      description: 'Scan QR with mobile app',
-      available: true // Always available - uses QR code
+      description: isMobile ? 'Open Xaman app to sign in' : 'Scan QR or open in new tab',
+      available: true // Always available - uses QR code or deep link
     }
   ]
 
@@ -199,20 +202,64 @@ const WalletSelectionModal: React.FC<WalletSelectionModalProps> = ({ isOpen, onC
 
         {/* Content */}
         <div className="p-6">
-          {/* Show Xaman QR Code if connecting */}
-          {xamanQrUrl && selectedWallet === 'xaman' && (
-            <div className="mb-6 text-center">
-              <p className="text-sm font-bold text-gray-700 uppercase mb-4">
-                Scan QR Code with Xaman App
-              </p>
-              <img 
-                src={xamanQrUrl} 
-                alt="Xaman QR Code" 
-                className="mx-auto border-4 border-xah-blue rounded-lg"
-              />
-              <p className="text-xs text-gray-500 mt-3 uppercase">
-                Waiting for approval...
-              </p>
+          {/* Show Xaman Login Options if connecting */}
+          {xamanQrUrl && xamanDeepLink && selectedWallet === 'xaman' && (
+            <div className="mb-6">
+              {/* Mobile: Show "Open Xaman" button prominently */}
+              {isMobile && (
+                <div className="text-center mb-4">
+                  <p className="text-sm font-bold text-gray-700 uppercase mb-4">
+                    Open Xaman to Sign In
+                  </p>
+                  <a
+                    href={xamanDeepLink}
+                    className="inline-flex items-center gap-3 px-6 py-4 bg-gradient-to-r from-xah-blue to-primary-700 hover:from-primary-700 hover:to-xah-blue text-white font-bold rounded-lg transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 uppercase text-sm"
+                  >
+                    <img
+                      src={xamanLogo}
+                      alt="Xaman logo"
+                      className="w-6 h-6 object-contain"
+                    />
+                    OPEN XAMAN APP
+                  </a>
+                  <p className="text-xs text-gray-500 mt-4 uppercase">
+                    Waiting for approval in Xaman...
+                  </p>
+                </div>
+              )}
+
+              {/* Desktop: Show QR code with optional deep link */}
+              {!isMobile && (
+                <div className="text-center">
+                  <p className="text-sm font-bold text-gray-700 uppercase mb-4">
+                    Scan QR Code with Xaman App
+                  </p>
+                  <img
+                    src={xamanQrUrl}
+                    alt="Xaman QR Code"
+                    className="mx-auto border-4 border-xah-blue rounded-lg mb-4"
+                  />
+                  <p className="text-xs text-gray-500 mb-3 uppercase">
+                    Or open directly:
+                  </p>
+                  <a
+                    href={xamanDeepLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-xah-blue/10 hover:bg-xah-blue/20 text-xah-blue font-semibold rounded-lg transition-colors uppercase text-xs"
+                  >
+                    <img
+                      src={xamanLogo}
+                      alt="Xaman logo"
+                      className="w-4 h-4 object-contain"
+                    />
+                    Open Xaman in New Tab →
+                  </a>
+                  <p className="text-xs text-gray-500 mt-4 uppercase">
+                    Waiting for approval...
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

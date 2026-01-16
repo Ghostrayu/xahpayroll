@@ -15,6 +15,7 @@ export interface WalletContextType {
   isLoading: boolean
   error: string | null
   xamanQrUrl: string | null
+  xamanDeepLink: string | null
   connectWallet: (provider: WalletProvider, address?: string, seed?: string) => Promise<void>
   disconnectWallet: () => void
   getBalance: () => Promise<void>
@@ -36,6 +37,7 @@ interface WalletState {
   isLoading: boolean
   error: string | null
   xamanQrUrl: string | null
+  xamanDeepLink: string | null
 }
 
 // Create Context
@@ -64,7 +66,8 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     provider: null,
     isLoading: false,
     error: null,
-    xamanQrUrl: null
+    xamanQrUrl: null,
+    xamanDeepLink: null
   })
 
   // Store wallet instance for manual connections
@@ -239,11 +242,13 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
               throw new Error('Failed to create Xaman sign-in request')
             }
 
-            // Set QR code URL for display
+            // Set QR code URL and deep link for display
             const qrUrl = request.qrUrl
+            const deepLink = request.deepLink
             setWalletState(prev => ({
               ...prev,
               xamanQrUrl: qrUrl,
+              xamanDeepLink: deepLink,
               isLoading: true
             }))
 
@@ -276,7 +281,8 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
                       provider: 'xaman',
                       isLoading: false,
                       error: null,
-                      xamanQrUrl: null
+                      xamanQrUrl: null,
+                      xamanDeepLink: null
                     }))
                     return
                   } else if (payloadStatus.resolved && !payloadStatus.signed) {
@@ -310,6 +316,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
             setWalletState(prev => ({
               ...prev,
               xamanQrUrl: null,
+              xamanDeepLink: null,
               isLoading: false
             }))
             
@@ -394,7 +401,8 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       provider: null,
       isLoading: false,
       error: null,
-      xamanQrUrl: null
+      xamanQrUrl: null,
+      xamanDeepLink: null
     })
     setWalletInstance(null)
     localStorage.removeItem(WALLET_STORAGE_KEY)
@@ -520,6 +528,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     isLoading: walletState.isLoading,
     error: walletState.error,
     xamanQrUrl: walletState.xamanQrUrl,
+    xamanDeepLink: walletState.xamanDeepLink,
     connectWallet,
     disconnectWallet,
     getBalance,
