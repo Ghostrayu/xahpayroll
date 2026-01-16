@@ -5,22 +5,18 @@ import { useWallet } from '../contexts/WalletContext'
 import { useData } from '../contexts/DataContext'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
-import UnclaimedBalanceWarningModal from '../components/UnclaimedBalanceWarningModal'
 import { WorkSessionTimer } from '../components/WorkSessionTimer'
-import { paymentChannelApi, workerApi, workerNotificationsApi, closureRequestsApi } from '../services/api'
-import { closePaymentChannel, verifyChannelClosure } from '../utils/paymentChannels'
+import { workerApi, workerNotificationsApi, closureRequestsApi } from '../services/api'
 import { getTransactionExplorerUrl, getAccountExplorerUrl } from '../utils/networkUtils'
 
 const WorkerDashboard: React.FC = () => {
   const { userName } = useAuth()
-  const { balance, reserve, isConnected, walletAddress, network, provider } = useWallet()
+  const { balance, reserve, isConnected, walletAddress, network } = useWallet()
   const { earnings, workSessions, refreshData } = useData()
 
   // Payment channel state
   const [paymentChannels, setPaymentChannels] = useState<any[]>([])
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
-  const [showUnclaimedWarning, setShowUnclaimedWarning] = useState(false)
-  const [unclaimedBalanceData, setUnclaimedBalanceData] = useState<any>(null)
   const [selectedChannel, setSelectedChannel] = useState<any>(null)
   const [cancelingChannel, setCancelingChannel] = useState<string | null>(null)
   const [syncingChannels, setSyncingChannels] = useState<Set<string>>(new Set())
@@ -225,7 +221,7 @@ const WorkerDashboard: React.FC = () => {
    * Handle closure request submission
    * Creates a request for NGO to approve and close the channel
    */
-  const handleCloseConfirm = async (forceClose: boolean = false) => {
+  const handleCloseConfirm = async () => {
     if (!selectedChannel || !walletAddress || !userName) {
       alert('MISSING REQUIRED INFORMATION')
       return
@@ -252,7 +248,7 @@ const WorkerDashboard: React.FC = () => {
 
       alert(
         `✅ CLOSURE REQUEST SUBMITTED SUCCESSFULLY!\n\n` +
-        `REQUEST ID: ${response.data.requestId}\n` +
+        `REQUEST ID: ${response.data?.requestId || 'N/A'}\n` +
         `YOUR ACCUMULATED BALANCE: ${selectedChannel.accumulatedBalance} XAH\n\n` +
         `THE NGO/EMPLOYER HAS BEEN NOTIFIED AND WILL REVIEW YOUR REQUEST.\n` +
         `YOU WILL BE PAID WHEN THEY APPROVE AND CLOSE THE CHANNEL.`
@@ -276,12 +272,6 @@ const WorkerDashboard: React.FC = () => {
     }
   }
 
-  /**
-   * Handle force close after unclaimed balance warning
-   */
-  const handleForceClose = async () => {
-    await handleCloseConfirm(true)
-  }
 
   /**
    * Helper: Check if channel was recently synced (within last 60 seconds)
@@ -1282,7 +1272,7 @@ const WorkerDashboard: React.FC = () => {
                 CANCEL
               </button>
               <button
-                onClick={() => handleCloseConfirm(false)}
+                onClick={handleCloseConfirm}
                 disabled={cancelingChannel === selectedChannel.channelId}
                 className="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded uppercase tracking-wide text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -1291,28 +1281,6 @@ const WorkerDashboard: React.FC = () => {
             </div>
           </div>
         </div>
-      )}
-
-      {/* Unclaimed Balance Warning Modal */}
-      {showUnclaimedWarning && selectedChannel && unclaimedBalanceData && (
-        <UnclaimedBalanceWarningModal
-          isOpen={showUnclaimedWarning}
-          onClose={() => {
-            setShowUnclaimedWarning(false)
-            setUnclaimedBalanceData(null)
-            setSelectedChannel(null)
-          }}
-          onForceClose={handleForceClose}
-          unpaidBalance={unclaimedBalanceData.unpaidBalance}
-          channelDetails={{
-            jobName: selectedChannel.jobName,
-            worker: selectedChannel.employer || 'Employer',
-            escrowBalance: selectedChannel.escrowBalance,
-            hoursAccumulated: selectedChannel.hoursAccumulated
-          }}
-          callerType={unclaimedBalanceData.callerType}
-          isClosing={cancelingChannel === selectedChannel.channelId}
-        />
       )}
 
       {/* How This Works Modal */}
