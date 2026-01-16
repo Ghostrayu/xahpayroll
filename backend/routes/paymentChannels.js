@@ -129,6 +129,7 @@ router.post('/create', async (req, res) => {
       hourlyRate,
       fundingAmount,
       channelId,
+      creationTxHash, // NEW: Transaction hash from PaymentChannelCreate
       settleDelay,
       expiration,
       balanceUpdateFrequency,
@@ -231,6 +232,7 @@ router.post('/create', async (req, res) => {
         organization_id,
         employee_id,
         channel_id,
+        creation_tx_hash,
         job_name,
         hourly_rate,
         balance_update_frequency,
@@ -241,12 +243,13 @@ router.post('/create', async (req, res) => {
         max_daily_hours,
         settle_delay,
         status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, 0, $8, $9, 'active')
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, 0, 0, $9, $10, 'active')
       RETURNING *`,
       [
         organization.id,
         employee.id,
         channelId,
+        creationTxHash || null, // NEW: Store creation transaction hash (optional for backwards compat)
         jobName || 'Unnamed Job',
         hourlyRate,
         balanceUpdateFrequency || 'hourly',

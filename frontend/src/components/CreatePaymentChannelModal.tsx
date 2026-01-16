@@ -319,13 +319,17 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
       console.log('Transaction result:', txResult)
 
       // Step 3: Get the actual channel ID from the ledger transaction
-      console.log('Querying ledger for actual channel ID...')
+      // ENHANCED: Now includes destination, amount, and settle_delay validation
+      console.log('Querying ledger for actual channel ID with validation...')
       const channelId = await getChannelIdFromTransaction(
         txResult.hash || '',
         walletAddress,
+        config.workerAddress, // NEW: Destination address for filtering
+        fundingAmountDrops, // NEW: Expected amount for validation
+        settleDelaySeconds, // NEW: Expected settle delay for validation
         network
       )
-      console.log('Channel ID retrieved:', channelId)
+      console.log('✅ Channel ID retrieved and validated:', channelId)
 
       // Step 4: Save payment channel to database with retry logic
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
@@ -355,6 +359,7 @@ const CreatePaymentChannelModal: React.FC<CreatePaymentChannelModalProps> = ({ i
               hourlyRate: parseFloat(config.hourlyRate),
               fundingAmount: parseFloat(fundingAmountXah),
               channelId: channelId,
+              creationTxHash: txResult.hash, // NEW: Store creation transaction hash for audit/recovery
               settleDelay: settleDelaySeconds,
               expiration: expirationTime
             })

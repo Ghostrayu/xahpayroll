@@ -72,14 +72,27 @@ export const preparePaymentChannelTransaction = (
  * Get the actual Payment Channel ID from a validated transaction
  * The channel ID is found in the transaction metadata under CreatedNode > LedgerIndex
  *
+ * ENHANCED VERSION (2026-01-16):
+ * - Uses destination_account filter to avoid selecting wrong channel
+ * - Validates settle_delay and amount to match expected transaction
+ * - Implements exponential backoff with 5 retry attempts
+ * - Throws error on failure instead of silent fallback (no phantom channels)
+ *
  * @param txHash - Transaction hash from the PaymentChannelCreate transaction
  * @param account - Source account address
+ * @param destinationAddress - Destination account address (worker wallet)
+ * @param expectedAmount - Expected escrow amount in drops
+ * @param expectedSettleDelay - Expected settle delay in seconds
  * @param network - Network (testnet or mainnet)
  * @returns The actual 64-character hex channel ID from the ledger
+ * @throws Error if channel ID cannot be retrieved (prevents phantom channels)
  */
 export const getChannelIdFromTransaction = async (
   txHash: string,
   account: string,
+  destinationAddress: string,
+  expectedAmount: string,
+  expectedSettleDelay: number,
   network: string
 ): Promise<string> => {
   const client = new Client(getNetworkUrl(network))
@@ -87,8 +100,14 @@ export const getChannelIdFromTransaction = async (
   try {
     await client.connect()
     console.log('[CHANNEL_ID] Connected to Xahau, querying tx hash:', txHash)
+    console.log('[CHANNEL_ID] Expected channel params:', {
+      source: account,
+      destination: destinationAddress,
+      amount: expectedAmount,
+      settleDelay: expectedSettleDelay
+    })
 
-    // ATTEMPT 1: Query transaction metadata via 'tx' command
+    // ATTEMPT 1: Query transaction metadata via 'tx' command (MOST RELIABLE)
     try {
       const txResponse = await client.request({
         command: 'tx',
@@ -120,100 +139,121 @@ export const getChannelIdFromTransaction = async (
       // Don't throw - continue to fallback method
     }
 
-    // ATTEMPT 2: Query account_channels as fallback (works on Xahau even when tx command fails)
-    console.log('[CHANNEL_ID] Attempting fallback: account_channels query for account:', account)
+    // ATTEMPT 2-6: Query account_channels with exponential backoff (FALLBACK WITH VALIDATION)
+    // Retry with increasing delays: 1s, 2s, 4s, 8s, 16s (total ~31 seconds max)
+    const maxRetries = 5
+    let retryDelay = 1000 // Start with 1 second
 
-    try {
-      const channelsResponse = await client.request({
-        command: 'account_channels',
-        account: account,
-        ledger_index: 'validated'
-      })
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      console.log(`[CHANNEL_ID] Attempt ${attempt}/${maxRetries}: Querying account_channels (delay: ${retryDelay}ms)`)
 
-      console.log('[CHANNEL_ID] account_channels response:', {
-        channelCount: channelsResponse.result?.channels?.length || 0
-      })
-
-      if (channelsResponse.result?.channels && channelsResponse.result.channels.length > 0) {
-        const channels = channelsResponse.result.channels
-
-        // Strategy: Find the channel with the highest amount (most recently funded)
-        // This is more reliable than assuming "last in array" is most recent
-        const sortedChannels = [...channels].sort((a, b) =>
-          parseInt(b.amount || '0') - parseInt(a.amount || '0')
-        )
-
-        const mostRecentChannel = sortedChannels[0]
-
-        if (mostRecentChannel.channel_id) {
-          console.log('[CHANNEL_ID] ✅ Found channel ID via account_channels:', mostRecentChannel.channel_id)
-          console.log('[CHANNEL_ID] Channel details:', {
-            destination: mostRecentChannel.destination_account,
-            amount: mostRecentChannel.amount,
-            balance: mostRecentChannel.balance
-          })
-          await client.disconnect()
-          return mostRecentChannel.channel_id
-        }
-      } else {
-        console.warn('[CHANNEL_ID] ⚠️ account_channels returned no channels')
+      // Wait before retry (skip on first attempt)
+      if (attempt > 1) {
+        await new Promise(resolve => setTimeout(resolve, retryDelay))
+        retryDelay *= 2 // Exponential backoff
       }
-    } catch (channelsError: any) {
-      console.error('[CHANNEL_ID] account_channels query failed:', channelsError.message || channelsError)
+
+      try {
+        const channelsResponse = await client.request({
+          command: 'account_channels',
+          account: account,
+          destination_account: destinationAddress, // ENHANCEMENT 1: Filter by destination
+          ledger_index: 'validated'
+        })
+
+        console.log('[CHANNEL_ID] account_channels response:', {
+          channelCount: channelsResponse.result?.channels?.length || 0,
+          attempt
+        })
+
+        if (channelsResponse.result?.channels && channelsResponse.result.channels.length > 0) {
+          const channels = channelsResponse.result.channels
+
+          // ENHANCEMENT 2: Validate settle_delay and amount to find exact match
+          for (const channel of channels) {
+            const amountMatches = channel.amount === expectedAmount
+            const settleDelayMatches = channel.settle_delay === expectedSettleDelay
+
+            console.log('[CHANNEL_ID] Validating channel:', {
+              channelId: channel.channel_id,
+              amount: channel.amount,
+              expectedAmount,
+              amountMatches,
+              settleDelay: channel.settle_delay,
+              expectedSettleDelay,
+              settleDelayMatches
+            })
+
+            // Both amount and settle_delay must match
+            if (amountMatches && settleDelayMatches) {
+              console.log('[CHANNEL_ID] ✅ Found matching channel with validation:', channel.channel_id)
+              console.log('[CHANNEL_ID] Channel details:', {
+                destination: channel.destination_account,
+                amount: channel.amount,
+                balance: channel.balance,
+                settleDelay: channel.settle_delay
+              })
+              await client.disconnect()
+              return channel.channel_id
+            }
+          }
+
+          console.warn(`[CHANNEL_ID] ⚠️ Found ${channels.length} channel(s) but none match expected params (attempt ${attempt}/${maxRetries})`)
+        } else {
+          console.warn(`[CHANNEL_ID] ⚠️ No channels found for destination ${destinationAddress} (attempt ${attempt}/${maxRetries})`)
+        }
+      } catch (channelsError: any) {
+        console.error(`[CHANNEL_ID] account_channels query failed (attempt ${attempt}/${maxRetries}):`, channelsError.message || channelsError)
+      }
     }
 
-    // ATTEMPT 3: Wait a moment and retry account_channels (ledger might be processing)
-    console.log('[CHANNEL_ID] Waiting 2 seconds for ledger to process, then retrying...')
-    await new Promise(resolve => setTimeout(resolve, 2000))
-
-    try {
-      const retryResponse = await client.request({
-        command: 'account_channels',
-        account: account,
-        ledger_index: 'validated'
-      })
-
-      if (retryResponse.result?.channels && retryResponse.result.channels.length > 0) {
-        const channels = retryResponse.result.channels
-        const sortedChannels = [...channels].sort((a, b) =>
-          parseInt(b.amount || '0') - parseInt(a.amount || '0')
-        )
-
-        const mostRecentChannel = sortedChannels[0]
-
-        if (mostRecentChannel.channel_id) {
-          console.log('[CHANNEL_ID] ✅ Found channel ID on retry:', mostRecentChannel.channel_id)
-          await client.disconnect()
-          return mostRecentChannel.channel_id
-        }
-      }
-    } catch (retryError: any) {
-      console.error('[CHANNEL_ID] Retry failed:', retryError.message || retryError)
-    }
-
-    // All attempts failed - disconnect and fallback to TEMP ID
+    // ENHANCEMENT 3: All attempts failed - THROW ERROR instead of fallback
+    // This prevents phantom channels from being created
     await client.disconnect()
-    console.error('[CHANNEL_ID] ❌ ALL METHODS FAILED - Falling back to temporary ID')
-    console.error('[CHANNEL_ID] This should not happen in normal operation. Check Xahau node connectivity.')
-    return generateFallbackChannelId(txHash, account)
+    console.error('[CHANNEL_ID] ❌ ALL METHODS FAILED AFTER 5 RETRIES')
+    console.error('[CHANNEL_ID] REFUSING TO CREATE PHANTOM CHANNEL')
+
+    throw new Error(
+      'FAILED TO RETRIEVE CHANNEL ID FROM LEDGER.\n\n' +
+      'THE PAYMENT CHANNEL WAS CREATED BUT ITS ID COULD NOT BE VERIFIED.\n\n' +
+      `TRANSACTION HASH: ${txHash}\n` +
+      `SOURCE: ${account}\n` +
+      `DESTINATION: ${destinationAddress}\n\n` +
+      'PLEASE:\n' +
+      '1. WAIT 1-2 MINUTES FOR LEDGER TO PROCESS\n' +
+      '2. CHECK YOUR WALLET FOR THE CHANNEL CREATION TRANSACTION\n' +
+      '3. CONTACT SUPPORT WITH THE TRANSACTION HASH ABOVE\n\n' +
+      'DO NOT CREATE A NEW CHANNEL - THIS ONE EXISTS ON THE LEDGER.'
+    )
 
   } catch (error: any) {
     console.error('[CHANNEL_ID] ❌ Critical error in getChannelIdFromTransaction:', error)
     await client.disconnect().catch(() => {})
-    return generateFallbackChannelId(txHash, account)
+
+    // Re-throw if it's our intentional error
+    if (error.message?.includes('FAILED TO RETRIEVE CHANNEL ID')) {
+      throw error
+    }
+
+    // For other errors, wrap with context
+    throw new Error(
+      'CRITICAL ERROR DURING CHANNEL ID RETRIEVAL.\n\n' +
+      `ERROR: ${error.message}\n` +
+      `TRANSACTION: ${txHash}\n\n` +
+      'PLEASE CONTACT SUPPORT WITH THIS ERROR MESSAGE.'
+    )
   }
 }
 
 /**
- * Fallback: Generate a temporary channel ID
- * Only used if ledger query fails (should not happen in normal operation)
+ * REMOVED: generateFallbackChannelId() (2026-01-16)
+ *
+ * Previously generated temporary "TEMP-*" channel IDs when ledger query failed.
+ * This caused phantom channels in the database with no ledger backing.
+ *
+ * New behavior: getChannelIdFromTransaction() now THROWS ERROR on failure
+ * instead of silently creating phantom channels.
  */
-const generateFallbackChannelId = (txHash: string, account: string): string => {
-  const timestamp = Date.now()
-  const shortHash = txHash.substring(0, 8)
-  const shortAccount = account.substring(0, 6)
-  return `TEMP-${shortAccount}-${timestamp}-${shortHash}`
-}
 
 /**
  * Calculate Ripple epoch timestamp from JavaScript Date
