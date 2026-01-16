@@ -32,14 +32,16 @@ router.post('/create', async (req, res) => {
       `SELECT
         pc.id,
         pc.channel_id,
-        pc.employee_wallet_address,
-        pc.ngo_wallet_address,
+        e.employee_wallet_address,
+        o.escrow_wallet_address as ngo_wallet_address,
         pc.organization_id,
         pc.off_chain_accumulated_balance,
         pc.escrow_funded_amount,
-        pc.job_title,
+        pc.job_name as job_title,
         pc.status
        FROM payment_channels pc
+       JOIN employees e ON e.id = pc.employee_id
+       JOIN organizations o ON o.id = pc.organization_id
        WHERE pc.channel_id = $1`,
       [channelId]
     )
@@ -287,14 +289,16 @@ router.post('/:requestId/approve', async (req, res) => {
       `SELECT
         ccr.*,
         pc.channel_id,
-        pc.ngo_wallet_address,
-        pc.employee_wallet_address,
+        o.escrow_wallet_address as ngo_wallet_address,
+        e.employee_wallet_address,
         pc.off_chain_accumulated_balance,
         pc.escrow_funded_amount,
         pc.status as channel_status,
         pc.public_key
        FROM channel_closure_requests ccr
        JOIN payment_channels pc ON pc.channel_id = ccr.channel_id
+       JOIN employees e ON e.id = pc.employee_id
+       JOIN organizations o ON o.id = pc.organization_id
        WHERE ccr.id = $1`,
       [requestId]
     )
@@ -412,9 +416,10 @@ router.post('/:requestId/reject', async (req, res) => {
 
     // Step 1: Verify request exists and NGO owns it
     const requestQuery = await pool.query(
-      `SELECT ccr.*, pc.ngo_wallet_address
+      `SELECT ccr.*, o.escrow_wallet_address as ngo_wallet_address
        FROM channel_closure_requests ccr
        JOIN payment_channels pc ON pc.channel_id = ccr.channel_id
+       JOIN organizations o ON o.id = pc.organization_id
        WHERE ccr.id = $1`,
       [requestId]
     )

@@ -46,9 +46,15 @@ const WorkerWorkflow: React.FC = () => {
     },
     {
       number: 8,
+      title: 'REQUEST CHANNEL CLOSURE',
+      description: 'SUBMIT CLOSURE REQUEST VIA DASHBOARD. NGO RECEIVES NOTIFICATION AND APPROVES TO RELEASE YOUR ACCUMULATED EARNINGS.',
+      icon: '📝'
+    },
+    {
+      number: 9,
       title: 'RECEIVE FINAL PAYMENT',
-      description: 'WHEN THE PAYMENT CHANNEL CLOSES, YOU RECEIVE ALL ACCUMULATED EARNINGS IN A SINGLE TRANSACTION',
-      icon: '🛑'
+      description: 'NGO EXECUTES CLOSURE TRANSACTION. YOU RECEIVE ALL ACCUMULATED EARNINGS IN A SINGLE ON-CHAIN PAYMENT.',
+      icon: '💰'
     }
   ]
 
@@ -63,7 +69,7 @@ const WorkerWorkflow: React.FC = () => {
             </h2>
           </div>
           <p className="text-base text-gray-700 max-w-3xl mx-auto uppercase leading-relaxed tracking-wide font-semibold">
-            COMPLETE STEP-BY-STEP PROCESS FOR EMPLOYEES TO LOG HOURS AND RECEIVE PAYMENT WHEN CHANNELS CLOSE
+            COMPLETE STEP-BY-STEP PROCESS FOR EMPLOYEES TO LOG HOURS, REQUEST CLOSURE, AND RECEIVE PAYMENT
           </p>
         </div>
 
@@ -103,7 +109,7 @@ const WorkerWorkflow: React.FC = () => {
               <div className="text-4xl mb-4">⚡</div>
               <h4 className="font-bold text-gray-900 mb-2 uppercase text-sm tracking-wide">SINGLE TRANSACTION SETTLEMENT</h4>
               <p className="text-xs text-gray-700 uppercase tracking-wide leading-relaxed">
-                RECEIVE ALL ACCUMULATED EARNINGS IN ONE TRANSACTION WHEN PAYMENT CHANNEL CLOSES
+                REQUEST CLOSURE VIA DASHBOARD - RECEIVE ALL ACCUMULATED EARNINGS IN ONE TRANSACTION AFTER NGO APPROVAL
               </p>
             </div>
             <div className="text-center">
@@ -142,12 +148,12 @@ const WorkerWorkflow: React.FC = () => {
             <div>
               <div className="text-sm text-gray-700 uppercase tracking-wide font-semibold mb-2">TOTAL EARNED</div>
               <div className="text-4xl font-extrabold text-xah-blue mb-2">80 XAH</div>
-              <div className="text-xs text-gray-600 uppercase tracking-wide">PAID WHEN CHANNEL CLOSES</div>
+              <div className="text-xs text-gray-600 uppercase tracking-wide">PAID AFTER CLOSURE REQUEST APPROVED</div>
             </div>
           </div>
           <div className="mt-8 text-center">
             <p className="text-xs text-gray-700 uppercase tracking-wide leading-relaxed">
-              💡 EARNINGS ACCUMULATE OFF-CHAIN - RECEIVE ALL FUNDS IN SINGLE TRANSACTION WHEN CHANNEL CLOSES
+              💡 EARNINGS ACCUMULATE OFF-CHAIN - SUBMIT CLOSURE REQUEST - NGO APPROVES - RECEIVE ALL FUNDS IN SINGLE TRANSACTION
             </p>
           </div>
         </div>
