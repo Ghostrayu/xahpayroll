@@ -110,9 +110,35 @@ const NgoDashboard: React.FC = () => {
     syncExpiredChannels()
   }, [walletAddress, refreshData])
 
-  // Fetch closure requests when tab is active
+  // Poll for closure requests in background (for notification badge)
   useEffect(() => {
-    const fetchClosureRequests = async () => {
+    const fetchClosureRequestsBackground = async () => {
+      if (!walletAddress) return
+
+      try {
+        const response = await closureRequestsApi.getNGORequests(walletAddress)
+        if (response.success && response.data) {
+          setClosureRequests(response.data.requests)
+        }
+      } catch (error) {
+        console.error('[FETCH_CLOSURE_REQUESTS_BACKGROUND_ERROR]', error)
+      }
+    }
+
+    // Fetch immediately on mount
+    fetchClosureRequestsBackground()
+
+    // Poll every 30 seconds for updates
+    const interval = setInterval(() => {
+      fetchClosureRequestsBackground()
+    }, 30000)
+
+    return () => clearInterval(interval)
+  }, [walletAddress])
+
+  // Show loading state when viewing closure requests tab
+  useEffect(() => {
+    const fetchClosureRequestsWithLoading = async () => {
       if (!walletAddress || activeTab !== 'closure-requests') return
 
       setLoadingRequests(true)
@@ -128,7 +154,7 @@ const NgoDashboard: React.FC = () => {
       }
     }
 
-    fetchClosureRequests()
+    fetchClosureRequestsWithLoading()
   }, [walletAddress, activeTab])
 
   /**
@@ -559,13 +585,10 @@ const NgoDashboard: React.FC = () => {
       // Step 3: Confirm closure in database
       await closureRequestsApi.confirmClosure(request.request_id, txResult.hash)
 
-      alert(
-        `✅ CLOSURE REQUEST APPROVED AND EXECUTED!\n\n` +
-        `WORKER ${request.worker_name} RECEIVED: ${request.accumulated_balance} XAH\n` +
-        `TRANSACTION: ${txResult.hash}`
-      )
+      // Wait briefly to ensure backend has fully processed the closure
+      await new Promise(resolve => setTimeout(resolve, 1000))
 
-      // Refresh data
+      // Refresh all data (stats, channels, activity)
       await refreshData()
 
       // Refresh closure requests
@@ -573,6 +596,16 @@ const NgoDashboard: React.FC = () => {
       if (requestsResponse.success && requestsResponse.data) {
         setClosureRequests(requestsResponse.data.requests)
       }
+
+      // Switch to overview tab to show updated payment channels
+      setActiveTab('overview')
+
+      alert(
+        `✅ CLOSURE REQUEST APPROVED AND EXECUTED!\n\n` +
+        `WORKER ${request.worker_name} RECEIVED: ${request.accumulated_balance} XAH\n` +
+        `TRANSACTION: ${txResult.hash}\n\n` +
+        `DASHBOARD HAS BEEN UPDATED WITH LATEST DATA.`
+      )
 
     } catch (error: any) {
       console.error('[APPROVE_CLOSURE_REQUEST_ERROR]', error)
