@@ -5,7 +5,6 @@ import WorkerDeletedNotification from './WorkerDeletedNotification'
 import DeletionErrorNotification from './DeletionErrorNotification'
 import WorkerRemovedNotification from './WorkerRemovedNotification'
 import ChannelClosureFailedNotification from './ChannelClosureFailedNotification'
-import ClosureRequestedNotification from './ClosureRequestedNotification'
 
 interface NGONotificationsProps {
   organizationId: number
@@ -113,8 +112,6 @@ const NGONotifications: React.FC<NGONotificationsProps> = ({ organizationId, onC
         return <WorkerRemovedNotification key={notification.id} {...props} />
       case 'channel_closure_failed':
         return <ChannelClosureFailedNotification key={notification.id} {...props} />
-      case 'closure_requested':
-        return <ClosureRequestedNotification key={notification.id} {...props} />
       default:
         return null
     }
@@ -163,7 +160,6 @@ const NGONotifications: React.FC<NGONotificationsProps> = ({ organizationId, onC
             className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg font-bold text-sm uppercase tracking-wide focus:border-xah-blue focus:outline-none"
           >
             <option value="all">ALL TYPES</option>
-            <option value="closure_requested">CLOSURE REQUESTED</option>
             <option value="worker_deleted">WORKER DELETED</option>
             <option value="deletion_error">DELETION ERROR</option>
             <option value="worker_removed">WORKER REMOVED</option>
