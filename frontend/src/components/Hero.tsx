@@ -60,7 +60,7 @@ const Hero: React.FC = () => {
                 >
                   OPEN SOURCE REPO
                 </a>
-                {' '}TO DEPLOY A LIVE INSTANCE. (AS OF 1/11/2026 THIS REPO IS UNDER DEVELOPMENT - RELEASE SCHEDULED FEB 2026)
+                {' '}TO DEPLOY A LIVE INSTANCE.
               </p>
             </div>
 
