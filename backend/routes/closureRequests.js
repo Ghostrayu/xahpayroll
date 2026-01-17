@@ -33,6 +33,7 @@ router.post('/create', async (req, res) => {
         pc.id,
         pc.channel_id,
         e.employee_wallet_address,
+        e.full_name as worker_name,
         o.escrow_wallet_address as ngo_wallet_address,
         pc.organization_id,
         pc.off_chain_accumulated_balance,
@@ -115,7 +116,7 @@ router.post('/create', async (req, res) => {
       [
         channelId,
         workerWalletAddress,
-        workerName,
+        channel.worker_name,  // Use NGO-provided name from employees table
         channel.ngo_wallet_address,
         channel.organization_id,
         channel.off_chain_accumulated_balance,

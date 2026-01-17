@@ -46,6 +46,18 @@ const NgoDashboard: React.FC = () => {
     hoursThisMonth: 0
   }
 
+  // Function to refresh unread count (called by child components)
+  const refreshUnreadCount = async () => {
+    if (organizationId) {
+      try {
+        const count = await notificationApi.getUnreadCount(organizationId)
+        setUnreadCount(count)
+      } catch (error) {
+        console.error('Failed to refresh unread count:', error)
+      }
+    }
+  }
+
   // Fetch organization ID and unread notification count
   useEffect(() => {
     const fetchOrganizationData = async () => {
@@ -1236,7 +1248,7 @@ const NgoDashboard: React.FC = () => {
 
           {/* Notifications Tab */}
           {activeTab === 'notifications' && organizationId && (
-            <NGONotifications organizationId={organizationId} />
+            <NGONotifications organizationId={organizationId} onCountChange={refreshUnreadCount} />
           )}
 
           {/* Loading state for notifications tab when org ID not available */}

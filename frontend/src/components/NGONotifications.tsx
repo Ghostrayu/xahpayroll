@@ -5,12 +5,14 @@ import WorkerDeletedNotification from './WorkerDeletedNotification'
 import DeletionErrorNotification from './DeletionErrorNotification'
 import WorkerRemovedNotification from './WorkerRemovedNotification'
 import ChannelClosureFailedNotification from './ChannelClosureFailedNotification'
+import ClosureRequestedNotification from './ClosureRequestedNotification'
 
 interface NGONotificationsProps {
   organizationId: number
+  onCountChange?: () => void // Callback to refresh badge count in parent
 }
 
-const NGONotifications: React.FC<NGONotificationsProps> = ({ organizationId }) => {
+const NGONotifications: React.FC<NGONotificationsProps> = ({ organizationId, onCountChange }) => {
   const [notifications, setNotifications] = useState<NGONotification[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -87,6 +89,9 @@ const NGONotifications: React.FC<NGONotificationsProps> = ({ organizationId }) =
       setNotifications(prev =>
         prev.map(n => ({ ...n, isRead: true }))
       )
+
+      // Refresh badge count in parent dashboard
+      onCountChange?.()
     } catch (err: any) {
       alert(`FAILED TO MARK ALL AS READ: ${err.message}`)
     }
@@ -108,6 +113,8 @@ const NGONotifications: React.FC<NGONotificationsProps> = ({ organizationId }) =
         return <WorkerRemovedNotification key={notification.id} {...props} />
       case 'channel_closure_failed':
         return <ChannelClosureFailedNotification key={notification.id} {...props} />
+      case 'closure_requested':
+        return <ClosureRequestedNotification key={notification.id} {...props} />
       default:
         return null
     }
@@ -156,6 +163,7 @@ const NGONotifications: React.FC<NGONotificationsProps> = ({ organizationId }) =
             className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg font-bold text-sm uppercase tracking-wide focus:border-xah-blue focus:outline-none"
           >
             <option value="all">ALL TYPES</option>
+            <option value="closure_requested">CLOSURE REQUESTED</option>
             <option value="worker_deleted">WORKER DELETED</option>
             <option value="deletion_error">DELETION ERROR</option>
             <option value="worker_removed">WORKER REMOVED</option>
@@ -272,6 +280,8 @@ const NGONotifications: React.FC<NGONotificationsProps> = ({ organizationId }) =
                             alert(`✅ ${data.data.message}`)
                             // Refresh notifications list
                             fetchNotifications()
+                            // Refresh badge count in parent dashboard
+                            onCountChange?.()
                           } else {
                             alert('❌ FAILED TO CLEAR NOTIFICATIONS')
                           }
