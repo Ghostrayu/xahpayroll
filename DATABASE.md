@@ -2,6 +2,8 @@
 
 Minimalistic reference for XAH Payroll database architecture and patterns.
 
+**Schema Version**: v1.2 (Production-synchronized as of 2026-01-16)
+
 ---
 
 ## Connection

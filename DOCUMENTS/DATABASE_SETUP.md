@@ -249,29 +249,6 @@ The XAH Payroll database consists of **13 tables** with the following structure:
 
 ## KEY SCHEMA FEATURES
 
-### Path D: Two-Field Balance System (Implemented 2025-12-23)
-
-**Problem Solved**: Ledger sync was overwriting worker earnings with on-chain Balance (always 0 for off-chain work).
-
-**Solution**: Separate balance fields in `payment_channels` table:
-
-```sql
--- Worker earnings (source of truth for payment calculations)
-off_chain_accumulated_balance DECIMAL(20,8) NOT NULL DEFAULT 0
-
--- XRPL ledger Balance field (read-only sync data)
-on_chain_balance DECIMAL(20,8) NOT NULL DEFAULT 0
-
--- Original field (backup for rollback)
-legacy_accumulated_balance DECIMAL(20,8) DEFAULT 0
-```
-
-**Flow**:
-1. **Clock-out**: Updates `off_chain_accumulated_balance` (+hours * rate)
-2. **Ledger sync**: Updates `on_chain_balance` ONLY (never touches off-chain balance)
-3. **Channel closure**: Reads `off_chain_accumulated_balance` for final payment
-4. **Closure confirmation**: Clears `off_chain_accumulated_balance = 0`
-
 ### Payment Channel Lifecycle
 
 ```
@@ -296,17 +273,6 @@ legacy_accumulated_balance DECIMAL(20,8) DEFAULT 0
    ├── Database: off_chain_accumulated_balance = 0, status = 'closed'
    └── Transaction hash stored in closure_tx_hash
 ```
-
-### CancelAfter Feature (Implemented 2025-12-28)
-
-**Purpose**: Automatic channel expiration after specified time (e.g., 24 hours).
-
-**Implementation**:
-- `cancel_after` field stores ledger time for automatic expiration
-- When CancelAfter expires, channel can be force-closed by anyone
-- Protects NGOs from worker abandonment (channel funds locked indefinitely)
-
-**Default**: 24 hours from channel creation (86400 seconds)
 
 ---
 

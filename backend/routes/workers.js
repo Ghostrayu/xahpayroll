@@ -1199,25 +1199,25 @@ router.get('/activity/:walletAddress', async (req, res) => {
       (
         -- Worker Notifications (closure requests, system alerts)
         SELECT
-          CONCAT('notification_', wn.type) as type,
-          COALESCE(o.organization_name, 'SYSTEM') as organization,
-          wn.created_at as timestamp,
+          CONCAT('notification_', n.notification_type) as type,
+          'SYSTEM' as organization,
+          n.created_at as timestamp,
           NULL::numeric as amount,
           NULL::varchar as payment_type,
           NULL::varchar as payment_status,
-          wn.closure_tx_hash as tx_hash,
-          wn.job_name,
-          wn.message as details,
+          NULL::varchar as tx_hash,
+          n.title as job_name,
+          n.message as details,
           CASE
-            WHEN wn.type = 'closure_request' THEN 'notification'
-            WHEN wn.type = 'error' THEN 'critical'
-            WHEN wn.type = 'warning' THEN 'warning'
+            WHEN n.notification_type = 'closure_request' THEN 'notification'
+            WHEN n.notification_type = 'error' THEN 'critical'
+            WHEN n.notification_type = 'warning' THEN 'warning'
             ELSE 'notification'
           END as priority
-        FROM worker_notifications wn
-        LEFT JOIN organizations o ON wn.ngo_wallet_address = o.escrow_wallet_address
-        WHERE wn.worker_wallet_address = $2
-        ORDER BY wn.created_at DESC
+        FROM notifications n
+        JOIN users u ON n.user_id = u.id
+        WHERE u.wallet_address = $2
+        ORDER BY n.created_at DESC
         LIMIT 5
       )
       ORDER BY timestamp DESC

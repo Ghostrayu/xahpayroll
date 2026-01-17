@@ -4,8 +4,10 @@
 -- This file is used by init-db.js for automated database initialization
 -- DO NOT include database/user creation here - those are handled separately
 --
--- Generated from: setup_database.sql
--- Last updated: 2026-01-02
+-- Schema Version: v1.2 (Production-synchronized)
+-- Last updated: 2026-01-16
+-- Production Source: Supabase PostgreSQL
+-- Changes: See DOCUMENTS/SCHEMA_SYNC_2026_01_16.md
 
 -- =====================================================
 -- TABLE CREATION (In correct order)
@@ -17,14 +19,17 @@ CREATE TABLE IF NOT EXISTS users (
   wallet_address VARCHAR(64) UNIQUE NOT NULL,
   user_type VARCHAR(20) NOT NULL CHECK (user_type IN ('employee', 'employer', 'ngo', 'admin')),
   email VARCHAR(255),
-  display_name VARCHAR(255),
   created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW(),
   last_login TIMESTAMP,
   is_active BOOLEAN DEFAULT true,
   profile_data JSONB,
   deleted_at TIMESTAMP DEFAULT NULL,
-  deletion_reason TEXT DEFAULT NULL
+  deletion_reason VARCHAR(255) DEFAULT NULL,
+  last_login_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  display_name VARCHAR(255),
+  organization_name VARCHAR(255),
+  phone_number VARCHAR(50),
+  updated_at TIMESTAMP DEFAULT NOW()
 );
 
 COMMENT ON TABLE users IS 'Core user accounts identified by XAH wallet addresses';
@@ -32,11 +37,14 @@ COMMENT ON COLUMN users.updated_at IS 'Timestamp of last update (auto-updated vi
 COMMENT ON COLUMN users.deleted_at IS 'Soft delete timestamp (NULL = not deleted)';
 COMMENT ON COLUMN users.deletion_reason IS 'Reason for account deletion';
 COMMENT ON COLUMN users.display_name IS 'User display name (fallback for full_name)';
+COMMENT ON COLUMN users.organization_name IS 'Organization name for NGO/employer users';
+COMMENT ON COLUMN users.phone_number IS 'Contact phone number';
+COMMENT ON COLUMN users.last_login_at IS 'Last login timestamp for inactivity tracking';
 
 -- 2. Organizations Table
 CREATE TABLE IF NOT EXISTS organizations (
   id SERIAL PRIMARY KEY,
-  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   organization_name VARCHAR(255) NOT NULL,
   organization_type VARCHAR(50) CHECK (organization_type IN ('ngo', 'company', 'individual')),
   registration_number VARCHAR(100),
@@ -88,7 +96,8 @@ CREATE TABLE IF NOT EXISTS work_sessions (
   timeout_at TIMESTAMP,
   notes TEXT,
   created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
+  updated_at TIMESTAMP DEFAULT NOW(),
+  payment_channel_id INTEGER REFERENCES payment_channels(id) ON DELETE CASCADE
 );
 
 COMMENT ON TABLE work_sessions IS 'Individual work shifts with clock in/out times';
@@ -219,6 +228,9 @@ CREATE INDEX idx_sessions_org ON work_sessions(organization_id);
 CREATE INDEX idx_sessions_status ON work_sessions(session_status);
 CREATE INDEX idx_sessions_clock_in ON work_sessions(clock_in);
 CREATE INDEX idx_sessions_created ON work_sessions(created_at);
+CREATE INDEX idx_work_sessions_employee_active ON work_sessions(employee_id, session_status) WHERE session_status = 'active';
+CREATE INDEX idx_work_sessions_payment_channel ON work_sessions(payment_channel_id);
+CREATE INDEX idx_work_sessions_status ON work_sessions(session_status) WHERE session_status = 'active';
 
 -- Payments indexes
 CREATE INDEX idx_payments_employee ON payments(employee_id);
@@ -316,7 +328,8 @@ CREATE TABLE IF NOT EXISTS payment_channels (
   validation_attempts INTEGER DEFAULT 0, -- Number of ledger validation attempts
   last_validation_at TIMESTAMP, -- When channel was last validated against ledger
   max_daily_hours DECIMAL(4, 2) DEFAULT 8.00, -- Maximum hours worker can log per day
-  on_chain_balance DECIMAL(20, 8) NOT NULL DEFAULT 0 -- Actual XRPL ledger balance (synced from chain)
+  on_chain_balance DECIMAL(20, 8) NOT NULL DEFAULT 0, -- Actual XRPL ledger balance (synced from chain)
+  creation_tx_hash VARCHAR(128) -- Transaction hash of PaymentChannelCreate
 );
 
 COMMENT ON TABLE payment_channels IS 'XRPL payment channels for hourly worker payments';
@@ -326,6 +339,8 @@ COMMENT ON COLUMN payment_channels.closed_at IS 'Timestamp when channel was clos
 COMMENT ON COLUMN payment_channels.closure_reason IS 'Reason for closure: manual, timeout, claim, expired';
 COMMENT ON COLUMN payment_channels.settle_delay IS 'XRPL SettleDelay in seconds (protection period for workers)';
 COMMENT ON COLUMN payment_channels.expiration_time IS 'When the SettleDelay period expires (closure_initiated_at + settle_delay)';
+COMMENT ON COLUMN payment_channels.creation_tx_hash IS 'Transaction hash of PaymentChannelCreate that created the channel';
+COMMENT ON COLUMN payment_channels.on_chain_balance IS 'Actual XRPL ledger balance (synced from chain)';
 
 -- Payment channels indexes
 CREATE INDEX IF NOT EXISTS idx_payment_channels_org ON payment_channels(organization_id);
@@ -334,11 +349,25 @@ CREATE INDEX IF NOT EXISTS idx_payment_channels_status ON payment_channels(statu
 CREATE INDEX IF NOT EXISTS idx_payment_channels_channel_id ON payment_channels(channel_id);
 CREATE INDEX IF NOT EXISTS idx_payment_channels_closed_at ON payment_channels(closed_at) WHERE closed_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_payment_channels_expiration ON payment_channels(expiration_time) WHERE expiration_time IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_payment_channels_creation_tx_hash ON payment_channels(creation_tx_hash);
 
 -- Add trigger for payment_channels auto-update
 CREATE TRIGGER update_payment_channels_updated_at
 BEFORE UPDATE ON payment_channels
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Add constraint: balance cannot exceed escrow (PRODUCTION CRITICAL)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'check_balance_not_exceed_escrow'
+  ) THEN
+    ALTER TABLE payment_channels
+    ADD CONSTRAINT check_balance_not_exceed_escrow
+    CHECK (off_chain_accumulated_balance <= escrow_funded_amount);
+  END IF;
+END $$;
 
 -- 12. Deletion Logs Table (AUDIT TRAIL)
 -- Source: migrations/003_worker_deletion.sql
@@ -387,20 +416,12 @@ CREATE INDEX IF NOT EXISTS idx_ngo_notifications_type ON ngo_notifications(notif
 -- USER TABLE ENHANCEMENTS (Deletion tracking)
 -- =====================================================
 -- Source: migrations/003_worker_deletion.sql
-
--- Add deletion tracking columns to users table
-ALTER TABLE users
-ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP DEFAULT NULL,
-ADD COLUMN IF NOT EXISTS deletion_reason VARCHAR(255) DEFAULT NULL,
-ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+-- Note: Core columns (deleted_at, deletion_reason, last_login_at) are now in main users table definition above
+-- This section only adds indexes for those columns
 
 -- Create indexes for efficient querying
 CREATE INDEX IF NOT EXISTS idx_users_deleted_at ON users(deleted_at) WHERE deleted_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_last_login ON users(last_login_at) WHERE user_type = 'employee';
-
-COMMENT ON COLUMN users.deleted_at IS 'Soft delete timestamp for 48-hour grace period';
-COMMENT ON COLUMN users.deletion_reason IS 'Reason provided by user for deletion';
-COMMENT ON COLUMN users.last_login_at IS 'Last login timestamp for inactivity tracking';
 
 -- =====================================================
 -- CHANNEL CLOSURE REQUESTS (Migration 005)
