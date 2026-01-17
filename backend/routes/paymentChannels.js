@@ -1566,7 +1566,9 @@ router.post('/:channelId/close/confirm', async (req, res) => {
       await query('BEGIN')
 
       // Update channel with appropriate status
-      // Clear off_chain_accumulated_balance (worker was paid via XRPL transaction)
+      // CRITICAL FIX (2026-01-16): Only clear off_chain_accumulated_balance when status='closed'
+      // For status='closing', preserve balance so dashboard shows correct amount during 24h protection
+      // Clear balance ONLY after finalization (status='closed') when worker has been paid via XRPL
       // Do NOT touch on_chain_balance (will sync from ledger separately)
       // CRITICAL FIX (2026-01-11): Only update expiration_time if it's NOT NULL
       // When finalizing an already-closing channel, expiration_time should remain unchanged
@@ -1577,7 +1579,10 @@ router.post('/:channelId/close/confirm', async (req, res) => {
           closure_tx_hash = $2,
           closed_at = CASE WHEN $1::varchar = 'closed' THEN NOW() ELSE NULL END,
           expiration_time = COALESCE($3::timestamptz, expiration_time),
-          off_chain_accumulated_balance = 0,
+          off_chain_accumulated_balance = CASE
+            WHEN $1::varchar = 'closed' THEN 0
+            ELSE off_chain_accumulated_balance
+          END,
           last_ledger_sync = NOW(),
           last_validation_at = NOW(),
           updated_at = NOW()
