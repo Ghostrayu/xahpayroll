@@ -41,7 +41,7 @@ DB_USER=postgres.qrqzyjvrhkosvhzrctnz
 
 ## Schema
 
-**Canonical**: `backend/database/schema.sql` (13 tables)
+**Canonical**: `backend/database/schema.sql` (14 tables)
 
 **Initialize**:
 ```bash
@@ -54,13 +54,19 @@ npm run init-db  # Applies schema.sql automatically
 users (wallet_address PK)
   ├─ organizations (escrow_wallet_address → users.wallet_address)
   ├─ employees (employee_wallet_address → users.wallet_address)
-  └─ sessions
+  ├─ sessions
+  └─ notifications (user_id FK)
 
 payment_channels (channel_id UNIQUE)
   ├─ FK: organization_id → organizations.id
   ├─ FK: employee_id → employees.id
   └─ work_sessions (payment_channel_id FK)
       └─ payments (session_id FK)
+
+Notification Tables (3 separate systems):
+  ├─ notifications (generic user notifications via user_id)
+  ├─ ngo_notifications (NGO org notifications via organization_id)
+  └─ worker_notifications (worker closure requests via worker_wallet_address)
 ```
 
 ---
