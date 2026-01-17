@@ -245,6 +245,12 @@ temp/
 # PROJECT SPECIFIC
 # =====================================================
 
+# Contest submission guides (internal use only)
+HOW_TO_SUBMIT_TO_CONTEST.md
+CONTEST_SUBMISSION_QUICKSTART.md
+Ghostrayu_XAHPayroll.md
+submissions/
+
 # Local development database
 xahpayroll_backup.dump
 

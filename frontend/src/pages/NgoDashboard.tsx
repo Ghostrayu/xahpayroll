@@ -697,14 +697,14 @@ const NgoDashboard: React.FC = () => {
                       Good Money Collective
                     </span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Wallet:</span>
-                    <code className="text-xs font-mono text-xah-blue bg-blue-50 px-3 py-1 rounded-lg border border-blue-200">
+                    <code className="text-xs font-mono text-xah-blue bg-blue-50 px-3 py-1 rounded-lg border border-blue-200 break-all">
                       {walletAddress}
                     </code>
-                    <span className={`text-xs font-bold uppercase tracking-wide px-2 py-1 rounded border ${
-                      network === 'mainnet' 
-                        ? 'text-green-700 bg-green-50 border-green-300' 
+                    <span className={`text-xs font-bold uppercase tracking-wide px-2 py-1 rounded border whitespace-nowrap self-start ${
+                      network === 'mainnet'
+                        ? 'text-green-700 bg-green-50 border-green-300'
                         : 'bg-orange-100 text-orange-700 border-orange-300'
                     }`}>
                       {network === 'mainnet' ? 'MAINNET XAHAU' : 'TESTNET XAHAU'}
@@ -755,49 +755,64 @@ const NgoDashboard: React.FC = () => {
                 </div>
               )}
             </div>
-            <Link 
-              to="/ngo" 
-              className="inline-flex items-center gap-2 text-xah-blue hover:text-primary-700 font-bold text-sm uppercase tracking-wide transition-colors"
+            <Link
+              to="/ngo"
+              className="inline-flex items-center gap-2 text-xah-blue hover:text-primary-700 font-bold text-xs sm:text-sm uppercase tracking-wide transition-colors whitespace-nowrap"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
-              BACK TO INFO
+              <span className="hidden sm:inline">BACK TO INFO</span>
+              <span className="sm:hidden">BACK</span>
             </Link>
           </div>
 
           {/* Quick Actions */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
             <button
               onClick={() => setShowAddWorkerModal(true)}
-              className="bg-xah-blue hover:bg-primary-700 text-white font-bold py-4 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-lg"
+              className="bg-xah-blue hover:bg-primary-700 text-white font-bold py-3 sm:py-4 px-4 sm:px-6 rounded-xl text-xs sm:text-sm uppercase tracking-wide transition-colors shadow-lg"
             >
-              ➕ ADD WORKER
+              <span className="hidden sm:inline">➕ ADD WORKER</span>
+              <span className="sm:hidden">➕ ADD</span>
             </button>
             <button
               onClick={() => setShowDeleteWorkerModal(true)}
-              className="bg-red-500 hover:bg-red-600 text-white font-bold py-4 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-lg"
+              className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 sm:py-4 px-4 sm:px-6 rounded-xl text-xs sm:text-sm uppercase tracking-wide transition-colors shadow-lg"
             >
-              🗑️ DELETE WORKER
+              <span className="hidden sm:inline">🗑️ DELETE WORKER</span>
+              <span className="sm:hidden">🗑️ DELETE</span>
             </button>
             <button
               onClick={() => setShowEscrowModal(true)}
-              className="bg-green-500 hover:bg-green-600 text-white font-bold py-4 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-lg"
+              className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 sm:py-4 px-4 sm:px-6 rounded-xl text-xs sm:text-sm uppercase tracking-wide transition-colors shadow-lg col-span-2 sm:col-span-1"
             >
-              ⚡ OPEN PAYMENT CHANNEL
+              <span className="hidden sm:inline">⚡ OPEN PAYMENT CHANNEL</span>
+              <span className="sm:hidden">⚡ CHANNEL</span>
             </button>
             <button
               onClick={handleDownloadData}
               disabled={downloadingData}
-              className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-4 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 sm:py-4 px-4 sm:px-6 rounded-xl text-xs sm:text-sm uppercase tracking-wide transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {downloadingData ? '📄 DOWNLOADING...' : '📄 DOWNLOAD DATA'}
+              {downloadingData ? (
+                <>
+                  <span className="hidden sm:inline">📄 DOWNLOADING...</span>
+                  <span className="sm:hidden">📄 LOADING...</span>
+                </>
+              ) : (
+                <>
+                  <span className="hidden sm:inline">📄 DOWNLOAD DATA</span>
+                  <span className="sm:hidden">📄 DOWNLOAD</span>
+                </>
+              )}
             </button>
             <Link
               to="/ngo/settings"
-              className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-4 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-lg text-center block"
+              className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-3 sm:py-4 px-4 sm:px-6 rounded-xl text-xs sm:text-sm uppercase tracking-wide transition-colors shadow-lg text-center block"
             >
-              ⚙️ SETTINGS
+              <span className="hidden sm:inline">⚙️ SETTINGS</span>
+              <span className="sm:hidden">⚙️ SETTINGS</span>
             </Link>
           </div>
         </div>
@@ -806,10 +821,10 @@ const NgoDashboard: React.FC = () => {
       {/* Tab Navigation */}
       <section className="bg-white border-b-2 border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-2 sm:gap-4">
             <button
               onClick={() => setActiveTab('overview')}
-              className={`px-6 py-4 font-bold text-sm uppercase tracking-wide transition-all ${
+              className={`flex-1 sm:flex-initial px-3 sm:px-6 py-3 sm:py-4 font-bold text-xs sm:text-sm uppercase tracking-wide transition-all whitespace-nowrap ${
                 activeTab === 'overview'
                   ? 'text-xah-blue border-b-4 border-xah-blue'
                   : 'text-gray-600 hover:text-gray-900'
@@ -819,13 +834,14 @@ const NgoDashboard: React.FC = () => {
             </button>
             <button
               onClick={() => setActiveTab('notifications')}
-              className={`px-6 py-4 font-bold text-sm uppercase tracking-wide transition-all relative ${
+              className={`flex-1 sm:flex-initial px-3 sm:px-6 py-3 sm:py-4 font-bold text-xs sm:text-sm uppercase tracking-wide transition-all relative whitespace-nowrap ${
                 activeTab === 'notifications'
                   ? 'text-xah-blue border-b-4 border-xah-blue'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              NOTIFICATIONS
+              <span className="hidden sm:inline">NOTIFICATIONS</span>
+              <span className="sm:hidden">NOTIF</span>
               {unreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 px-2 py-0.5 bg-red-500 text-white rounded-full text-[10px] font-bold">
                   {unreadCount}
@@ -834,13 +850,14 @@ const NgoDashboard: React.FC = () => {
             </button>
             <button
               onClick={() => setActiveTab('closure-requests')}
-              className={`px-6 py-4 font-bold text-sm uppercase tracking-wide transition-all relative ${
+              className={`flex-1 sm:flex-initial px-3 sm:px-6 py-3 sm:py-4 font-bold text-xs sm:text-sm uppercase tracking-wide transition-all relative whitespace-nowrap ${
                 activeTab === 'closure-requests'
                   ? 'text-xah-blue border-b-4 border-xah-blue'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              CLOSURE REQUESTS
+              <span className="hidden sm:inline">CLOSURE REQUESTS</span>
+              <span className="sm:hidden">CLOSURES</span>
               {closureRequests.length > 0 && (
                 <span className="absolute -top-1 -right-1 px-2 py-0.5 bg-orange-500 text-white rounded-full text-[10px] font-bold">
                   {closureRequests.length}
