@@ -612,6 +612,9 @@ const NgoDashboard: React.FC = () => {
       // Switch to overview tab to show updated payment channels
       setActiveTab('overview')
 
+      // Wait for React to render updates before showing alert
+      await new Promise(resolve => setTimeout(resolve, 100))
+
       alert(
         `✅ CLOSURE REQUEST APPROVED AND EXECUTED!\n\n` +
         `WORKER ${request.worker_name} RECEIVED: ${request.accumulated_balance} XAH\n` +
@@ -649,13 +652,19 @@ const NgoDashboard: React.FC = () => {
         throw new Error(response.error?.message || 'FAILED TO REJECT REQUEST')
       }
 
-      alert(`✅ CLOSURE REQUEST REJECTED\n\nREASON: ${reason}`)
-
       // Refresh closure requests
       const requestsResponse = await closureRequestsApi.getNGORequests(walletAddress!)
       if (requestsResponse.success && requestsResponse.data) {
         setClosureRequests(requestsResponse.data.requests)
       }
+
+      // Refresh dashboard data to show updated stats
+      await refreshData()
+
+      // Wait for React to render updates before showing alert
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      alert(`✅ CLOSURE REQUEST REJECTED\n\nREASON: ${reason}`)
 
     } catch (error: any) {
       console.error('[REJECT_CLOSURE_REQUEST_ERROR]', error)
