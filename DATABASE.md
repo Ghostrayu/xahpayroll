@@ -27,14 +27,15 @@ DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=xahpayroll_dev
 DB_USER=xahpayroll_user
-DB_PASSWORD=xahpayroll_secure_2024
+DB_PASSWORD=your_secure_password_here
 ```
 
 **Production**: Supabase PostgreSQL pooler
 ```bash
-DB_HOST=aws-1-us-east-1.pooler.supabase.com
+DB_HOST=your-production-host.pooler.supabase.com
 DB_NAME=postgres
-DB_USER=postgres.qrqzyjvrhkosvhzrctnz
+DB_USER=postgres.your_supabase_project_id
+DB_PASSWORD=your_production_password_here
 ```
 
 ---
@@ -211,11 +212,12 @@ WHERE id = $2;
 **Apply**:
 ```bash
 # Development
-PGPASSWORD='...' psql -U user -d db -f backend/database/migrations/XXX.sql
+PGPASSWORD='your_dev_password' psql -U xahpayroll_user -d xahpayroll_dev -h localhost -p 5432 \
+  -f backend/database/migrations/XXX.sql
 
 # Production (Supabase)
-PGPASSWORD='XAHPAYROLL777,' psql -h aws-1-us-east-1.pooler.supabase.com \
-  -U postgres.qrqzyjvrhkosvhzrctnz -d postgres -p 5432 \
+PGPASSWORD='your_production_password' psql -h your-production-host.pooler.supabase.com \
+  -U postgres.your_supabase_project_id -d postgres -p 5432 \
   -f backend/database/migrations/XXX.sql
 ```
 

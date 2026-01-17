@@ -17,8 +17,10 @@ const { Pool } = require('pg');
 const { Client } = require('xrpl');
 
 // Database configuration
+// IMPORTANT: Set DATABASE_URL environment variable with production connection string
+// Format: postgresql://username:password@host:port/database
 const pool = new Pool({
-  connectionString: 'postgresql://postgres.qrqzyjvrhkosvhzrctnz:XAHPAYROLL777,@aws-1-us-east-1.pooler.supabase.com:5432/postgres',
+  connectionString: process.env.DATABASE_URL || 'postgresql://postgres.your_user:your_password@your-host.pooler.supabase.com:5432/postgres',
   ssl: {
     rejectUnauthorized: false
   }

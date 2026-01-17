@@ -26,12 +26,12 @@ fi
 echo -e "${GREEN}✓ Migration file found${NC}"
 echo ""
 
-# Database connection details
-DB_HOST="aws-1-us-east-1.pooler.supabase.com"
-DB_PORT="5432"
-DB_USER="postgres.qrqzyjvrhkosvhzrctnz"
-DB_NAME="postgres"
-DB_PASSWORD="XAHPAYROLL777,"
+# Database connection details (use environment variables or update these)
+DB_HOST="${DB_HOST:-your-production-host.pooler.supabase.com}"
+DB_PORT="${DB_PORT:-5432}"
+DB_USER="${DB_USER:-postgres.your_supabase_project_id}"
+DB_NAME="${DB_NAME:-postgres}"
+DB_PASSWORD="${DB_PASSWORD:-your_production_password_here}"
 
 echo -e "${YELLOW}Database:${NC} $DB_NAME"
 echo -e "${YELLOW}Host:${NC} $DB_HOST"

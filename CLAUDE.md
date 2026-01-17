@@ -183,22 +183,22 @@ openssl rand -base64 32
 
 ```bash
 # Verify database existence and connectivity
-PGPASSWORD='xahpayroll_secure_2024' psql -U xahpayroll_user -d xahpayroll_dev -h localhost -p 5432 -c "SELECT version();"
+PGPASSWORD='your_dev_password' psql -U xahpayroll_user -d xahpayroll_dev -h localhost -p 5432 -c "SELECT version();"
 
 # List all tables
-PGPASSWORD='xahpayroll_secure_2024' psql -U xahpayroll_user -d xahpayroll_dev -h localhost -p 5432 -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;"
+PGPASSWORD='your_dev_password' psql -U xahpayroll_user -d xahpayroll_dev -h localhost -p 5432 -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;"
 
 # Count tables
-PGPASSWORD='xahpayroll_secure_2024' psql -U xahpayroll_user -d xahpayroll_dev -h localhost -p 5432 -c "SELECT COUNT(*) as table_count FROM information_schema.tables WHERE table_schema = 'public';"
+PGPASSWORD='your_dev_password' psql -U xahpayroll_user -d xahpayroll_dev -h localhost -p 5432 -c "SELECT COUNT(*) as table_count FROM information_schema.tables WHERE table_schema = 'public';"
 
 # Check specific table row counts
-PGPASSWORD='xahpayroll_secure_2024' psql -U xahpayroll_user -d xahpayroll_dev -h localhost -p 5432 -c "SELECT 'users' as table_name, COUNT(*) FROM users UNION ALL SELECT 'organizations', COUNT(*) FROM organizations UNION ALL SELECT 'payment_channels', COUNT(*) FROM payment_channels;"
+PGPASSWORD='your_dev_password' psql -U xahpayroll_user -d xahpayroll_dev -h localhost -p 5432 -c "SELECT 'users' as table_name, COUNT(*) FROM users UNION ALL SELECT 'organizations', COUNT(*) FROM organizations UNION ALL SELECT 'payment_channels', COUNT(*) FROM payment_channels;"
 ```
 
 **Database Configuration**:
 - **Database Name**: `xahpayroll_dev` (development environment)
 - **User**: `xahpayroll_user`
-- **Password**: `xahpayroll_secure_2024` (change in production!)
+- **Password**: Set in `backend/.env` (see `.env.example` for configuration)
 - **Host**: `localhost`
 - **Port**: `5432`
 
