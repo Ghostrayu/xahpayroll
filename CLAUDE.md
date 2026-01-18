@@ -247,7 +247,7 @@ Payment channels use native XRPL `PaymentChannelCreate` transactions.
 - `frontend/src/services/api.ts` - API client with `paymentChannelApi` (cancel, confirm)
 - `backend/routes/paymentChannels.js` - API endpoints (create, close, confirm)
 - `backend/routes/workers.js` - Worker management API
-- `backend/database/migrations/001_create_payment_channels.sql` - Database schema
+- `backend/database/schema.sql` - Database schema (v1.2, 15 tables)
 
 **Creation Process**:
 1. NGO adds workers via "Add Worker" button (optional: scan Xaman QR code)
