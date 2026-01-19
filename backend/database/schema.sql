@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS payments (
   organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
   amount DECIMAL(20, 8) NOT NULL,
   currency VARCHAR(10) DEFAULT 'XAH',
-  payment_type VARCHAR(20) CHECK (payment_type IN ('hourly', 'bonus', 'adjustment', 'refund')),
+  payment_type VARCHAR(20) CHECK (payment_type IN ('hourly', 'bonus', 'adjustment', 'refund', 'channel_closure')),
   tx_hash VARCHAR(128) UNIQUE,
   from_wallet VARCHAR(64) NOT NULL,
   to_wallet VARCHAR(64) NOT NULL,
