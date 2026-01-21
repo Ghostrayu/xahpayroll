@@ -495,14 +495,14 @@ const WorkerDashboard: React.FC = () => {
               </p>
               {walletAddress && (
                 <div className="mt-3 space-y-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Wallet:</span>
-                    <code className="text-xs font-mono text-xah-blue bg-blue-50 px-3 py-1 rounded-lg border border-blue-200">
+                    <code className="text-xs font-mono text-xah-blue bg-blue-50 px-3 py-1 rounded-lg border border-blue-200 break-all">
                       {walletAddress}
                     </code>
-                    <span className={`text-xs font-bold uppercase tracking-wide px-2 py-1 rounded border ${
-                      network === 'mainnet' 
-                        ? 'text-green-700 bg-green-50 border-green-300' 
+                    <span className={`text-xs font-bold uppercase tracking-wide px-2 py-1 rounded border whitespace-nowrap ${
+                      network === 'mainnet'
+                        ? 'text-green-700 bg-green-50 border-green-300'
                         : 'bg-orange-100 text-orange-700 border-orange-300'
                     }`}>
                       {network === 'mainnet' ? 'MAINNET XAHAU' : 'TESTNET XAHAU'}
@@ -526,7 +526,7 @@ const WorkerDashboard: React.FC = () => {
             </div>
             <Link
               to="/worker"
-              className="inline-flex items-center gap-2 text-xah-blue hover:text-primary-700 font-bold text-sm uppercase tracking-wide transition-colors"
+              className="inline-flex items-center gap-2 text-xah-blue hover:text-primary-700 font-bold text-xs sm:text-sm uppercase tracking-wide transition-colors whitespace-nowrap"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -539,7 +539,7 @@ const WorkerDashboard: React.FC = () => {
           <div className="mt-6 flex items-center gap-3 flex-wrap">
             <Link
               to="/worker/settings"
-              className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-sm"
+              className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 px-4 sm:px-6 rounded-xl text-xs sm:text-sm uppercase tracking-wide transition-colors shadow-sm whitespace-nowrap"
             >
               ⚙️ ACCOUNT SETTINGS
             </Link>
@@ -548,7 +548,7 @@ const WorkerDashboard: React.FC = () => {
             <button
               onClick={handleDownloadData}
               disabled={downloadingData}
-              className="inline-flex items-center gap-2 bg-purple-100 hover:bg-purple-200 text-purple-700 font-bold py-3 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-2 bg-purple-100 hover:bg-purple-200 text-purple-700 font-bold py-3 px-4 sm:px-6 rounded-xl text-xs sm:text-sm uppercase tracking-wide transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
             >
               {downloadingData ? '📄 DOWNLOADING...' : '📄 DOWNLOAD DATA'}
             </button>
@@ -556,7 +556,7 @@ const WorkerDashboard: React.FC = () => {
             {/* Notifications Button with Badge */}
             <button
               onClick={() => setShowNotifications(!showNotifications)}
-              className="relative inline-flex items-center gap-2 bg-blue-100 hover:bg-blue-200 text-blue-700 font-bold py-3 px-6 rounded-xl text-sm uppercase tracking-wide transition-colors shadow-sm"
+              className="relative inline-flex items-center gap-2 bg-blue-100 hover:bg-blue-200 text-blue-700 font-bold py-3 px-4 sm:px-6 rounded-xl text-xs sm:text-sm uppercase tracking-wide transition-colors shadow-sm whitespace-nowrap"
             >
               🔔 NOTIFICATIONS
               {unreadCount > 0 && (
@@ -678,7 +678,7 @@ const WorkerDashboard: React.FC = () => {
                         </div>
                         <div className="mt-1">
                           <span className="text-xs text-gray-600 uppercase tracking-wide font-semibold">CHANNEL ID: </span>
-                          <span className="text-xs text-gray-500 uppercase tracking-wide truncate">
+                          <span className="text-xs text-gray-500 uppercase tracking-wide break-all">
                             {channel.channelId}
                           </span>
                         </div>
@@ -806,11 +806,11 @@ const WorkerDashboard: React.FC = () => {
                       }}
                     />
 
-                    <div className="flex justify-end gap-2 mt-4">
+                    <div className="flex justify-end gap-2 mt-4 flex-wrap">
                       <button
                         onClick={() => handleSyncChannel(channel)}
                         disabled={syncingChannels.has(channel.channelId) || wasRecentlySynced(channel.lastLedgerSync) || !channel.channelId}
-                        className={`px-3 py-1 text-white font-bold rounded text-[10px] uppercase tracking-wide transition-colors disabled:cursor-not-allowed ${
+                        className={`px-3 py-1 text-white font-bold rounded text-[10px] uppercase tracking-wide transition-colors disabled:cursor-not-allowed whitespace-nowrap ${
                           wasRecentlySynced(channel.lastLedgerSync)
                             ? 'bg-green-600'
                             : 'bg-purple-500 hover:bg-purple-600 disabled:opacity-50'
@@ -831,14 +831,14 @@ const WorkerDashboard: React.FC = () => {
                           <button
                             onClick={() => handleCloseClick(channel)}
                             disabled={cancelingChannel === channel.channelId}
-                            className="px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded text-xs uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed animate-pulse"
+                            className="px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded text-xs uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed animate-pulse whitespace-nowrap"
                           >
                             {cancelingChannel === channel.channelId
                               ? 'CLAIMING...'
                               : '🛡️ CLAIM NOW'}
                           </button>
                         ) : (
-                          <div className="px-3 py-1 bg-green-100 border border-green-500 text-green-700 font-bold rounded text-xs uppercase tracking-wide">
+                          <div className="px-3 py-1 bg-green-100 border border-green-500 text-green-700 font-bold rounded text-xs uppercase tracking-wide whitespace-nowrap">
                             ✅ BALANCE RECEIVED
                           </div>
                         )
@@ -846,7 +846,7 @@ const WorkerDashboard: React.FC = () => {
                         <button
                           onClick={() => handleCloseClick(channel)}
                           disabled={cancelingChannel === channel.channelId}
-                          className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white font-bold rounded text-xs uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white font-bold rounded text-xs uppercase tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                         >
                           {cancelingChannel === channel.channelId
                             ? 'REQUESTING...'
