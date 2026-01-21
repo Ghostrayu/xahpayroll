@@ -580,7 +580,7 @@ const WorkerDashboard: React.FC = () => {
               <div className="text-center">
                 <div className="text-4xl mb-3">📅</div>
                 <p className="text-xs text-gray-600 uppercase tracking-wide font-semibold mb-2">Today</p>
-                <p className="text-3xl font-extrabold text-gray-900 mb-1">{workerData.todayHours}h</p>
+                <p className="text-3xl font-extrabold text-gray-900 mb-1">{workerData.todayHours.toFixed(2)}h</p>
                 <p className="text-xl font-bold text-xah-blue">{workerData.todayEarnings} XAH</p>
               </div>
             </div>
@@ -590,7 +590,7 @@ const WorkerDashboard: React.FC = () => {
               <div className="text-center">
                 <div className="text-4xl mb-3">📊</div>
                 <p className="text-xs text-gray-600 uppercase tracking-wide font-semibold mb-2">This Week</p>
-                <p className="text-3xl font-extrabold text-gray-900 mb-1">{workerData.weekHours}h</p>
+                <p className="text-3xl font-extrabold text-gray-900 mb-1">{workerData.weekHours.toFixed(2)}h</p>
                 <p className="text-xl font-bold text-xah-blue">{workerData.weekEarnings} XAH</p>
               </div>
             </div>
@@ -600,7 +600,7 @@ const WorkerDashboard: React.FC = () => {
               <div className="text-center">
                 <div className="text-4xl mb-3">💰</div>
                 <p className="text-xs text-gray-600 uppercase tracking-wide font-semibold mb-2">This Month</p>
-                <p className="text-3xl font-extrabold text-gray-900 mb-1">{workerData.monthHours}h</p>
+                <p className="text-3xl font-extrabold text-gray-900 mb-1">{workerData.monthHours.toFixed(2)}h</p>
                 <p className="text-xl font-bold text-xah-blue">{workerData.monthEarnings} XAH</p>
               </div>
             </div>
