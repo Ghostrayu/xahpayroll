@@ -1694,6 +1694,11 @@ router.post('/:channelId/close/confirm', async (req, res) => {
           closedAt: updatedChannel.closed_at,
           expirationTime: updatedChannel.expiration_time,
           jobName: updatedChannel.job_name
+        },
+        payment: {
+          workerPayment: amountPaidXAH,
+          escrowFunded: parseFloat(channel.escrow_funded_amount) || 0,
+          escrowReturn: (parseFloat(channel.escrow_funded_amount) || 0) - amountPaidXAH
         }
       }
     })

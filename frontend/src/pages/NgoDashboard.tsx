@@ -26,6 +26,7 @@ const NgoDashboard: React.FC = () => {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [selectedChannel, setSelectedChannel] = useState<any>(null)
   const [cancelingChannel, setCancelingChannel] = useState<string | null>(null)
+  const [isFinalization, setIsFinalization] = useState(false)
   const [syncingChannels, setSyncingChannels] = useState<Set<string>>(new Set())
   const [syncingAllChannels, setSyncingAllChannels] = useState(false)
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview')
@@ -212,6 +213,9 @@ const NgoDashboard: React.FC = () => {
     const hasBalance = (channel.balance || 0) > 0
     const isExpired = channel.status === 'closing' && isChannelExpired(channel)
 
+    // Store whether this is a finalization for use in success message
+    setIsFinalization(isExpired)
+
     if (isExpired) {
       // Finalizing an expired scheduled closure
     } else if (hasBalance) {
@@ -280,7 +284,7 @@ const NgoDashboard: React.FC = () => {
 
       // Step 3: Confirm closure in database
       console.log('[CANCEL_FLOW] Step 3: Confirming closure in database')
-      await paymentChannelApi.confirmChannelClosure(
+      const confirmResponse = await paymentChannelApi.confirmChannelClosure(
         selectedChannel.channelId,
         txResult.hash,
         walletAddress,
@@ -290,23 +294,37 @@ const NgoDashboard: React.FC = () => {
       console.log('[CANCEL_FLOW] Step 3 complete. Channel closure confirmed')
 
       // Enhanced success messaging based on closure type from backend
-      const escrowReturn = parseFloat(channel.escrowReturn || '0')
-      const workerPayment = channel.balance || 0
+      // Use actual payment amounts from confirm response (most accurate)
+      const escrowReturn = confirmResponse.data?.payment?.escrowReturn || parseFloat(channel.escrowReturn || '0')
+      const workerPayment = confirmResponse.data?.payment?.workerPayment || channel.balance || 0
 
       if (isScheduledClosure) {
-        // Scheduled closure (NGO requested closure with unpaid balance)
         const settleDelayHours = channel.settleDelayHours || 24 // Fallback to 24 if not provided
-        alert(
-          `⏳ CLOSURE REQUESTED SUCCESSFULLY!\n\n` +
-          `CHANNEL STATUS: CLOSING\n\n` +
-          `⚠️ WORKER PROTECTION ACTIVE:\n` +
-          `• Worker has ${settleDelayHours} hours to claim wages\n` +
-          `• Accumulated balance: ${workerPayment.toFixed(2)} XAH\n\n` +
-          `AFTER ${settleDelayHours} HOURS:\n` +
-          `• You can click "FINALIZE CLOSURE"\n` +
-          `• Unused escrow returns: ${escrowReturn.toFixed(2)} XAH\n\n` +
-          `TRANSACTION: ${txResult.hash}`
-        )
+
+        if (isFinalization) {
+          // Finalizing an expired channel - payments completed NOW
+          alert(
+            `✅ CHANNEL FINALIZED - ALL PARTIES PAID!\n\n` +
+            `CHANNEL STATUS: CLOSED\n\n` +
+            `💰 PAYMENTS COMPLETED IN THIS TRANSACTION:\n` +
+            `• Worker payment: ${workerPayment.toFixed(2)} XAH\n` +
+            `• Escrow returned: ${escrowReturn.toFixed(2)} XAH\n\n` +
+            `TRANSACTION: ${txResult.hash}`
+          )
+        } else {
+          // Initial scheduled closure - SettleDelay just starting
+          alert(
+            `⏳ CLOSURE REQUESTED SUCCESSFULLY!\n\n` +
+            `CHANNEL STATUS: CLOSING\n\n` +
+            `⚠️ WORKER PROTECTION ACTIVE:\n` +
+            `• Worker has ${settleDelayHours} hours to claim wages\n` +
+            `• Accumulated balance: ${workerPayment.toFixed(2)} XAH\n\n` +
+            `AFTER ${settleDelayHours} HOURS:\n` +
+            `• You can click "FINALIZE CLOSURE"\n` +
+            `• Unused escrow returns: ${escrowReturn.toFixed(2)} XAH\n\n` +
+            `TRANSACTION: ${txResult.hash}`
+          )
+        }
       } else if (escrowReturn === 0 && workerPayment > 0) {
         // Immediate closure - worker earned all funds
         alert(

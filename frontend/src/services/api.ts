@@ -412,6 +412,11 @@ export const paymentChannelApi = {
     channel: any
     scheduledClosure?: boolean
     expirationTime?: number
+    payment?: {
+      workerPayment: number
+      escrowFunded: number
+      escrowReturn: number
+    }
   }>> {
     const body: any = { txHash }
 
