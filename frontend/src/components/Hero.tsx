@@ -51,7 +51,7 @@ const Hero: React.FC = () => {
                 >
                   XAHAU DEV CONTEST
                 </a>
-                  & IS EXTENDED INDEFINITELY AS A PUBLIC SERVICE. VISIT THE{' '}
+                {' '} & IS EXTENDED INDEFINITELY AS A PUBLIC SERVICE. VISIT THE{' '}
                 <a
                   href="https://github.com/Ghostrayu/xahpayroll"
                   target="_blank"
