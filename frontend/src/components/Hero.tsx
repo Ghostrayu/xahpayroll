@@ -41,8 +41,8 @@ const Hero: React.FC = () => {
             {/* Temporary Service Notice */}
             <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-lg py-4 px-6 mb-8 mx-auto max-w-3xl relative z-10">
               <p className="text-sm md:text-base text-gray-800 leading-relaxed">
-                <span className="font-bold text-amber-700 uppercase">⚠️ TEMPORARY SERVICE:</span>{' '}
-                THIS INSTANCE SERVES ONLY TO SHOWCASE THE POWER OF XAHAU AND WILL BE SUSPENDED FOLLOWING CLOSURE OF THE{' '}
+                <span className="font-bold text-amber-700 uppercase">⚠️ SERVICE NOTE:</span>{' '}
+                THIS INSTANCE WAS LAUNCHED FOR THE{' '}
                 <a
                   href="https://xahau.network/contest/"
                   target="_blank"
@@ -51,7 +51,7 @@ const Hero: React.FC = () => {
                 >
                   XAHAU DEV CONTEST
                 </a>
-                . VISIT THE{' '}
+                & IS EXTENDED INDEFINITELY AS A PUBLIC SERVICE. VISIT THE{' '}
                 <a
                   href="https://github.com/Ghostrayu/xahpayroll"
                   target="_blank"
@@ -60,7 +60,7 @@ const Hero: React.FC = () => {
                 >
                   OPEN SOURCE REPO
                 </a>
-                {' '}TO DEPLOY A LIVE INSTANCE.
+                {' '}FOR AN INSIDE LOOK OR TO CUSTOMIZE YOUR OWN PRIVATE INSTANCE.
               </p>
             </div>
 
