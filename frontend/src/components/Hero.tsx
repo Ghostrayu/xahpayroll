@@ -49,9 +49,9 @@ const Hero: React.FC = () => {
                   rel="noopener noreferrer"
                   className="text-xah-blue font-bold underline hover:text-blue-700 transition-colors"
                 >
-                  XAHAU DEV CONTEST 
+                  XAHAU DEV CONTEST
                 </a>
-                & IS EXTENDED INDEFINITELY AS A PUBLIC SERVICE. VISIT THE{' '}
+                  & IS EXTENDED INDEFINITELY AS A PUBLIC SERVICE. VISIT THE{' '}
                 <a
                   href="https://github.com/Ghostrayu/xahpayroll"
                   target="_blank"
